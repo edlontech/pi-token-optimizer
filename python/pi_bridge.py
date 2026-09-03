@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import re
+import signal
 import sqlite3
 import stat
 import sys
@@ -27,6 +28,7 @@ MAX_DESCRIPTOR_STRING_BYTES = 4 * 1024
 MAX_TEXT_BYTES = 5 * 1024 * 1024
 MAX_REQUEST_BYTES = int(5.5 * 1024 * 1024)
 MAX_RESPONSE_BYTES = 64 * 1024
+MAX_EXPANSION_TEXT_BYTES = 50 * 1024
 MAX_EXPANSION_LINES = 2_000
 MAX_CONFIG_BYTES = 64 * 1024
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
@@ -93,6 +95,8 @@ RECOVERY_PENDING_SECONDS = 120.0
 RECOVERY_FINALIZE_ATTEMPTS = 3
 RECOVERY_FINALIZE_BUSY_TIMEOUT_MS = 25
 RECOVERY_FINALIZE_BUDGET_SECONDS = 0.2
+REPORTING_DB_DEADLINE_SECONDS = 0.5
+REPORTING_DB_BUSY_TIMEOUT_MS = 250
 ARCHIVE_POINTER_RE = re.compile(
     r"(?m)^    python3 "
     + re.escape(str(MEASURE_PATH))
@@ -128,6 +132,10 @@ class ProtocolError(ValueError):
 
 
 class EnvironmentError(ValueError):
+    pass
+
+
+class _ReportingDeadlineExpired(BaseException):
     pass
 
 
@@ -1388,6 +1396,392 @@ def _post_compact(request: Request) -> Dict[str, object]:
     return _ok()
 
 
+def _archive_root(data_root: Path) -> Optional[Path]:
+    archive_root = data_root / "tool-archive"
+    for path in (data_root, archive_root):
+        try:
+            info = path.lstat()
+            if (
+                path.is_symlink()
+                or not stat.S_ISDIR(info.st_mode)
+                or info.st_uid != os.geteuid()
+            ):
+                return None
+        except OSError:
+            return None
+    return archive_root
+
+
+def _archive_response(
+    archive_root: Path,
+    session_id: str,
+    archive_id: str,
+) -> Tuple[str, Optional[str]]:
+    if not _is_id(session_id):
+        return "malformed", None
+    session_dir = archive_root / session_id
+    entry_path = session_dir / (archive_id + ".json")
+    try:
+        directory_info = session_dir.lstat()
+    except FileNotFoundError:
+        return "missing", None
+    except OSError:
+        return "malformed", None
+    if (
+        session_dir.is_symlink()
+        or not stat.S_ISDIR(directory_info.st_mode)
+        or directory_info.st_uid != os.geteuid()
+    ):
+        return "malformed", None
+    try:
+        entry_path.lstat()
+    except FileNotFoundError:
+        return "missing", None
+    except OSError:
+        return "malformed", None
+    raw = _read_owned_regular(entry_path, MAX_ARCHIVE_ENTRY_BYTES)
+    if raw is None:
+        return "malformed", None
+    try:
+        entry = _loads(raw.decode("utf-8", errors="strict"))
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ):
+        return "malformed", None
+    if (
+        not isinstance(entry, dict)
+        or entry.get("tool_use_id") != archive_id
+        or not _is_nonempty_string(entry.get("tool_name"))
+        or (
+            "tool_kind" in entry
+            and not _is_nonempty_string(entry.get("tool_kind"))
+        )
+        or entry.get("archived_from") not in {
+            "PostToolUse",
+            "compress_with_preservation",
+        }
+        or ("session_id" in entry and entry.get("session_id") != session_id)
+        or not isinstance(entry.get("response"), str)
+    ):
+        return "malformed", None
+    return "found", entry["response"]
+
+
+def _find_archive_response(
+    data_root: Path,
+    session_id: str,
+    archive_id: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    archive_root = _archive_root(data_root)
+    if archive_root is None:
+        return None, None
+    status, response = _archive_response(
+        archive_root,
+        session_id,
+        archive_id,
+    )
+    if status == "found":
+        return session_id, response
+    if status == "malformed":
+        return None, None
+
+    match = None
+    malformed = False
+    try:
+        for directory in archive_root.iterdir():
+            candidate_session = directory.name
+            if candidate_session == session_id or not _is_id(candidate_session):
+                continue
+            status, response = _archive_response(
+                archive_root,
+                candidate_session,
+                archive_id,
+            )
+            if status == "malformed":
+                malformed = True
+            elif status == "found":
+                if match is not None:
+                    return None, None
+                match = (candidate_session, response)
+    except OSError:
+        return None, None
+    if malformed or match is None:
+        return None, None
+    return match
+
+
+def _escaped_string_size(value: str) -> int:
+    return len(json.dumps(value, ensure_ascii=True, separators=(",", ":"))) - 2
+
+
+def _escaped_character_size(value: str) -> int:
+    codepoint = ord(value)
+    if value in {'"', "\\", "\b", "\t", "\n", "\f", "\r"}:
+        return 2
+    if codepoint < 0x20 or codepoint == 0x7F:
+        return 6
+    if codepoint < 0x80:
+        return 1
+    if codepoint <= 0xFFFF:
+        return 6
+    return 12
+
+
+def _virtual_expansion_lines(response: str) -> list[str]:
+    virtual_lines = []
+    for line in _text_encoder_normalized(response).splitlines():
+        start = 0
+        size = 0
+        for end, character in enumerate(line):
+            character_size = _escaped_character_size(character)
+            if size + character_size > MAX_EXPANSION_TEXT_BYTES:
+                virtual_lines.append(line[start:end])
+                start = end
+                size = 0
+            size += character_size
+        virtual_lines.append(line[start:])
+    return virtual_lines
+
+
+def _expansion_slice(
+    response: str,
+    offset: int,
+    limit: int,
+) -> Tuple[str, Optional[int]]:
+    lines = _virtual_expansion_lines(response)
+    selected = []
+    size = 0
+    consumed = 0
+    for line in lines[offset:offset + limit]:
+        separator = 2 if selected else 0
+        encoded_size = _escaped_string_size(line)
+        if size + separator + encoded_size <= MAX_EXPANSION_TEXT_BYTES:
+            selected.append(line)
+            size += separator + encoded_size
+            consumed += 1
+            continue
+        break
+    next_offset = offset + consumed
+    if next_offset >= len(lines):
+        next_offset = None
+    return "\n".join(selected), next_offset
+
+
+def _expand(request: Request, data_root: Path) -> Dict[str, object]:
+    archive_id = str(request.args["archiveId"])
+    session_id, response = _find_archive_response(
+        data_root,
+        str(request.session["id"]),
+        archive_id,
+    )
+    if session_id is None or response is None:
+        _diagnose("archive unavailable")
+        return _error("archive_unavailable")
+    try:
+        archive_result = _load_engine("archive_result")
+        safe_response, output = _capture_call(
+            archive_result._redact_credentials,
+            response,
+        )
+        if output.strip() or not isinstance(safe_response, str):
+            raise ValueError("invalid archive redaction output")
+    except (Exception, SystemExit) as error:
+        _diagnose("archive failure (" + type(error).__name__ + ")")
+        return _error("archive_unavailable")
+
+    try:
+        measure = _load_engine("measure")
+        _, output = _capture_call(
+            measure._log_reexpand_debit,
+            session_id,
+            archive_id,
+            safe_response,
+        )
+        if output.strip():
+            raise ValueError("invalid archive debit output")
+    except (Exception, SystemExit) as error:
+        _diagnose("archive debit failure (" + type(error).__name__ + ")")
+
+    offset = int(request.args.get("offset", 0))
+    limit = int(request.args.get("limit", MAX_EXPANSION_LINES))
+    text, next_offset = _expansion_slice(safe_response, offset, limit)
+    data: Dict[str, object] = {
+        "archiveId": archive_id,
+        "sessionId": session_id,
+        "offset": offset,
+        "text": text,
+    }
+    if next_offset is not None:
+        data["nextOffset"] = next_offset
+    return _ok(data)
+
+
+def _dashboard(pi_home: Path) -> Dict[str, object]:
+    expected = pi_home / "token-optimizer" / "dashboard.html"
+    try:
+        for target in (expected, expected.with_suffix(".meta.json")):
+            try:
+                info = target.lstat()
+            except FileNotFoundError:
+                continue
+            if (
+                target.is_symlink()
+                or not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+            ):
+                raise ValueError("unsafe dashboard output")
+        measure = _load_engine("measure")
+        result, output = _capture_call(
+            measure.generate_standalone_dashboard,
+            days=30,
+            quiet=True,
+            force=True,
+        )
+        info = expected.lstat()
+        if (
+            output.strip()
+            or result != str(expected)
+            or expected.is_symlink()
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+        ):
+            raise ValueError("invalid dashboard output")
+        return _ok({
+            "available": True,
+            "status": "ready",
+            "path": str(expected),
+        })
+    except (Exception, SystemExit) as error:
+        _diagnose("dashboard failure (" + type(error).__name__ + ")")
+        return _ok({"available": False, "status": "unavailable"})
+
+
+@contextlib.contextmanager
+def _reporting_db_deadline():
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_delay, previous_interval = signal.getitimer(signal.ITIMER_REAL)
+    original_connect = sqlite3.connect
+    started = time.monotonic()
+
+    def expire(_signum, _frame):
+        raise _ReportingDeadlineExpired("reporting database deadline exceeded")
+
+    class ReportingConnection(sqlite3.Connection):
+        def execute(self, sql, parameters=()):
+            if sql == "PRAGMA busy_timeout=5000":
+                sql = "PRAGMA busy_timeout=" + str(REPORTING_DB_BUSY_TIMEOUT_MS)
+            return super().execute(sql, parameters)
+
+    def connect(*args, **kwargs):
+        kwargs.setdefault("timeout", REPORTING_DB_BUSY_TIMEOUT_MS / 1_000)
+        kwargs.setdefault("factory", ReportingConnection)
+        return original_connect(*args, **kwargs)
+
+    signal.signal(signal.SIGALRM, expire)
+    try:
+        sqlite3.connect = connect
+        delay = REPORTING_DB_DEADLINE_SECONDS
+        if previous_delay > 0:
+            delay = min(delay, previous_delay)
+        signal.setitimer(signal.ITIMER_REAL, delay)
+        yield
+    finally:
+        try:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        finally:
+            sqlite3.connect = original_connect
+            signal.signal(signal.SIGALRM, previous_handler)
+            if previous_delay > 0:
+                remaining = previous_delay - (time.monotonic() - started)
+                signal.setitimer(
+                    signal.ITIMER_REAL,
+                    max(remaining, 1e-6),
+                    previous_interval,
+                )
+
+
+def _report_session(request: Request, incomplete: bool) -> Dict[str, object]:
+    session_file = _current_session_file(request)
+    if session_file is None:
+        _diagnose("report unavailable (missing or unauthorized session)")
+        return _ok({"available": False, "status": "unavailable"})
+
+    connection = None
+    try:
+        measure = _load_engine("measure")
+        parsed, output = _capture_call(
+            measure.pi_session.parse_session_jsonl,
+            str(session_file),
+        )
+        if (
+            output.strip()
+            or not isinstance(parsed, dict)
+            or parsed.get("slug") != request.session["id"]
+        ):
+            raise ValueError("invalid Pi session metrics")
+
+        with _reporting_db_deadline():
+            connection, output = _capture_call(measure._init_trends_db)
+            if output.strip() or connection is None:
+                raise ValueError("invalid trends database output")
+            connection.execute(
+                "PRAGMA busy_timeout=" + str(REPORTING_DB_BUSY_TIMEOUT_MS)
+            )
+            changed, output = _capture_call(
+                measure._insert_normalized_session,
+                connection,
+                parsed,
+                session_key="pi:" + str(request.session["id"]),
+                project_name=Path(str(request.session["cwd"])).name
+                or str(request.session["cwd"]),
+                incomplete=incomplete,
+            )
+            if output.strip() or type(changed) is not bool:
+                raise ValueError("invalid trends upsert output")
+            connection.commit()
+    except (Exception, SystemExit, _ReportingDeadlineExpired) as error:
+        if connection is not None:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        _diagnose("report failure (" + type(error).__name__ + ")")
+        return _ok({"available": False, "status": "unavailable"})
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not incomplete and changed:
+        try:
+            checkpoint, output = _capture_call(
+                measure.compact_capture,
+                transcript_path=str(session_file),
+                session_id=request.session["id"],
+                trigger="end",
+                cwd=request.session["cwd"],
+            )
+            if (
+                output.strip()
+                or not _is_nonempty_string(
+                    checkpoint,
+                    MAX_DESCRIPTOR_STRING_BYTES,
+                )
+            ):
+                raise ValueError("invalid end checkpoint output")
+        except (Exception, SystemExit) as error:
+            _diagnose("report failure (" + type(error).__name__ + ")")
+            return _ok({"available": False, "status": "unavailable"})
+
+    status = "incomplete" if incomplete and changed else "complete"
+    return _ok({"available": True, "status": status})
+
+
 def _claim_recovery(store: object, session_id: str) -> Optional[RecoveryClaim]:
     now = datetime.now().timestamp()
     token = os.urandom(16).hex()
@@ -1725,6 +2119,14 @@ def dispatch(request: Request) -> Dict[str, object]:
         return _pre_compact(request)
     elif request.action == "post_compact":
         return _post_compact(request)
+    elif request.action == "rollup":
+        return _report_session(request, incomplete=True)
+    elif request.action == "finalize":
+        return _report_session(request, incomplete=False)
+    elif request.action == "dashboard":
+        return _dashboard(pi_home)
+    elif request.action == "expand":
+        return _expand(request, data_root)
     else:
         return _error("not_implemented")
     return _ok({

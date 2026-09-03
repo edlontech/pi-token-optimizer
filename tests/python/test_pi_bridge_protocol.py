@@ -361,26 +361,12 @@ class PiBridgeProtocolTests(unittest.TestCase):
                     "configState": "valid",
                 })
 
-    def test_remaining_future_actions_are_not_implemented_only_after_config_gate(self):
+    def test_all_activity_actions_are_implemented_only_after_config_gate(self):
         self.grant_consent()
-        for action in (
-            action for action in ACTIVITY_ACTIONS
-            if action not in {
-                "pre_tool",
-                "post_tool",
-                "before_prompt",
-                "session_start",
-                "pre_compact",
-                "post_compact",
-            }
-        ):
+        for action in ACTIVITY_ACTIONS:
             with self.subTest(action=action):
                 response, _stderr = self.invoke(self.action_request(action))
-                self.assertEqual(response, {
-                    "protocolVersion": 1,
-                    "ok": False,
-                    "errorCode": "not_implemented",
-                })
+                self.assertNotEqual(response.get("errorCode"), "not_implemented")
 
     def test_malformed_missing_and_future_config_fail_closed(self):
         config_path = self.pi_home / "token-optimizer" / "config.json"
