@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, link, mkdtemp, mkdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, link, mkdtemp, mkdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ async function fixture(): Promise<string> {
   await Promise.all([
     cp(resolve(root, "scripts"), resolve(directory, "scripts"), { recursive: true }),
     cp(resolve(root, "vendor"), resolve(directory, "vendor"), { recursive: true }),
+    cp(resolve(root, "patches"), resolve(directory, "patches"), { recursive: true }),
   ]);
   return directory;
 }
@@ -44,7 +45,10 @@ test("vendor checker validates the pinned tag snapshot and rejects fixture chang
       commit: "eda65d61b4750b530a6f9956193d4e4632aca0cb",
       version: "5.13.4",
     });
+    assert.equal(manifest.patch.path, "patches/pi-runtime.patch");
+    assert.match(manifest.patch.sha256, /^[a-f0-9]{64}$/);
     assert.equal(manifest.files[launcher].mode, "100755");
+    assert.equal(manifest.files[launcher].upstreamSha256, manifest.files[launcher].patchedSha256);
     assert.equal(run(directory, "check-vendor.mjs"), 0);
 
     const bytes = await readFile(launcherPath);
@@ -55,6 +59,10 @@ test("vendor checker validates the pinned tag snapshot and rejects fixture chang
     await rm(launcherPath);
     await expectRejected(directory, "check-vendor.mjs");
     await writeFile(launcherPath, bytes, { mode: 0o755 });
+
+    await chmod(launcherPath, 0o644);
+    await expectRejected(directory, "check-vendor.mjs");
+    await chmod(launcherPath, 0o755);
 
     await writeFile(extraPath, "unexpected\n");
     await expectRejected(directory, "check-vendor.mjs");
@@ -105,7 +113,7 @@ test("check rejects symlinked vendor boundaries in disposable fixtures", async (
   }
 });
 
-test("package preserves the selected vendor set and executable launcher", async () => {
+test("package preserves runtime sources without test or cache leakage", async () => {
   const result = spawnSync("npm", ["pack", "--dry-run", "--json"], {
     cwd: root,
     encoding: "utf8",
@@ -120,6 +128,11 @@ test("package preserves the selected vendor set and executable launcher", async 
   ].sort();
   const vendored = packed.filter((file) => file.path.startsWith("vendor/")).map((file) => file.path).sort();
 
+  const paths = packed.map((file) => file.path);
   assert.deepEqual(vendored, expected);
   assert.equal(packed.find((file) => file.path === `vendor/token-optimizer/${launcher}`)?.mode, 0o755);
+  assert.ok(paths.includes("python/pi_session.py"));
+  assert.ok(paths.includes("patches/pi-runtime.patch"));
+  assert.equal(paths.some((path) => path.startsWith("tests/")), false);
+  assert.equal(paths.some((path) => path.includes("__pycache__") || path.endsWith(".pyc")), false);
 });

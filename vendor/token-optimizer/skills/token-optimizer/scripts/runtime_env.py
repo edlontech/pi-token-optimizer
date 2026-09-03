@@ -1,4 +1,4 @@
-"""Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, and Copilot adapters.
+"""Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, Copilot, and Pi adapters.
 
 This module keeps runtime integration deliberately simple:
 
@@ -49,8 +49,16 @@ _RUNTIME_CODEX = "codex"
 _RUNTIME_HERMES = "hermes"
 _RUNTIME_OPENCODE = "opencode"
 _RUNTIME_COPILOT = "copilot"
+_RUNTIME_PI = "pi"
 _VALID_RUNTIMES = frozenset(
-    {_RUNTIME_CLAUDE, _RUNTIME_CODEX, _RUNTIME_HERMES, _RUNTIME_OPENCODE, _RUNTIME_COPILOT}
+    {
+        _RUNTIME_CLAUDE,
+        _RUNTIME_CODEX,
+        _RUNTIME_HERMES,
+        _RUNTIME_OPENCODE,
+        _RUNTIME_COPILOT,
+        _RUNTIME_PI,
+    }
 )
 _CLAUDE_PLUGIN_ENVS = ("CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_DATA")
 # Claude Cowork host markers. Cowork is Claude Code running in a cloud/local VM,
@@ -87,6 +95,7 @@ _CLAUDE_CODE_ENVS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSIO
 _CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 _CODEX_HOME_ENV = "CODEX_HOME"
 _HERMES_HOME_ENV = "HERMES_HOME"
+_PI_HOME_ENV = "TOKEN_OPTIMIZER_PI_HOME"
 # COPILOT_HOME is GitHub Copilot CLI's OWN config variable (GitHub docs: it
 # "replaces the entire ~/.copilot path", and Copilot's session-state/,
 # session.db, events.jsonl all live inside it). Token Optimizer must NOT ask
@@ -942,6 +951,22 @@ def hermes_home() -> Path:
     return _safe_home_from_env(_HERMES_HOME_ENV, _safe_home() / ".hermes")
 
 
+def pi_home() -> Path:
+    """Return Pi's explicitly configured agent directory without a host fallback."""
+    raw = os.environ.get(_PI_HOME_ENV, "").strip()
+    if not raw:
+        raise RuntimeError(f"{_PI_HOME_ENV} is required for the Pi runtime")
+    candidate = Path(raw)
+    try:
+        if not candidate.is_absolute():
+            raise RuntimeError(f"{_PI_HOME_ENV} must be an absolute path")
+        if candidate.exists() and (candidate.is_symlink() or not candidate.is_dir()):
+            raise RuntimeError(f"{_PI_HOME_ENV} must identify a real directory")
+        return candidate.resolve(strict=False)
+    except OSError as exc:
+        raise RuntimeError(f"{_PI_HOME_ENV} is not usable") from exc
+
+
 def copilot_home(*, mnt_root: Path | None = None) -> Path:
     """Return GitHub Copilot CLI's home directory (~/.copilot by default).
 
@@ -1037,12 +1062,21 @@ def runtime_home() -> Path:
     if runtime == _RUNTIME_COPILOT:
         return copilot_home()
 
+    if runtime == _RUNTIME_PI:
+        return pi_home()
+
     return claude_home()
 
 
 def plugin_data_env_vars() -> tuple[str, ...]:
     """Return plugin-data env vars in runtime-specific priority order."""
-    if detect_runtime() in (_RUNTIME_CODEX, _RUNTIME_HERMES, _RUNTIME_OPENCODE, _RUNTIME_COPILOT):
+    if detect_runtime() in (
+        _RUNTIME_CODEX,
+        _RUNTIME_HERMES,
+        _RUNTIME_OPENCODE,
+        _RUNTIME_COPILOT,
+        _RUNTIME_PI,
+    ):
         return ("TOKEN_OPTIMIZER_PLUGIN_DATA",)
     return ("CLAUDE_PLUGIN_DATA", "TOKEN_OPTIMIZER_PLUGIN_DATA")
 
@@ -1058,6 +1092,8 @@ def runtime_name_for_humans() -> str:
         return "OpenCode"
     if runtime == _RUNTIME_COPILOT:
         return "GitHub Copilot"
+    if runtime == _RUNTIME_PI:
+        return "Pi"
     # Cowork is the claude runtime in a VM; label the refinement without changing
     # the runtime it resolves to.
     if runtime == _RUNTIME_CLAUDE and is_cowork():

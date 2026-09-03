@@ -43,7 +43,7 @@ from hook_io import read_stdin_hook_input
 from hook_runtime import LeaseLock
 from plugin_env import resolve_snapshot_dir, snapshot_dir_candidates
 from refetch_fingerprint import ARGS_HASH_KEY, expand_command, tool_fingerprint
-from runtime_env import claude_home
+from runtime_env import claude_home, detect_runtime
 from session_store import SessionStore, _sanitize_session_id as sanitize_sid
 
 # ---------------------------------------------------------------------------
@@ -659,15 +659,10 @@ _MCP_CAP_TOKENS_CACHE = _MCP_CAP_CACHE_UNSET
 
 
 def _resolve_mcp_cap_tokens() -> int | None:
-    """Read explicit MAX_MCP_OUTPUT_TOKENS from env or user settings.json.
+    """Read explicit MAX_MCP_OUTPUT_TOKENS from the environment or Claude settings.
 
-    Resolution order mirrors the Claude Code env injection chain:
-      1. Process environment (set by Claude Code from settings.json at startup)
-      2. ~/.claude/settings.json "env" block (direct read — for callers running
-         outside the Claude Code process, e.g. in tests)
-
-    Never raises. Returns None when no explicit cap is configured so we do not
-    invent savings from an assumed platform default.
+    Pi uses only its explicit process environment. Other runtimes retain the
+    Claude settings.json fallback for out-of-process callers.
     """
     global _MCP_CAP_TOKENS_CACHE
     if _MCP_CAP_TOKENS_CACHE is not _MCP_CAP_CACHE_UNSET:
@@ -683,6 +678,10 @@ def _resolve_mcp_cap_tokens() -> int | None:
                 return v
         except ValueError:
             pass
+
+    if detect_runtime() == "pi":
+        _MCP_CAP_TOKENS_CACHE = None
+        return None
 
     # 2. settings.json "env" block — for out-of-process callers
     settings_path = claude_home() / "settings.json"
@@ -741,7 +740,7 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
     another tool out is a one-line change. Set
     ``TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS=off`` to drop the built-ins.
     Resolution mirrors _resolve_mcp_cap_tokens: process env first, then the
-    settings.json "env" block. Never raises.
+    settings.json "env" block outside Pi. Never raises.
     """
     global _EXEMPT_PATTERNS_CACHE
     if _EXEMPT_PATTERNS_CACHE is not _EXEMPT_PATTERNS_UNSET:
@@ -749,7 +748,7 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
 
     raw = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_TOOLS", "").strip()
     defaults_flag = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS", "").strip()
-    if not raw or not defaults_flag:
+    if detect_runtime() != "pi" and (not raw or not defaults_flag):
         # settings.json "env" block — for out-of-process callers.
         try:
             with open(claude_home() / "settings.json", "r", encoding="utf-8") as f:
@@ -1235,22 +1234,20 @@ def _compress_mcp_table(text: str) -> str:
 # Main logic
 # ---------------------------------------------------------------------------
 
-def archive_result(quiet: bool = False) -> None:
-    """PostToolUse hook handler: archive large tool results to disk.
+def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict | None:
+    """Archive a large tool result, reading stdin when input is not injected.
 
-    Reads hook JSON from stdin. If tool_response >= _ARCHIVE_THRESHOLD chars,
-    saves the full result to disk and (for MCP tools) outputs a trimmed
-    replacement via stdout with updatedMCPToolOutput.
-
-    Logs a savings event only when MCP output is actually replaced. Native
-    Bash/Read/etc. archives are durability metadata unless a PreToolUse path
-    suppresses the original output before it enters context.
+    Original hook callers receive the existing stdout envelope. Injected callers
+    receive structured archive metadata for the Pi bridge.
     """
-    hook_input = read_stdin_hook_input(_STDIN_MAX_BYTES)
+    injected = hook_input is not None
+    if hook_input is None:
+        hook_input = read_stdin_hook_input(_STDIN_MAX_BYTES)
     if not hook_input:
-        return
+        return None
 
     tool_name = hook_input.get("tool_name", "")
+    tool_kind = hook_input.get("tool_kind", "")
     tool_use_id = hook_input.get("tool_use_id", "")
     tool_response = _tool_response_to_text(hook_input.get("tool_response", ""))
     session_id = hook_input.get("session_id", "")
@@ -1292,18 +1289,17 @@ def archive_result(quiet: bool = False) -> None:
             print(f"[Tool Archive] Unsafe archive directory for {tool_name}; leaving output unchanged.", file=sys.stderr)
         return
 
-    # Fingerprint the call (name + args) so the PreToolUse re-fetch guard can
-    # detect an identical re-fetch of this result (issue #88 self-healing).
-    # ONLY for MCP tools whose result we actually replace with a preview. Exempt
-    # allowlisted tools serve their full fresh result (see below), so the guard
-    # must NOT block a re-call of them — record args_hash=None so it never matches.
-    if "__" in tool_name and not _is_archive_exempt(tool_name):
+    # Fingerprint only calls whose result is eligible for replacement. Exempt
+    # tools serve their full result, so the guard must not block a re-call.
+    replaceable = "__" in tool_name or (injected and tool_kind == "external")
+    if replaceable and not _is_archive_exempt(tool_name):
         args_hash = tool_fingerprint(tool_name, hook_input.get("tool_input", {}))
     else:
         args_hash = None
 
     meta = {
         "tool_name": tool_name,
+        "tool_kind": tool_kind or ("mcp" if "__" in tool_name else tool_name.lower()),
         "tool_use_id": tool_use_id,
         ARGS_HASH_KEY: args_hash,
         "chars": char_count,
@@ -1383,7 +1379,7 @@ def archive_result(quiet: bool = False) -> None:
 
     store = None
     try:
-        tool_type = "mcp" if "__" in tool_name else tool_name.lower()
+        tool_type = meta["tool_kind"]
         command_or_path = hook_input.get("tool_input", {}).get("command") or hook_input.get("tool_input", {}).get("file_path") or tool_name
         # Redact before persisting: a command/path can embed a token or secret, and
         # SessionStore is durable. Hash the REDACTED response so the identity hash
@@ -1428,10 +1424,18 @@ def archive_result(quiet: bool = False) -> None:
     # fetchers: skip the replacement so the full verbatim result reaches
     # context. It's still archived to disk above, so `expand <id>` works —
     # same treatment as _AGENT_RESULT_TOOL_NAMES (archive, don't replace).
-    if "__" in tool_name and _is_archive_exempt(tool_name):
+    if replaceable and _is_archive_exempt(tool_name):
         if not quiet:
             print(f"[Tool Archive] {tool_name} is allowlisted; serving full result (archived for expand).", file=sys.stderr)
-        return
+        if not entry_exists:
+            return None
+        if injected:
+            return {
+                "archive_id": tool_use_id,
+                "replacement_text": None,
+                "metadata": meta,
+            }
+        return None
 
     # For MCP tools (tool_name contains "__"): output replacement via stdout
     # No pressure gate here: the compressed replacement SAVES tokens.
@@ -1442,7 +1446,7 @@ def archive_result(quiet: bool = False) -> None:
     if not entry_exists:
         return
 
-    if "__" in tool_name:
+    if replaceable:
         output_type = _detect_output_type(safe_response)
         preview = _compress_mcp_preview(safe_response, output_type)
         suffix = f" ({output_type})" if output_type != "text" else ""
@@ -1468,6 +1472,12 @@ def archive_result(quiet: bool = False) -> None:
                 f"({original_char_count:,} chars -> {len(replacement):,} chars)"
             ),
         )
+        if injected:
+            return {
+                "archive_id": tool_use_id,
+                "replacement_text": replacement,
+                "metadata": meta,
+            }
         output = json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
@@ -1475,6 +1485,13 @@ def archive_result(quiet: bool = False) -> None:
             }
         })
         print(output)
+    elif injected:
+        return {
+            "archive_id": tool_use_id,
+            "replacement_text": None,
+            "metadata": meta,
+        }
+    return None
 
 
 if __name__ == "__main__":

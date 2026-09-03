@@ -318,7 +318,42 @@ def main():
     # the chain is byte-identical to before for a missing/odd id.
     _sid = str(payload.get("session_id", "") or "")
     _sid_export = ""
-    if _sid and len(_sid) <= 64 and all(c.isalnum() or c in "._-" for c in _sid):
+    if os.environ.get("TOKEN_OPTIMIZER_RUNTIME", "").strip().lower() == "pi":
+        if not (_sid and len(_sid) <= 64 and all(c.isalnum() or c in "._-" for c in _sid)):
+            return
+        try:
+            pi_home_path = Path(os.environ["TOKEN_OPTIMIZER_PI_HOME"]).expanduser()
+            snapshot_path = Path(os.environ["TOKEN_OPTIMIZER_SNAPSHOT_DIR"]).expanduser()
+            if not pi_home_path.is_absolute() or not snapshot_path.is_absolute():
+                return
+            if ".." in pi_home_path.parts or ".." in snapshot_path.parts:
+                return
+            if pi_home_path.is_symlink() or snapshot_path.is_symlink():
+                return
+            pi_home = pi_home_path.resolve(strict=True)
+            snapshot_dir = snapshot_path.resolve(strict=True)
+            package_python = script_dir.parents[4] / "python"
+            package_python = package_python.resolve(strict=True)
+            if not pi_home.is_dir() or not snapshot_dir.is_dir() or not package_python.is_dir():
+                return
+            if not snapshot_dir.is_relative_to(pi_home):
+                return
+        except (KeyError, OSError, RuntimeError, ValueError):
+            return
+        pythonpath = str(package_python)
+        if os.environ.get("PYTHONPATH"):
+            pythonpath += os.pathsep + os.environ["PYTHONPATH"]
+        exports = {
+            "TOKEN_OPTIMIZER_RUNTIME": "pi",
+            "TOKEN_OPTIMIZER_PI_HOME": str(pi_home),
+            "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(snapshot_path),
+            "PI_SESSION_ID": _sid,
+            "PYTHONPATH": pythonpath,
+        }
+        _sid_export = "export " + " ".join(
+            name + "=" + shlex.quote(value) for name, value in exports.items()
+        ) + " && "
+    elif _sid and len(_sid) <= 64 and all(c.isalnum() or c in "._-" for c in _sid):
         _sid_export = "export CLAUDE_SESSION_ID=" + shlex.quote(_sid) + " && "
     rewritten = (
         'for b in bash /bin/bash /usr/bin/bash /usr/local/bin/bash /opt/homebrew/bin/bash; '

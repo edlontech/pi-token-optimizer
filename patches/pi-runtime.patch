@@ -1,0 +1,1109 @@
+diff --git a/skills/token-optimizer/scripts/archive_result.py b/skills/token-optimizer/scripts/archive_result.py
+index 1ceab68..77d608a 100644
+--- a/skills/token-optimizer/scripts/archive_result.py
++++ b/skills/token-optimizer/scripts/archive_result.py
+@@ -43,7 +43,7 @@ from hook_io import read_stdin_hook_input
+ from hook_runtime import LeaseLock
+ from plugin_env import resolve_snapshot_dir, snapshot_dir_candidates
+ from refetch_fingerprint import ARGS_HASH_KEY, expand_command, tool_fingerprint
+-from runtime_env import claude_home
++from runtime_env import claude_home, detect_runtime
+ from session_store import SessionStore, _sanitize_session_id as sanitize_sid
+ 
+ # ---------------------------------------------------------------------------
+@@ -659,15 +659,10 @@ _MCP_CAP_TOKENS_CACHE = _MCP_CAP_CACHE_UNSET
+ 
+ 
+ def _resolve_mcp_cap_tokens() -> int | None:
+-    """Read explicit MAX_MCP_OUTPUT_TOKENS from env or user settings.json.
++    """Read explicit MAX_MCP_OUTPUT_TOKENS from the environment or Claude settings.
+ 
+-    Resolution order mirrors the Claude Code env injection chain:
+-      1. Process environment (set by Claude Code from settings.json at startup)
+-      2. ~/.claude/settings.json "env" block (direct read — for callers running
+-         outside the Claude Code process, e.g. in tests)
+-
+-    Never raises. Returns None when no explicit cap is configured so we do not
+-    invent savings from an assumed platform default.
++    Pi uses only its explicit process environment. Other runtimes retain the
++    Claude settings.json fallback for out-of-process callers.
+     """
+     global _MCP_CAP_TOKENS_CACHE
+     if _MCP_CAP_TOKENS_CACHE is not _MCP_CAP_CACHE_UNSET:
+@@ -684,6 +679,10 @@ def _resolve_mcp_cap_tokens() -> int | None:
+         except ValueError:
+             pass
+ 
++    if detect_runtime() == "pi":
++        _MCP_CAP_TOKENS_CACHE = None
++        return None
++
+     # 2. settings.json "env" block — for out-of-process callers
+     settings_path = claude_home() / "settings.json"
+     try:
+@@ -741,7 +740,7 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
+     another tool out is a one-line change. Set
+     ``TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS=off`` to drop the built-ins.
+     Resolution mirrors _resolve_mcp_cap_tokens: process env first, then the
+-    settings.json "env" block. Never raises.
++    settings.json "env" block outside Pi. Never raises.
+     """
+     global _EXEMPT_PATTERNS_CACHE
+     if _EXEMPT_PATTERNS_CACHE is not _EXEMPT_PATTERNS_UNSET:
+@@ -749,7 +748,7 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
+ 
+     raw = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_TOOLS", "").strip()
+     defaults_flag = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS", "").strip()
+-    if not raw or not defaults_flag:
++    if detect_runtime() != "pi" and (not raw or not defaults_flag):
+         # settings.json "env" block — for out-of-process callers.
+         try:
+             with open(claude_home() / "settings.json", "r", encoding="utf-8") as f:
+@@ -1235,22 +1234,20 @@ def _compress_mcp_table(text: str) -> str:
+ # Main logic
+ # ---------------------------------------------------------------------------
+ 
+-def archive_result(quiet: bool = False) -> None:
+-    """PostToolUse hook handler: archive large tool results to disk.
++def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict | None:
++    """Archive a large tool result, reading stdin when input is not injected.
+ 
+-    Reads hook JSON from stdin. If tool_response >= _ARCHIVE_THRESHOLD chars,
+-    saves the full result to disk and (for MCP tools) outputs a trimmed
+-    replacement via stdout with updatedMCPToolOutput.
+-
+-    Logs a savings event only when MCP output is actually replaced. Native
+-    Bash/Read/etc. archives are durability metadata unless a PreToolUse path
+-    suppresses the original output before it enters context.
++    Original hook callers receive the existing stdout envelope. Injected callers
++    receive structured archive metadata for the Pi bridge.
+     """
+-    hook_input = read_stdin_hook_input(_STDIN_MAX_BYTES)
++    injected = hook_input is not None
++    if hook_input is None:
++        hook_input = read_stdin_hook_input(_STDIN_MAX_BYTES)
+     if not hook_input:
+-        return
++        return None
+ 
+     tool_name = hook_input.get("tool_name", "")
++    tool_kind = hook_input.get("tool_kind", "")
+     tool_use_id = hook_input.get("tool_use_id", "")
+     tool_response = _tool_response_to_text(hook_input.get("tool_response", ""))
+     session_id = hook_input.get("session_id", "")
+@@ -1292,18 +1289,17 @@ def archive_result(quiet: bool = False) -> None:
+             print(f"[Tool Archive] Unsafe archive directory for {tool_name}; leaving output unchanged.", file=sys.stderr)
+         return
+ 
+-    # Fingerprint the call (name + args) so the PreToolUse re-fetch guard can
+-    # detect an identical re-fetch of this result (issue #88 self-healing).
+-    # ONLY for MCP tools whose result we actually replace with a preview. Exempt
+-    # allowlisted tools serve their full fresh result (see below), so the guard
+-    # must NOT block a re-call of them — record args_hash=None so it never matches.
+-    if "__" in tool_name and not _is_archive_exempt(tool_name):
++    # Fingerprint only calls whose result is eligible for replacement. Exempt
++    # tools serve their full result, so the guard must not block a re-call.
++    replaceable = "__" in tool_name or (injected and tool_kind == "external")
++    if replaceable and not _is_archive_exempt(tool_name):
+         args_hash = tool_fingerprint(tool_name, hook_input.get("tool_input", {}))
+     else:
+         args_hash = None
+ 
+     meta = {
+         "tool_name": tool_name,
++        "tool_kind": tool_kind or ("mcp" if "__" in tool_name else tool_name.lower()),
+         "tool_use_id": tool_use_id,
+         ARGS_HASH_KEY: args_hash,
+         "chars": char_count,
+@@ -1383,7 +1379,7 @@ def archive_result(quiet: bool = False) -> None:
+ 
+     store = None
+     try:
+-        tool_type = "mcp" if "__" in tool_name else tool_name.lower()
++        tool_type = meta["tool_kind"]
+         command_or_path = hook_input.get("tool_input", {}).get("command") or hook_input.get("tool_input", {}).get("file_path") or tool_name
+         # Redact before persisting: a command/path can embed a token or secret, and
+         # SessionStore is durable. Hash the REDACTED response so the identity hash
+@@ -1428,10 +1424,18 @@ def archive_result(quiet: bool = False) -> None:
+     # fetchers: skip the replacement so the full verbatim result reaches
+     # context. It's still archived to disk above, so `expand <id>` works —
+     # same treatment as _AGENT_RESULT_TOOL_NAMES (archive, don't replace).
+-    if "__" in tool_name and _is_archive_exempt(tool_name):
++    if replaceable and _is_archive_exempt(tool_name):
+         if not quiet:
+             print(f"[Tool Archive] {tool_name} is allowlisted; serving full result (archived for expand).", file=sys.stderr)
+-        return
++        if not entry_exists:
++            return None
++        if injected:
++            return {
++                "archive_id": tool_use_id,
++                "replacement_text": None,
++                "metadata": meta,
++            }
++        return None
+ 
+     # For MCP tools (tool_name contains "__"): output replacement via stdout
+     # No pressure gate here: the compressed replacement SAVES tokens.
+@@ -1442,7 +1446,7 @@ def archive_result(quiet: bool = False) -> None:
+     if not entry_exists:
+         return
+ 
+-    if "__" in tool_name:
++    if replaceable:
+         output_type = _detect_output_type(safe_response)
+         preview = _compress_mcp_preview(safe_response, output_type)
+         suffix = f" ({output_type})" if output_type != "text" else ""
+@@ -1468,6 +1472,12 @@ def archive_result(quiet: bool = False) -> None:
+                 f"({original_char_count:,} chars -> {len(replacement):,} chars)"
+             ),
+         )
++        if injected:
++            return {
++                "archive_id": tool_use_id,
++                "replacement_text": replacement,
++                "metadata": meta,
++            }
+         output = json.dumps({
+             "hookSpecificOutput": {
+                 "hookEventName": "PostToolUse",
+@@ -1475,6 +1485,13 @@ def archive_result(quiet: bool = False) -> None:
+             }
+         })
+         print(output)
++    elif injected:
++        return {
++            "archive_id": tool_use_id,
++            "replacement_text": None,
++            "metadata": meta,
++        }
++    return None
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/skills/token-optimizer/scripts/bash_hook.py b/skills/token-optimizer/scripts/bash_hook.py
+index 805a24d..b4c5397 100644
+--- a/skills/token-optimizer/scripts/bash_hook.py
++++ b/skills/token-optimizer/scripts/bash_hook.py
+@@ -318,7 +318,42 @@ def main():
+     # the chain is byte-identical to before for a missing/odd id.
+     _sid = str(payload.get("session_id", "") or "")
+     _sid_export = ""
+-    if _sid and len(_sid) <= 64 and all(c.isalnum() or c in "._-" for c in _sid):
++    if os.environ.get("TOKEN_OPTIMIZER_RUNTIME", "").strip().lower() == "pi":
++        if not (_sid and len(_sid) <= 64 and all(c.isalnum() or c in "._-" for c in _sid)):
++            return
++        try:
++            pi_home_path = Path(os.environ["TOKEN_OPTIMIZER_PI_HOME"]).expanduser()
++            snapshot_path = Path(os.environ["TOKEN_OPTIMIZER_SNAPSHOT_DIR"]).expanduser()
++            if not pi_home_path.is_absolute() or not snapshot_path.is_absolute():
++                return
++            if ".." in pi_home_path.parts or ".." in snapshot_path.parts:
++                return
++            if pi_home_path.is_symlink() or snapshot_path.is_symlink():
++                return
++            pi_home = pi_home_path.resolve(strict=True)
++            snapshot_dir = snapshot_path.resolve(strict=True)
++            package_python = script_dir.parents[4] / "python"
++            package_python = package_python.resolve(strict=True)
++            if not pi_home.is_dir() or not snapshot_dir.is_dir() or not package_python.is_dir():
++                return
++            if not snapshot_dir.is_relative_to(pi_home):
++                return
++        except (KeyError, OSError, RuntimeError, ValueError):
++            return
++        pythonpath = str(package_python)
++        if os.environ.get("PYTHONPATH"):
++            pythonpath += os.pathsep + os.environ["PYTHONPATH"]
++        exports = {
++            "TOKEN_OPTIMIZER_RUNTIME": "pi",
++            "TOKEN_OPTIMIZER_PI_HOME": str(pi_home),
++            "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(snapshot_path),
++            "PI_SESSION_ID": _sid,
++            "PYTHONPATH": pythonpath,
++        }
++        _sid_export = "export " + " ".join(
++            name + "=" + shlex.quote(value) for name, value in exports.items()
++        ) + " && "
++    elif _sid and len(_sid) <= 64 and all(c.isalnum() or c in "._-" for c in _sid):
+         _sid_export = "export CLAUDE_SESSION_ID=" + shlex.quote(_sid) + " && "
+     rewritten = (
+         'for b in bash /bin/bash /usr/bin/bash /usr/local/bin/bash /opt/homebrew/bin/bash; '
+diff --git a/skills/token-optimizer/scripts/measure.py b/skills/token-optimizer/scripts/measure.py
+index 152b8e9..3745727 100644
+--- a/skills/token-optimizer/scripts/measure.py
++++ b/skills/token-optimizer/scripts/measure.py
+@@ -148,6 +148,7 @@ import codex_session
+ import codex_state
+ import copilot_session
+ import hermes_session
++import pi_session
+ 
+ CHARS_PER_TOKEN = 4.0
+ _SKILL_DESC_TRUNCATION_LIMIT = 1536
+@@ -211,7 +212,7 @@ _OPENCODE_CLAUDE_TARGET_CMDS = _CLAUDE_TARGET_CMDS
+ # before this, trends/savings/quality/drift/coach fell through to the
+ # CLAUDE_DIR scan path in measure_components()/_find_all_jsonl_files() and
+ # produced empty output against the wrong tree (the #57 isolation leak).
+-_FOREIGN_RUNTIMES = frozenset({"opencode", "copilot", "hermes"})
++_FOREIGN_RUNTIMES = frozenset({"opencode", "copilot", "hermes", "pi"})
+ 
+ # Per-runtime exemptions: foreign-runtime subcommands that a NATIVE flow
+ # invokes as a TOP-LEVEL subcommand AND that are runtime-aware (do not scan
+@@ -377,7 +378,10 @@ if (
+ else:
+     _STATE_BASE = RUNTIME_DIR
+ 
+-DASHBOARD_PATH = SNAPSHOT_DIR / "dashboard.html"
++if detect_runtime() == "pi":
++    DASHBOARD_PATH = RUNTIME_DIR / "token-optimizer" / "dashboard.html"
++else:
++    DASHBOARD_PATH = SNAPSHOT_DIR / "dashboard.html"
+ # Headline-shape marker for the current dashboard data contract. Bumped only when the data
+ # shape changes; ensure-health regenerates any dashboard whose sidecar meta lacks it.
+ _DASHBOARD_SHAPE_MARKER = "estimated_volume_transformation_usd"
+@@ -538,6 +542,13 @@ def _use_copilot_session_adapter():
+     """True when sessions should be loaded from the Copilot adapters."""
+     return detect_runtime() == "copilot"
+ 
++
++def _use_pi_session_adapter(filepath=None):
++    """True when session JSONL should be parsed with the Pi adapter."""
++    return detect_runtime() == "pi" or (
++        filepath is not None and pi_session.is_pi_session_path(filepath)
++    )
++
+ # Tokens per skill frontmatter (loaded at startup)
+ TOKENS_PER_SKILL_APPROX = 100
+ # Skill wrapper overhead: previously estimated at 35 tokens per skill for boilerplate
+@@ -1412,6 +1423,8 @@ def find_projects_dir():
+ 
+ def get_session_baselines(limit=10):
+     """Extract first-message token counts from recent JSONL session logs."""
++    if detect_runtime() == "pi":
++        return []
+     # Hermes (issue #57): sessions live in ~/.hermes/state.db, not
+     # ~/.claude/projects/*.jsonl. Return [] so the dashboard's baselines
+     # row renders empty without scanning CLAUDE_DIR.
+@@ -1984,6 +1997,8 @@ def measure_components():
+         return _measure_codex_components()
+     if runtime == "hermes":
+         return _measure_hermes_components()
++    if runtime == "pi":
++        return _measure_pi_components()
+ 
+     components = {}
+     seen_real_paths = set()
+@@ -2685,6 +2700,23 @@ def _measure_codex_components():
+     return components
+ 
+ 
++def _measure_pi_components():
++    """Return Pi-owned dashboard inventory without reading another host."""
++    home = runtime_home()
++    return {
++        "pi_runtime": {
++            "runtime": "pi",
++            "path": str(home),
++            "exists": home.is_dir(),
++            "tokens": 0,
++        },
++        "core_system": {
++            "tokens": 0,
++            "note": "Pi base instructions are not exposed for measurement.",
++        },
++    }
++
++
+ def _measure_hermes_components():
+     """Measure Hermes-relevant startup/config components without reading Claude config.
+ 
+@@ -2920,6 +2952,8 @@ def detect_context_window():
+       7. Claude fallback: 1M (Opus 4.6+/4.7 and Sonnet 4.6 are 1M GA since March 2026)
+     """
+     global _context_window_cache
++    if detect_runtime() == "pi":
++        return None, "Pi context window unavailable"
+     # Resolve context flags from process env AND settings.json (issue #77 class):
+     # a user who set these in settings.json env would otherwise get a mis-detected
+     # window, corrupting fill-% and every downstream recommendation.
+@@ -5209,10 +5243,12 @@ def generate_dashboard(coord_path):
+     # v5.3.6 / v5.4.10: mirror the same HTML to BOTH dashboard paths so
+     # the daemon serves fresh audit content regardless of which path it
+     # was configured to use. Same dual-path pattern as v5.4.7 daemon script.
+-    legacy_dashboard = RUNTIME_DIR / "_backups" / "token-optimizer" / "dashboard.html"
++    mirror_paths = {DASHBOARD_PATH}
++    if detect_runtime() != "pi":
++        mirror_paths.add(RUNTIME_DIR / "_backups" / "token-optimizer" / "dashboard.html")
+     wrote_mirror = False
+     skipped_all = True
+-    for mirror_path in {DASHBOARD_PATH, legacy_dashboard}:
++    for mirror_path in mirror_paths:
+         # Version-downgrade guard: an older build's audit must not clobber a
+         # shared dashboard a newer build already wrote. The per-run audit artifact
+         # (out_path) is still written above; only the SHARED served copies are
+@@ -5260,6 +5296,15 @@ def _display_path(absolute_path):
+ 
+ def _collect_hook_status_for_dashboard():
+     """Collect hook installation status for dashboard toggle panel."""
++    if detect_runtime() == "pi":
++        return {
++            "pi_extension": {
++                "installed": True,
++                "managed_by": "pi",
++                "label": "Pi Extension",
++                "description": "Lifecycle hooks are managed by the Pi package.",
++            }
++        }
+     if detect_runtime() == "codex":
+         return _collect_codex_hook_status_for_dashboard()
+     if detect_runtime() == "hermes":
+@@ -5790,6 +5835,15 @@ def _manage_codex_mcp(action: str, name: str) -> bool:
+ 
+ def _collect_management_data(components=None, trends=None):
+     """Collect data for the Manage tab: active/archived skills, MCP servers."""
++    if detect_runtime() == "pi":
++        return {
++            "mode": "pi",
++            "note": "Feature controls are unavailable for Pi.",
++            "skills": {"active": [], "archived": []},
++            "mcp_servers": {"active": [], "disabled": [], "cloud": []},
++            "plugins": [],
++            "v5_features": {},
++        }
+     if components is None:
+         components = measure_components()
+ 
+@@ -6382,28 +6436,36 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+     except Exception:
+         health = None
+ 
+-    # Generate auto-recommendations from rules engine
+-    if not quiet:
+-        print("  Generating auto-recommendations...")
+-    auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
+-    if not quiet and rec_count > 0:
+-        print(f"  Found {rec_count} auto-recommendations")
+-
+-    # Generate coach data for the Coach tab (reuse already-collected components/trends)
+-    if not quiet:
+-        print("  Generating coach data...")
+-    try:
+-        coach = generate_coach_data(components=components, trends=trends)
+-    except Exception:
++    runtime = detect_runtime()
++    if runtime == "pi":
++        auto_plan = None
++        rec_count = 0
+         coach = None
++        quality = None
++        hook_status = None
++    else:
++        # Generate auto-recommendations from rules engine
++        if not quiet:
++            print("  Generating auto-recommendations...")
++        auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
++        if not quiet and rec_count > 0:
++            print(f"  Found {rec_count} auto-recommendations")
+ 
+-    # Collect context quality data (v2.0)
+-    if not quiet:
+-        print("  Analyzing context quality...")
+-    quality = _collect_quality_for_dashboard()
++        # Generate coach data for the Coach tab (reuse already-collected components/trends)
++        if not quiet:
++            print("  Generating coach data...")
++        try:
++            coach = generate_coach_data(components=components, trends=trends)
++        except Exception:
++            coach = None
+ 
+-    # Collect hook installation status for dashboard toggles
+-    hook_status = _collect_hook_status_for_dashboard()
++        # Collect context quality data (v2.0)
++        if not quiet:
++            print("  Analyzing context quality...")
++        quality = _collect_quality_for_dashboard()
++
++        # Collect hook installation status for dashboard toggles
++        hook_status = _collect_hook_status_for_dashboard()
+ 
+     # Collect management data for Manage tab
+     if not quiet:
+@@ -6453,19 +6515,23 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+     except Exception:
+         pass
+ 
+-    pricing_tier = _load_pricing_tier()
+-    ttl_period_summary = []
+-    for period in (7, 30):
+-        try:
+-            ttl_period_summary.append(_build_ttl_period_summary(period))
+-        except Exception:
+-            ttl_period_summary.append({
+-                "label": f"{period}d: unavailable",
+-                "period_days": period,
+-                "mixed_sessions": 0,
+-                "five_only_sessions": 0,
+-                "one_hour_only_sessions": 0,
+-            })
++    if runtime == "pi":
++        pricing_tier = "pi_usage"
++        ttl_period_summary = []
++    else:
++        pricing_tier = _load_pricing_tier()
++        ttl_period_summary = []
++        for period in (7, 30):
++            try:
++                ttl_period_summary.append(_build_ttl_period_summary(period))
++            except Exception:
++                ttl_period_summary.append({
++                    "label": f"{period}d: unavailable",
++                    "period_days": period,
++                    "mixed_sessions": 0,
++                    "five_only_sessions": 0,
++                    "one_hour_only_sessions": 0,
++                })
+     # Lightweight memory health for dashboard cards (reuses already-computed components,
+     # no second measure_components() call, no full detector suite)
+     mr_data = None
+@@ -6536,43 +6602,58 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+     except Exception:
+         pass
+ 
+-    # Merged savings (measured + realized + opportunity + estimated, tier-labelled).
+-    # Wrapped so a slow/failed eval never breaks the SessionEnd dashboard regen.
+-    savings_data = _dashboard_savings_data(days=30, include_billing_mode=True)
+-    if savings_data != {"total_tokens": 0, "total_cost_usd": 0.0, "by_category": {}}:
++    if runtime == "pi":
++        savings_data = {
++            "total_tokens": 0,
++            "total_cost_usd": 0.0,
++            "by_category": {},
++            "available": False,
++            "note": "Savings estimates are unavailable for Pi.",
++        }
++        cache_health = {
++            "available": False,
++            "tier": "unavailable",
++            "note": "Cache controls are unavailable for Pi.",
++        }
++        runway = None
++    else:
++        # Merged savings (measured + realized + opportunity + estimated, tier-labelled).
++        # Wrapped so a slow/failed eval never breaks the SessionEnd dashboard regen.
++        savings_data = _dashboard_savings_data(days=30, include_billing_mode=True)
++        if savings_data != {"total_tokens": 0, "total_cost_usd": 0.0, "by_category": {}}:
++            try:
++                savings_data["billing_mode"] = keepwarm_billing_mode()
++            except Exception:
++                pass
++
++        # Cache-TTL watchdog (opportunity tier — observed waste, potential recovery).
++        # Standalone analysis; never reaches the realized savings headline. Fail-open.
++        # Mirrors generate_dashboard's cache_health wiring so the standalone/daemon
++        # dashboard renders the same cache-health panel as the full audit dashboard.
+         try:
+-            savings_data["billing_mode"] = keepwarm_billing_mode()
++            cache_health = _cache_ttl_waste_cached(days=30)
+         except Exception:
+-            pass
++            cache_health = {"available": False, "tier": "opportunity"}
+ 
+-    # Cache-TTL watchdog (opportunity tier — observed waste, potential recovery).
+-    # Standalone analysis; never reaches the realized savings headline. Fail-open.
+-    # Mirrors generate_dashboard's cache_health wiring so the standalone/daemon
+-    # dashboard renders the same cache-health panel as the full audit dashboard.
+-    try:
+-        cache_health = _cache_ttl_waste_cached(days=30)
+-    except Exception:
+-        cache_health = {"available": False, "tier": "opportunity"}
+-
+-    # U7: keep-warm cache-automation sub-block carried inside the cache-health
+-    # payload (realized vs spend vs NET, tripwire ratio, the 5 tile states,
+-    # predictor transparency). Fail-open so it never blocks dashboard regen.
+-    try:
+-        if isinstance(cache_health, dict):
+-            cache_health["keepwarm"] = keepwarm_cache_health_block(days=30)
+-    except Exception:
+-        pass
++        # U7: keep-warm cache-automation sub-block carried inside the cache-health
++        # payload (realized vs spend vs NET, tripwire ratio, the 5 tile states,
++        # predictor transparency). Fail-open so it never blocks dashboard regen.
++        try:
++            if isinstance(cache_health, dict):
++                cache_health["keepwarm"] = keepwarm_cache_health_block(days=30)
++        except Exception:
++            pass
+ 
+-    # Subscription runway. This generator produces the dashboard the CLI writes,
+-    # so the key must be assembled here too: the template gates the card on
+-    # `data.runway` and silently renders nothing when it is absent, which is
+-    # indistinguishable from the card being switched off. None on API-billed
+-    # setups or when the meter has never been read (a stale-but-present reading is
+-    # kept and dated on the card), and the template omits the card.
+-    try:
+-        runway = runway_snapshot(days=30)
+-    except Exception:
+-        runway = None
++        # Subscription runway. This generator produces the dashboard the CLI writes,
++        # so the key must be assembled here too: the template gates the card on
++        # `data.runway` and silently renders nothing when it is absent, which is
++        # indistinguishable from the card being switched off. None on API-billed
++        # setups or when the meter has never been read (a stale-but-present reading is
++        # kept and dated on the card), and the template omits the card.
++        try:
++            runway = runway_snapshot(days=30)
++        except Exception:
++            runway = None
+ 
+     data = {
+         "runway": runway,
+@@ -6588,18 +6669,18 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+         "savings": savings_data,
+         "cache_health": cache_health,
+         "standalone": True,
+-        "auto_plan": True,
++        "auto_plan": runtime != "pi",
+         "generated_at": datetime.now().isoformat(),
+         "pricing_tier": pricing_tier,
+-        "pricing_tier_label": _pricing_tier_label(pricing_tier),
+-        "pricing_tiers": {} if detect_runtime() == "codex" else {k: v["label"] for k, v in PRICING_TIERS.items()},
++        "pricing_tier_label": "Exact Pi usage" if runtime == "pi" else _pricing_tier_label(pricing_tier),
++        "pricing_tiers": {} if runtime in {"codex", "pi"} else {k: v["label"] for k, v in PRICING_TIERS.items()},
+         "ttl_period_summary": ttl_period_summary,
+         "session_turns": session_turns,
+         "memory_review": mr_data,
+         "claude_md_health": claude_md_health,
+-        "v5_recommendation": _get_v5_savings_recommendation(),
++        "v5_recommendation": None if runtime == "pi" else _get_v5_savings_recommendation(),
+         "version": TOKEN_OPTIMIZER_VERSION,
+-        "runtime": detect_runtime(),
++        "runtime": runtime,
+         "runtime_label": runtime_name_for_humans(),
+     }
+     data = _sanitize_dashboard_paths(data)
+@@ -6620,8 +6701,9 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+     # The daemon script's DASHBOARD constant points to whichever path was
+     # active when setup-daemon ran. Write to BOTH so the daemon always
+     # serves current content regardless of which path it expects.
+-    legacy_dashboard = RUNTIME_DIR / "_backups" / "token-optimizer" / "dashboard.html"
+-    write_paths = {DASHBOARD_PATH, legacy_dashboard}
++    write_paths = {DASHBOARD_PATH}
++    if detect_runtime() != "pi":
++        write_paths.add(RUNTIME_DIR / "_backups" / "token-optimizer" / "dashboard.html")
+     wrote_any = False
+     for wp in write_paths:
+         try:
+@@ -8760,6 +8842,8 @@ def generate_coach_block(components=None, trends=None):
+ 
+ def _find_all_jsonl_files(days=30):
+     """Find all JSONL session files across all projects within the given day window."""
++    if _use_pi_session_adapter():
++        return pi_session.find_all_jsonl_files(days)
+     if _use_codex_session_adapter():
+         return codex_session.find_all_jsonl_files(days)
+ 
+@@ -9183,6 +9267,14 @@ def _parse_session_jsonl(filepath):
+     except OSError:
+         cache_key = None  # stat failed — parse without caching
+ 
++    if _use_pi_session_adapter(filepath):
++        result = pi_session.parse_session_jsonl(filepath)
++        if cache_key is not None:
++            if len(_parse_session_jsonl_cache) >= _PARSE_CACHE_MAX:
++                _parse_session_jsonl_cache.clear()
++            _parse_session_jsonl_cache[cache_key] = result
++        return result
++
+     if _use_codex_session_adapter(filepath):
+         result = codex_session.parse_session_jsonl(filepath)
+         if cache_key is not None:
+@@ -9565,6 +9657,9 @@ def parse_session_turns(filepath):
+ 
+     Returns empty list if file is empty/unparseable.
+     """
++    if _use_pi_session_adapter(filepath):
++        return pi_session.parse_session_turns(filepath)
++
+     if _use_codex_session_adapter(filepath):
+         turns = codex_session.parse_session_turns(filepath)
+         for turn in turns:
+@@ -9687,7 +9782,7 @@ def score_session_quality(session_data):
+     # Lower fill = better (more room for work)
+     context_window = detect_context_window()[0]
+     total_input = session_data.get("total_input_tokens", 0)
+-    fill_ratio = total_input / context_window if context_window > 0 else 0
++    fill_ratio = total_input / context_window if context_window and context_window > 0 else 0
+     if fill_ratio < 0.3:
+         fill_score = 100
+     elif fill_ratio < 0.5:
+@@ -10669,6 +10764,7 @@ def _backfill_session_metrics(conn, days=30, limit=50):
+             """SELECT jsonl_path
+                FROM session_log
+                WHERE date >= ?
++                 AND jsonl_path NOT LIKE 'pi:%'
+                  AND (
+                        IFNULL(cache_ttl_scanned, 0) = 0
+                     OR avg_call_gap_seconds IS NULL
+@@ -18759,6 +18855,127 @@ def _collect_copilot_sessions(days=90, quiet=False, rebuild=False):
+     return new_count
+ 
+ 
++def _insert_normalized_session(
++    conn,
++    parsed,
++    *,
++    session_key,
++    project_name,
++    incomplete,
++):
++    """Insert a normalized runtime session or finalize its partial row."""
++    if not isinstance(session_key, str) or not session_key.startswith("pi:"):
++        raise ValueError("Pi session keys must start with 'pi:'")
++
++    date = datetime.now().strftime("%Y-%m-%d")
++    first_ts = parsed.get("first_ts")
++    if first_ts:
++        try:
++            date = datetime.fromisoformat(first_ts.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d")
++        except (AttributeError, TypeError, ValueError):
++            pass
++
++    quality = score_session_quality(parsed)
++    values = (
++        session_key,
++        date,
++        project_name,
++        parsed["duration_minutes"],
++        parsed["total_input_tokens"],
++        parsed["total_output_tokens"],
++        parsed["message_count"],
++        parsed.get("api_calls", 0),
++        parsed["cache_hit_rate"],
++        parsed.get("total_cache_create_1h", 0),
++        parsed.get("total_cache_create_5m", 0),
++        1,
++        parsed.get("avg_call_gap_seconds"),
++        parsed.get("max_call_gap_seconds"),
++        parsed.get("p95_call_gap_seconds"),
++        json.dumps(parsed.get("skills_used", {})),
++        json.dumps(parsed.get("subagents_used", {})),
++        json.dumps(parsed.get("tool_calls", {})),
++        json.dumps(parsed.get("model_usage", {})),
++        json.dumps(parsed.get("model_usage", {})),
++        json.dumps(parsed.get("model_usage_breakdown", {})),
++        parsed.get("version"),
++        parsed.get("slug"),
++        parsed.get("topic"),
++        datetime.now().isoformat(),
++        quality["score"],
++        quality["grade"],
++        0,
++        parsed.get("slug"),
++        1 if parsed.get("is_sidechain") else 0,
++        parsed.get("sidechain_reason"),
++        int(parsed.get("reported_input_tokens", 0) or 0),
++        int(parsed.get("reported_output_tokens", 0) or 0),
++        json.dumps(parsed.get("reported_model_usage", {})),
++        parsed.get("cost_usd", 0.0),
++        parsed.get("cost_source"),
++        parsed.get("credits"),
++        parsed.get("runtime", "pi"),
++        1 if incomplete else 0,
++    )
++    cur = conn.execute(
++        """INSERT INTO session_log
++           (jsonl_path, date, project, duration_minutes, input_tokens,
++            output_tokens, message_count, api_calls, cache_hit_rate,
++            cache_create_1h_tokens, cache_create_5m_tokens, cache_ttl_scanned,
++            avg_call_gap_seconds, max_call_gap_seconds, p95_call_gap_seconds,
++            skills_json, subagents_json, tool_calls_json, model_usage_json,
++            all_model_usage_json, model_usage_breakdown_json, version, slug, topic,
++            collected_at, quality_score, quality_grade, stale_waste_tokens,
++            session_uuid, is_sidechain, sidechain_reason, reported_input_tokens,
++            reported_output_tokens, reported_model_usage_json, cost_usd,
++            cost_source, credits, platform, incomplete)
++           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
++                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++           ON CONFLICT(jsonl_path) DO UPDATE SET
++             date=excluded.date,
++             project=excluded.project,
++             duration_minutes=excluded.duration_minutes,
++             input_tokens=excluded.input_tokens,
++             output_tokens=excluded.output_tokens,
++             message_count=excluded.message_count,
++             api_calls=excluded.api_calls,
++             cache_hit_rate=excluded.cache_hit_rate,
++             cache_create_1h_tokens=excluded.cache_create_1h_tokens,
++             cache_create_5m_tokens=excluded.cache_create_5m_tokens,
++             cache_ttl_scanned=excluded.cache_ttl_scanned,
++             avg_call_gap_seconds=excluded.avg_call_gap_seconds,
++             max_call_gap_seconds=excluded.max_call_gap_seconds,
++             p95_call_gap_seconds=excluded.p95_call_gap_seconds,
++             skills_json=excluded.skills_json,
++             subagents_json=excluded.subagents_json,
++             tool_calls_json=excluded.tool_calls_json,
++             model_usage_json=excluded.model_usage_json,
++             all_model_usage_json=excluded.all_model_usage_json,
++             model_usage_breakdown_json=excluded.model_usage_breakdown_json,
++             version=excluded.version,
++             slug=excluded.slug,
++             topic=excluded.topic,
++             collected_at=excluded.collected_at,
++             quality_score=excluded.quality_score,
++             quality_grade=excluded.quality_grade,
++             stale_waste_tokens=excluded.stale_waste_tokens,
++             session_uuid=excluded.session_uuid,
++             is_sidechain=excluded.is_sidechain,
++             sidechain_reason=excluded.sidechain_reason,
++             reported_input_tokens=excluded.reported_input_tokens,
++             reported_output_tokens=excluded.reported_output_tokens,
++             reported_model_usage_json=excluded.reported_model_usage_json,
++             cost_usd=excluded.cost_usd,
++             cost_source=excluded.cost_source,
++             credits=excluded.credits,
++             platform=excluded.platform,
++             incomplete=excluded.incomplete
++           WHERE session_log.incomplete=1""",
++        values,
++    )
++    return cur.rowcount == 1
++
++
+ def collect_sessions(days=90, quiet=False, rebuild=False):
+     """Parse new JSONL files and insert into SQLite. Zero token cost.
+ 
+@@ -19020,6 +19237,8 @@ def _collect_trends_from_db(days=30):
+         return None
+ 
+     try:
++        if detect_runtime() == "pi":
++            return _query_trends_db(conn, days)
+         _backfill_session_metrics(conn, days=days)
+         return _query_trends_db(conn, days)
+     except (sqlite3.Error, sqlite3.DatabaseError):
+@@ -19177,7 +19396,8 @@ def _query_trends_db(conn, days):
+     current_total = calculate_totals(components).get("estimated_total", 0)
+ 
+     # Daily breakdown from session_log
+-    pricing_tier = _load_pricing_tier()
++    pi_runtime = detect_runtime() == "pi"
++    pricing_tier = "pi_usage" if pi_runtime else _load_pricing_tier()
+     daily = {}
+     total_cost_usd = 0.0
+     total_cost_priced_tokens = 0
+@@ -19190,7 +19410,7 @@ def _query_trends_db(conn, days):
+                   avg_call_gap_seconds, max_call_gap_seconds, p95_call_gap_seconds, skills_json,
+                   subagents_json, model_usage_json, slug, topic, project,
+                   model_usage_breakdown_json,
+-                  quality_score, quality_grade
++                  quality_score, quality_grade, cost_usd, cost_source, platform
+            FROM session_log WHERE date >= ? ORDER BY date DESC""",
+         (cutoff,),
+     ).fetchall()
+@@ -19246,38 +19466,47 @@ def _query_trends_db(conn, days):
+             mb = {}
+         session_priced_tokens = 0
+         session_unpriced_tokens = 0
+-        if isinstance(mb, dict) and mb:
+-            for model_name, parts in mb.items():
+-                if not isinstance(parts, dict):
+-                    continue
+-                model_tokens = (
+-                    int(parts.get("fresh_input") or 0)
+-                    + int(parts.get("cache_read") or 0)
+-                    + int(parts.get("cache_create") or 0)
+-                    + int(parts.get("output") or 0)
+-                )
+-                if _is_priced_model(model_name, tier=pricing_tier):
+-                    session_priced_tokens += model_tokens
+-                else:
+-                    session_unpriced_tokens += model_tokens
++        exact_pi_cost = sr["platform"] == "pi" and sr["cost_source"] == "pi_usage"
++        if pi_runtime:
++            session_cost = float(sr["cost_usd"] or 0.0) if exact_pi_cost else 0.0
++            session_priced_tokens = inp_total + out_total if exact_pi_cost else 0
++            session_unpriced_tokens = 0 if exact_pi_cost else inp_total + out_total
+         else:
+-            model_tokens = inp_total + out_total
+-            if _is_priced_model(dom_model, tier=pricing_tier):
+-                session_priced_tokens = model_tokens
+-            else:
+-                session_unpriced_tokens = model_tokens
+-        session_cost = _cost_from_model_breakdown(mb, tier=pricing_tier,
+-                                                   cache_create_1h=cache_create_1h if cache_create_1h or cache_create_5m else None,
+-                                                   cache_create_5m=cache_create_5m if cache_create_1h or cache_create_5m else None)
+-        if session_cost == 0.0:
+-            # Use the stored 1h/5m split when available; fall back to 5m-only rate otherwise.
+-            if cache_create_1h or cache_create_5m:
+-                session_cost = _get_model_cost(dom_model, uncached_est, out_total, cache_read_est, cache_create_total,
+-                                               tier=pricing_tier, cache_create_1h=cache_create_1h, cache_create_5m=cache_create_5m)
++            if isinstance(mb, dict) and mb:
++                for model_name, parts in mb.items():
++                    if not isinstance(parts, dict):
++                        continue
++                    model_tokens = (
++                        int(parts.get("fresh_input") or 0)
++                        + int(parts.get("cache_read") or 0)
++                        + int(parts.get("cache_create") or 0)
++                        + int(parts.get("output") or 0)
++                    )
++                    if _is_priced_model(model_name, tier=pricing_tier):
++                        session_priced_tokens += model_tokens
++                    else:
++                        session_unpriced_tokens += model_tokens
+             else:
+-                session_cost = _get_model_cost(dom_model, uncached_est, out_total, cache_read_est, cache_create_total, tier=pricing_tier)
+-        if session_cost == 0.0 and session_priced_tokens == 0 and session_unpriced_tokens == 0 and (inp_total or out_total):
+-            session_unpriced_tokens = inp_total + out_total
++                model_tokens = inp_total + out_total
++                if _is_priced_model(dom_model, tier=pricing_tier):
++                    session_priced_tokens = model_tokens
++                else:
++                    session_unpriced_tokens = model_tokens
++            session_cost = _cost_from_model_breakdown(
++                mb,
++                tier=pricing_tier,
++                cache_create_1h=cache_create_1h if cache_create_1h or cache_create_5m else None,
++                cache_create_5m=cache_create_5m if cache_create_1h or cache_create_5m else None,
++            )
++            if session_cost == 0.0:
++                # Use the stored 1h/5m split when available; fall back to 5m-only rate otherwise.
++                if cache_create_1h or cache_create_5m:
++                    session_cost = _get_model_cost(dom_model, uncached_est, out_total, cache_read_est, cache_create_total,
++                                                   tier=pricing_tier, cache_create_1h=cache_create_1h, cache_create_5m=cache_create_5m)
++                else:
++                    session_cost = _get_model_cost(dom_model, uncached_est, out_total, cache_read_est, cache_create_total, tier=pricing_tier)
++            if session_cost == 0.0 and session_priced_tokens == 0 and session_unpriced_tokens == 0 and (inp_total or out_total):
++                session_unpriced_tokens = inp_total + out_total
+         total_cost_usd += session_cost
+         total_cost_priced_tokens += session_priced_tokens
+         total_cost_unpriced_tokens += session_unpriced_tokens
+@@ -19305,6 +19534,7 @@ def _query_trends_db(conn, days):
+             "topic": sr["topic"],
+             "project": _clean_project_name(sr["project"]),
+             "cost_usd": round(session_cost, 4),
++            "cost_source": sr["cost_source"],
+             "cost_priced_tokens": session_priced_tokens,
+             "cost_unpriced_tokens": session_unpriced_tokens,
+             "model": _normalize_model_name(dom_model) or dom_model,
+@@ -19362,9 +19592,9 @@ def _query_trends_db(conn, days):
+     # conn.close() removed — caller (_collect_trends_from_db) owns the connection
+     # and closes it in its finally block (Lang Reviewer H3: double-close fix).
+ 
+-    # Pricing tier info for dashboard
+-    pricing_tier = _load_pricing_tier()
+-    tier_label = _pricing_tier_label(pricing_tier)
++    # Pricing provenance for dashboard
++    pricing_tier = "pi_usage" if pi_runtime else _load_pricing_tier()
++    tier_label = "Exact Pi usage" if pi_runtime else _pricing_tier_label(pricing_tier)
+ 
+     return {
+         "period_days": days,
+@@ -19806,6 +20036,14 @@ def _collect_trends_data(days=30):
+ 
+     Falls back to live JSONL parsing if DB doesn't exist or is empty.
+     """
++    # Pi rollups are already normalized into SQLite. Never scan host projects
++    # or repositories when that database has no Pi data yet.
++    if detect_runtime() == "pi":
++        result = _collect_trends_from_db(days)
++        if result is not None:
++            result["git_commits"] = {}
++        return result
++
+     # Try SQLite first (faster, accumulated data)
+     result = _collect_trends_from_db(days)
+     if result is not None:
+@@ -20467,12 +20705,13 @@ def _collect_health_data():
+     # semantically wrong and would report stale/empty data. Return a
+     # hermes-mode minimal dict so the dashboard's health row renders
+     # without probing the Claude CLI.
+-    if runtime == "hermes":
++    if runtime in {"hermes", "pi"}:
+         return {
+             "installed_version": None,
+             "running_sessions": [],
+             "automated": [],
+-            "runtime": "hermes",
++            "recommendations": [],
++            "runtime": runtime,
+         }
+     process_name = "codex" if runtime == "codex" else "claude"
+ 
+@@ -27125,6 +27364,8 @@ def _scaled_tool_call_thresholds():
+         ctx_size, _ = detect_context_window()
+     except Exception:
+         ctx_size = 200_000
++    if ctx_size is None or ctx_size <= 0:
++        ctx_size = 200_000
+     scale = max(1.0, (ctx_size / 200_000) ** 1.3)
+     base_warn = 25
+     base_crit = 40
+@@ -27330,6 +27571,8 @@ def _parse_jsonl_for_quality(filepath):
+     system reminders, messages, and compaction markers. Returns None if
+     the file is empty or unparseable.
+     """
++    if _use_pi_session_adapter(filepath):
++        return pi_session.parse_jsonl_for_quality(filepath)
+     if _use_codex_session_adapter(filepath):
+         return codex_session.parse_jsonl_for_quality(filepath)
+ 
+@@ -28103,6 +28346,9 @@ def _find_current_session_jsonl():
+     For non-hook contexts (manual CLI), results are the same since the most
+     recently modified JSONL is almost always the currently active session.
+     """
++    if _use_pi_session_adapter():
++        return pi_session.find_current_session_jsonl()
++
+     if _use_codex_session_adapter():
+         # Deterministic resolution (issue #108): prefer the state-DB-resolved
+         # active thread id over the mtime guess. `find_current_session_jsonl`
+@@ -28138,6 +28384,9 @@ def _find_current_session_jsonl():
+ 
+ def _find_session_jsonl_by_id(session_id):
+     """Find a JSONL file by session ID (UUID filename)."""
++    if _use_pi_session_adapter():
++        return pi_session.find_session_jsonl_by_id(session_id)
++
+     # Sanitize to prevent path traversal
+     safe_id = sanitize_session_id(session_id)
+     if safe_id == "unknown":
+@@ -29969,6 +30218,23 @@ def _summarize_tool_output_for_recovery(text):
+     return "Large tool output archived."
+ 
+ 
++def _iter_tool_outputs(filepath, min_chars=4096, max_outputs=20):
++    """Return normalized tool outputs from a supported session adapter."""
++    if _use_pi_session_adapter(filepath):
++        return pi_session.iter_tool_outputs(
++            filepath,
++            min_chars=min_chars,
++            max_outputs=max_outputs,
++        )
++    if _use_codex_session_adapter(filepath):
++        return codex_session.iter_tool_outputs(
++            filepath,
++            min_chars=min_chars,
++            max_outputs=max_outputs,
++        )
++    return []
++
++
+ def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20):
+     """Backfill durable tool-output pointers from Codex JSONL.
+ 
+@@ -29991,7 +30257,7 @@ def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20)
+         return 0
+     archived = 0
+     try:
+-        outputs = codex_session.iter_tool_outputs(
++        outputs = _iter_tool_outputs(
+             path,
+             min_chars=_ARCHIVE_THRESHOLD,
+             max_outputs=max_outputs,
+@@ -30784,6 +31050,12 @@ def _extract_session_state(filepath, tail_lines=500):
+ 
+     Returns a dict, or None if file is empty/unreadable.
+     """
++    if _use_pi_session_adapter(filepath):
++        return pi_session.extract_session_state(
++            filepath,
++            tail_lines=tail_lines,
++            max_files=_CHECKPOINT_MAX_FILES,
++        )
+     if _use_codex_session_adapter(filepath):
+         return codex_session.extract_session_state(filepath, tail_lines=tail_lines, max_files=_CHECKPOINT_MAX_FILES)
+ 
+diff --git a/skills/token-optimizer/scripts/runtime_env.py b/skills/token-optimizer/scripts/runtime_env.py
+index 8e4049c..6d8b857 100644
+--- a/skills/token-optimizer/scripts/runtime_env.py
++++ b/skills/token-optimizer/scripts/runtime_env.py
+@@ -1,4 +1,4 @@
+-"""Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, and Copilot adapters.
++"""Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, Copilot, and Pi adapters.
+ 
+ This module keeps runtime integration deliberately simple:
+ 
+@@ -49,8 +49,16 @@ _RUNTIME_CODEX = "codex"
+ _RUNTIME_HERMES = "hermes"
+ _RUNTIME_OPENCODE = "opencode"
+ _RUNTIME_COPILOT = "copilot"
++_RUNTIME_PI = "pi"
+ _VALID_RUNTIMES = frozenset(
+-    {_RUNTIME_CLAUDE, _RUNTIME_CODEX, _RUNTIME_HERMES, _RUNTIME_OPENCODE, _RUNTIME_COPILOT}
++    {
++        _RUNTIME_CLAUDE,
++        _RUNTIME_CODEX,
++        _RUNTIME_HERMES,
++        _RUNTIME_OPENCODE,
++        _RUNTIME_COPILOT,
++        _RUNTIME_PI,
++    }
+ )
+ _CLAUDE_PLUGIN_ENVS = ("CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_DATA")
+ # Claude Cowork host markers. Cowork is Claude Code running in a cloud/local VM,
+@@ -87,6 +95,7 @@ _CLAUDE_CODE_ENVS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSIO
+ _CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
+ _CODEX_HOME_ENV = "CODEX_HOME"
+ _HERMES_HOME_ENV = "HERMES_HOME"
++_PI_HOME_ENV = "TOKEN_OPTIMIZER_PI_HOME"
+ # COPILOT_HOME is GitHub Copilot CLI's OWN config variable (GitHub docs: it
+ # "replaces the entire ~/.copilot path", and Copilot's session-state/,
+ # session.db, events.jsonl all live inside it). Token Optimizer must NOT ask
+@@ -942,6 +951,22 @@ def hermes_home() -> Path:
+     return _safe_home_from_env(_HERMES_HOME_ENV, _safe_home() / ".hermes")
+ 
+ 
++def pi_home() -> Path:
++    """Return Pi's explicitly configured agent directory without a host fallback."""
++    raw = os.environ.get(_PI_HOME_ENV, "").strip()
++    if not raw:
++        raise RuntimeError(f"{_PI_HOME_ENV} is required for the Pi runtime")
++    candidate = Path(raw)
++    try:
++        if not candidate.is_absolute():
++            raise RuntimeError(f"{_PI_HOME_ENV} must be an absolute path")
++        if candidate.exists() and (candidate.is_symlink() or not candidate.is_dir()):
++            raise RuntimeError(f"{_PI_HOME_ENV} must identify a real directory")
++        return candidate.resolve(strict=False)
++    except OSError as exc:
++        raise RuntimeError(f"{_PI_HOME_ENV} is not usable") from exc
++
++
+ def copilot_home(*, mnt_root: Path | None = None) -> Path:
+     """Return GitHub Copilot CLI's home directory (~/.copilot by default).
+ 
+@@ -1037,12 +1062,21 @@ def runtime_home() -> Path:
+     if runtime == _RUNTIME_COPILOT:
+         return copilot_home()
+ 
++    if runtime == _RUNTIME_PI:
++        return pi_home()
++
+     return claude_home()
+ 
+ 
+ def plugin_data_env_vars() -> tuple[str, ...]:
+     """Return plugin-data env vars in runtime-specific priority order."""
+-    if detect_runtime() in (_RUNTIME_CODEX, _RUNTIME_HERMES, _RUNTIME_OPENCODE, _RUNTIME_COPILOT):
++    if detect_runtime() in (
++        _RUNTIME_CODEX,
++        _RUNTIME_HERMES,
++        _RUNTIME_OPENCODE,
++        _RUNTIME_COPILOT,
++        _RUNTIME_PI,
++    ):
+         return ("TOKEN_OPTIMIZER_PLUGIN_DATA",)
+     return ("CLAUDE_PLUGIN_DATA", "TOKEN_OPTIMIZER_PLUGIN_DATA")
+ 
+@@ -1058,6 +1092,8 @@ def runtime_name_for_humans() -> str:
+         return "OpenCode"
+     if runtime == _RUNTIME_COPILOT:
+         return "GitHub Copilot"
++    if runtime == _RUNTIME_PI:
++        return "Pi"
+     # Cowork is the claude runtime in a VM; label the refinement without changing
+     # the runtime it resolves to.
+     if runtime == _RUNTIME_CLAUDE and is_cowork():

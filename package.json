@@ -6,12 +6,20 @@
   "type": "module",
   "keywords": ["pi-package"],
   "files": [
-    "extensions",
+    "extensions/*.ts",
     "README.md",
     "LICENSE",
     "NOTICE",
     "PRIVACY.md",
-    "vendor"
+    "python/*.py",
+    "patches/*.patch",
+    "vendor/manifest.json",
+    "vendor/token-optimizer/LICENSE",
+    "vendor/token-optimizer/PRIVACY.md",
+    "vendor/token-optimizer/hooks/python-launcher.sh",
+    "vendor/token-optimizer/skills/token-optimizer/assets/dashboard.html",
+    "vendor/token-optimizer/skills/token-optimizer/scripts/**/*.py",
+    "vendor/token-optimizer/skills/token-optimizer/scripts/*.js"
   ],
   "pi": {
     "extensions": ["./extensions/index.ts"]
