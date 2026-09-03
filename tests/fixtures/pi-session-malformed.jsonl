@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"44444444-4444-4444-8444-444444444444","timestamp":"2026-09-03T13:00:00.000Z","cwd":"/tmp/pi-project"}
+{"type":"message","id":"20000001","parentId":null,"timestamp":"2026-09-03T13:00:01.000Z","message":{"role":"user","content":"Valid start.","timestamp":1788450001000}}
+this is not json
+{"type":"message","id":"20000002","parentId":"missing0","timestamp":"2026-09-03T13:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Disconnected leaf."}],"provider":"openai","model":"gpt-broken","usage":{"input":1,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":2,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1788450002000}}
