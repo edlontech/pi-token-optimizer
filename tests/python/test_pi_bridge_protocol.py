@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+
+sys.dont_write_bytecode = True
 from python import pi_bridge
 
 
@@ -306,25 +308,28 @@ class PiBridgeProtocolTests(unittest.TestCase):
                         )
                 self.assertEqual(json.loads(output.getvalue())["errorCode"], code)
 
-    def test_engine_import_failure_cannot_escape_the_task_7_boundary(self):
+    def test_pre_tool_engine_import_failure_fails_open(self):
         self.grant_consent()
         request = self.action_request("pre_tool")
-        real_import = __import__
-
-        def guarded_import(name, *args, **kwargs):
-            if name in {"measure", "runtime_env"}:
-                raise ImportError("simulated engine failure")
-            return real_import(name, *args, **kwargs)
-
-        output = io.StringIO()
-        errors = io.StringIO()
-        with mock.patch("builtins.__import__", side_effect=guarded_import):
-            with mock.patch.dict(os.environ, self.environment, clear=True):
-                self.assertEqual(
-                    pi_bridge.main(io.StringIO(json.dumps(request)), output, errors),
-                    0,
-                )
-        self.assertEqual(json.loads(output.getvalue())["errorCode"], "not_implemented")
+        with (
+            mock.patch.object(
+                pi_bridge,
+                "_engine_module",
+                side_effect=ImportError("simulated engine failure"),
+            ),
+            mock.patch.dict(os.environ, self.environment, clear=True),
+        ):
+            output = io.StringIO()
+            errors = io.StringIO()
+            self.assertEqual(
+                pi_bridge.main(io.StringIO(json.dumps(request)), output, errors),
+                0,
+            )
+        self.assertEqual(json.loads(output.getvalue()), {
+            "protocolVersion": 1,
+            "ok": True,
+            "decision": "allow",
+        })
         self.assertNotIn("Traceback", output.getvalue())
         self.assertNotIn("Traceback", errors.getvalue())
 
@@ -355,7 +360,10 @@ class PiBridgeProtocolTests(unittest.TestCase):
 
     def test_recognized_future_actions_are_not_implemented_only_after_config_gate(self):
         self.grant_consent()
-        for action in ACTIVITY_ACTIONS:
+        for action in (
+            action for action in ACTIVITY_ACTIONS
+            if action not in {"pre_tool", "post_tool"}
+        ):
             with self.subTest(action=action):
                 response, _stderr = self.invoke(self.action_request(action))
                 self.assertEqual(response, {

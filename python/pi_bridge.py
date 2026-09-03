@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime
+import io
 import json
 import math
 import os
@@ -64,6 +66,25 @@ SCRIPTS_PATH = (
 )
 RUNTIME_PATH = SCRIPTS_PATH / "runtime_env.py"
 MEASURE_PATH = SCRIPTS_PATH / "measure.py"
+
+ENGINE_TOOL_NAMES = {
+    "bash": "Bash",
+    "read": "Read",
+    "grep": "Grep",
+    "find": "Glob",
+    "ls": "Glob",
+    "edit": "Edit",
+    "write": "Write",
+}
+MAX_DIAGNOSTIC_CHARS = 512
+MAX_ARCHIVE_ENTRY_BYTES = 6 * MAX_TEXT_BYTES + 256 * 1024
+MAX_ARCHIVE_MANIFEST_BYTES = 5 * 1024 * 1024
+MAX_CONTEXT_INTEL_BYTES = 512 * 1024
+ARCHIVE_POINTER_RE = re.compile(
+    r"(?m)^    python3 "
+    + re.escape(str(MEASURE_PATH))
+    + r" expand ([A-Za-z0-9_-]+)\]$"
+)
 
 
 @dataclass(frozen=True)
@@ -522,6 +543,615 @@ def _error(code: str) -> Dict[str, object]:
     return {"protocolVersion": PROTOCOL_VERSION, "ok": False, "errorCode": code}
 
 
+def _allow() -> Dict[str, object]:
+    return {
+        "protocolVersion": PROTOCOL_VERSION,
+        "ok": True,
+        "decision": "allow",
+    }
+
+
+def _diagnose(message: str) -> None:
+    text = " ".join(str(message).split())[:MAX_DIAGNOSTIC_CHARS]
+    if text:
+        print("pi bridge engine: " + text, file=sys.stderr)
+
+
+def _engine_module(name: str) -> object:
+    scripts = str(SCRIPTS_PATH)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    return __import__(name)
+
+
+def _load_engine(name: str) -> object:
+    output = io.StringIO()
+    errors = io.StringIO()
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+        module = _engine_module(name)
+    if errors.getvalue():
+        _diagnose("engine import diagnostic")
+    if output.getvalue():
+        raise ValueError("engine import wrote to stdout")
+    return module
+
+
+def _capture_hook(
+    module: object,
+    payload: Dict[str, object],
+    arguments: Tuple[str, ...] = (),
+    entrypoint: str = "main",
+) -> str:
+    hook_io = _load_engine("hook_io")
+    original_reader = hook_io.read_stdin_hook_input
+    module_reader = getattr(module, "read_stdin_hook_input", None)
+    original_argv = sys.argv
+    output = io.StringIO()
+    errors = io.StringIO()
+    reader = lambda *args, **kwargs: payload
+    hook_io.read_stdin_hook_input = reader
+    if module_reader is not None:
+        module.read_stdin_hook_input = reader
+    sys.argv = [original_argv[0], *arguments]
+    try:
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            getattr(module, entrypoint)()
+    finally:
+        sys.argv = original_argv
+        hook_io.read_stdin_hook_input = original_reader
+        if module_reader is not None:
+            module.read_stdin_hook_input = module_reader
+    if errors.getvalue().strip():
+        _diagnose("engine diagnostic")
+    return output.getvalue()
+
+
+def _known_hook_output(
+    raw: str,
+    event_name: str = "PreToolUse",
+) -> Optional[Dict[str, object]]:
+    if not raw.strip():
+        return None
+    try:
+        decoder = json.JSONDecoder()
+        value, end = decoder.raw_decode(raw)
+    except (json.JSONDecodeError, RecursionError, ValueError):
+        raise ValueError("malformed engine output")
+    if raw[end:].strip() or not isinstance(value, dict) or set(value) != {"hookSpecificOutput"}:
+        raise ValueError("malformed engine output")
+    output = value["hookSpecificOutput"]
+    if not isinstance(output, dict) or output.get("hookEventName") != event_name:
+        raise ValueError("malformed engine output")
+    return output
+
+
+def _tool_payload(request: Request) -> Tuple[str, Dict[str, object]]:
+    assert request.tool is not None
+    name = str(request.tool["name"])
+    tool_input = dict(request.tool["input"])
+    if request.tool["kind"] == "builtin":
+        name = ENGINE_TOOL_NAMES.get(name.lower(), "")
+        if name in {"Read", "Edit", "Write"}:
+            path = tool_input.pop("path", None)
+            if path is not None:
+                tool_input["file_path"] = path
+    return name, {
+        "session_id": request.session["id"],
+        "agent_id": request.session["id"],
+        "cwd": request.session["cwd"],
+        "tool_use_id": request.tool["id"],
+        "tool_name": name,
+        "tool_input": tool_input,
+    }
+
+
+def _read_response(raw: str) -> Dict[str, object]:
+    output = _known_hook_output(raw)
+    if output is None:
+        return _allow()
+    allowed = {
+        "hookEventName",
+        "permissionDecision",
+        "permissionDecisionReason",
+        "additionalContext",
+    }
+    if not set(output).issubset(allowed):
+        raise ValueError("unexpected Read hook envelope")
+    decision = output.get("permissionDecision")
+    if decision not in {None, "allow", "deny"}:
+        raise ValueError("invalid Read decision")
+    reason = output.get("permissionDecisionReason")
+    context = output.get("additionalContext")
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("invalid Read reason")
+    if context is not None and not isinstance(context, str):
+        raise ValueError("invalid Read context")
+    response = _allow()
+    if decision == "deny":
+        response["decision"] = "block"
+    data = {}
+    if reason:
+        data["reason"] = reason
+    if context:
+        data["additionalContext"] = context
+    if data:
+        response["data"] = data
+    encoded = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
+    if not _fits(encoded, MAX_RESPONSE_BYTES):
+        raise ValueError("Read hook output exceeds response limit")
+    return response
+
+
+def _external_pre_tool(request: Request, payload: Dict[str, object]) -> Dict[str, object]:
+    assert request.tool is not None
+    try:
+        guard = _load_engine("refetch_guard")
+        output = io.StringIO()
+        errors = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            fingerprint = guard.tool_fingerprint(
+                request.tool["name"],
+                payload["tool_input"],
+            )
+            archived_id, saved_tokens = guard._lookup_archived(
+                request.session["id"],
+                request.tool["name"],
+                fingerprint,
+            )
+            if _is_id(archived_id):
+                guard._log_refetch_block(
+                    request.session["id"],
+                    request.tool["name"],
+                    archived_id,
+                    saved_tokens,
+                )
+        if output.getvalue():
+            raise ValueError("refetch guard wrote to stdout")
+        if errors.getvalue():
+            _diagnose("engine diagnostic")
+        if not _is_id(archived_id):
+            return _allow()
+        reason = (
+            "Token Optimizer: this exact " + str(request.tool["name"])
+            + " call already ran and its full result is archived on disk (id "
+            + archived_id
+            + ") — re-fetching would re-inflate context with data you already have. "
+            "Do NOT call it again. Read the saved result by running this in Bash:\n    "
+            + guard.expand_command(archived_id)
+        )
+        response = _allow()
+        response["decision"] = "block"
+        response["data"] = {"reason": reason}
+        return response
+    except (Exception, SystemExit) as error:
+        _diagnose("engine failure (" + type(error).__name__ + ")")
+        return _allow()
+
+
+def _pre_tool(request: Request) -> Dict[str, object]:
+    assert request.tool is not None
+    name, payload = _tool_payload(request)
+    if request.tool["kind"] == "external":
+        return _external_pre_tool(request, payload)
+    if request.tool["kind"] == "builtin" and name == "Read":
+        try:
+            read_cache = _load_engine("read_cache")
+            original_escape = read_cache._check_escape_hatch
+
+            def persisted_escape(entry, *args, **kwargs):
+                entry["consecutive_denials"] = int(
+                    entry.get("repeat_replacement_count", 0) or 0
+                )
+                return original_escape(entry, *args, **kwargs)
+
+            read_cache._check_escape_hatch = persisted_escape
+            try:
+                raw = _capture_hook(read_cache, payload, ("--quiet",))
+            finally:
+                read_cache._check_escape_hatch = original_escape
+            return _read_response(raw)
+        except (Exception, SystemExit) as error:
+            _diagnose("engine failure (" + type(error).__name__ + ")")
+            return _allow()
+    if request.tool["kind"] != "builtin" or name != "Bash":
+        return _allow()
+    command = payload["tool_input"].get("command")
+    if not isinstance(command, str) or not command:
+        return _allow()
+    try:
+        output = _known_hook_output(
+            _capture_hook(_load_engine("bash_hook"), payload)
+        )
+        if output is None:
+            return _allow()
+        if set(output) != {
+            "hookEventName",
+            "permissionDecision",
+            "updatedInput",
+        } or output.get("permissionDecision") != "allow":
+            raise ValueError("unexpected Bash hook envelope")
+        updated = output.get("updatedInput")
+        if (
+            not isinstance(updated, dict)
+            or set(updated) != {"command"}
+            or not isinstance(updated.get("command"), str)
+            or not updated["command"]
+            or updated["command"] == command
+        ):
+            raise ValueError("invalid Bash rewrite")
+        response = _allow()
+        response["updatedInput"] = updated
+        encoded = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
+        if not _fits(encoded, MAX_RESPONSE_BYTES):
+            return _allow()
+        return response
+    except (Exception, SystemExit) as error:
+        _diagnose("engine failure (" + type(error).__name__ + ")")
+        return _allow()
+
+
+def _read_owned_regular(path: Path, maximum: int) -> Optional[bytes]:
+    descriptor = -1
+    try:
+        if path.is_symlink():
+            return None
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        descriptor = os.open(str(path), flags)
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_size > maximum
+        ):
+            return None
+        chunks = []
+        remaining = maximum + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 64 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        data = b"".join(chunks)
+        return data if len(data) <= maximum else None
+    except (OSError, ValueError):
+        return None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _bash_output(request: Request) -> str:
+    visible = str(request.args["text"])
+    raw_path = request.args.get("fullOutputPath")
+    if not isinstance(raw_path, str):
+        return visible
+    data = _read_owned_regular(Path(raw_path), MAX_TEXT_BYTES)
+    if data is None:
+        return visible
+    try:
+        decoded = data.decode("utf-8", errors="strict")
+        return visible if "\x00" in decoded else decoded
+    except UnicodeDecodeError:
+        return visible
+
+
+def _archive_id_from_pointer(replacement: str) -> Optional[str]:
+    matches = ARCHIVE_POINTER_RE.findall(replacement)
+    if len(matches) != 1 or not _is_id(matches[0]):
+        return None
+    return matches[0]
+
+
+def _external_archive_pointer(
+    replacement: str,
+    archive_id: str,
+    tool_name: str,
+) -> bool:
+    footer = (
+        f"Do NOT call {tool_name} again to get this data — read the saved copy by "
+        "running this in Bash:\n"
+        f"    python3 {MEASURE_PATH} expand {archive_id}]"
+    )
+    return (
+        "[Full result archived (" in replacement
+        and replacement.endswith(footer)
+        and _archive_id_from_pointer(replacement) == archive_id
+    )
+
+
+def _archive_destination_safe(data_root: Path, session_id: str) -> bool:
+    paths = (
+        data_root,
+        data_root / "tool-archive",
+        data_root / "tool-archive" / session_id,
+    )
+    for path in paths:
+        try:
+            if path.is_symlink() or (path.exists() and not path.is_dir()):
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _safe_archive_directory(data_root: Path, session_id: str) -> Optional[Path]:
+    archive_root = data_root / "tool-archive"
+    session_dir = archive_root / session_id
+    for path in (data_root, archive_root, session_dir):
+        try:
+            info = path.lstat()
+            if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
+                return None
+        except OSError:
+            return None
+    return session_dir
+
+
+def _verified_archive(
+    data_root: Path,
+    session_id: str,
+    archive_id: str,
+    tool_name: str,
+    tool_kind: Optional[str] = None,
+) -> bool:
+    session_dir = _safe_archive_directory(data_root, session_id)
+    if session_dir is None or not _is_id(archive_id):
+        return False
+    entry_raw = _read_owned_regular(
+        session_dir / (archive_id + ".json"),
+        MAX_ARCHIVE_ENTRY_BYTES,
+    )
+    manifest_raw = _read_owned_regular(
+        session_dir / "manifest.jsonl",
+        MAX_ARCHIVE_MANIFEST_BYTES,
+    )
+    if entry_raw is None or manifest_raw is None:
+        return False
+    try:
+        entry = _loads(entry_raw.decode("utf-8", errors="strict"))
+        if (
+            not isinstance(entry, dict)
+            or entry.get("tool_use_id") != archive_id
+            or entry.get("tool_name") != tool_name
+            or (tool_kind is not None and entry.get("tool_kind") != tool_kind)
+            or not isinstance(entry.get("response"), str)
+        ):
+            return False
+        matching = []
+        for line in manifest_raw.decode("utf-8", errors="strict").splitlines():
+            record = _loads(line)
+            if isinstance(record, dict) and record.get("tool_use_id") == archive_id:
+                matching.append(record)
+        return bool(matching) and (
+            matching[-1].get("tool_name") == tool_name
+            and (
+                tool_kind is None
+                or matching[-1].get("tool_kind") == tool_kind
+            )
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+        return False
+    return False
+
+
+def _bounded_text(value: str, maximum: int) -> str:
+    encoded = value.encode("utf-8", errors="replace")[:maximum]
+    return encoded.decode("utf-8", errors="ignore")
+
+
+def _best_effort_post_metadata(
+    request: Request,
+    payload: Dict[str, object],
+    text: str,
+) -> None:
+    context_payload = dict(payload)
+    context_payload["tool_response"] = _bounded_text(text, MAX_CONTEXT_INTEL_BYTES)
+    try:
+        raw = _capture_hook(
+            _load_engine("context_intel"),
+            context_payload,
+            entrypoint="handle_post_tool_use",
+        )
+        if raw.strip():
+            raise ValueError("context intel wrote to stdout")
+    except (Exception, SystemExit) as error:
+        _diagnose("metadata failure (" + type(error).__name__ + ")")
+
+    quality_payload: Dict[str, object] = {"session_id": request.session["id"]}
+    session_file = request.session.get("file")
+    if isinstance(session_file, str):
+        quality_payload["transcript_path"] = session_file
+    try:
+        quality_gate = _load_engine("quality_cache_gate")
+        original_self_heal = quality_gate._quality_cache_self_heal
+        quality_gate._quality_cache_self_heal = lambda _measure: None
+        try:
+            raw = _capture_hook(
+                quality_gate,
+                quality_payload,
+                ("--quiet", "--throttle-only"),
+            )
+        finally:
+            quality_gate._quality_cache_self_heal = original_self_heal
+        if raw.strip():
+            raise ValueError("quality gate wrote to stdout")
+    except (Exception, SystemExit) as error:
+        _diagnose("metadata failure (" + type(error).__name__ + ")")
+
+
+def _invalidate_read_cache(payload: Dict[str, object]) -> None:
+    try:
+        output = io.StringIO()
+        errors = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            _load_engine("read_cache").handle_invalidate(payload, quiet=True)
+        if output.getvalue().strip():
+            raise ValueError("read cache invalidation wrote to stdout")
+        if errors.getvalue().strip():
+            _diagnose("engine diagnostic")
+    except (Exception, SystemExit) as error:
+        _diagnose("engine failure (" + type(error).__name__ + ")")
+
+
+def _external_post_tool(
+    request: Request,
+    payload: Dict[str, object],
+    data_root: Path,
+    text: str,
+) -> Dict[str, object]:
+    assert request.tool is not None
+    archive_result = None
+    try:
+        module = _load_engine("archive_result")
+        output = io.StringIO()
+        errors = io.StringIO()
+        hook_payload = dict(payload)
+        hook_payload["tool_kind"] = request.tool["kind"]
+        hook_payload["tool_response"] = text
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            archive_result = module.archive_result(
+                quiet=True,
+                hook_input=hook_payload,
+            )
+        if output.getvalue().strip():
+            raise ValueError("archive result wrote to stdout")
+        if errors.getvalue().strip():
+            _diagnose("engine diagnostic")
+    except (Exception, SystemExit) as error:
+        _diagnose("engine failure (" + type(error).__name__ + ")")
+
+    _best_effort_post_metadata(request, payload, text)
+    if not isinstance(archive_result, dict) or set(archive_result) != {
+        "archive_id",
+        "replacement_text",
+        "metadata",
+    }:
+        return _allow()
+    archive_id = archive_result.get("archive_id")
+    replacement = archive_result.get("replacement_text")
+    metadata = archive_result.get("metadata")
+    if (
+        not _is_id(archive_id)
+        or not isinstance(replacement, str)
+        or not replacement
+        or not isinstance(metadata, dict)
+        or archive_id != request.tool["id"]
+        or metadata.get("tool_use_id") != archive_id
+        or metadata.get("tool_name") != request.tool["name"]
+        or metadata.get("tool_kind") != "external"
+        or not _external_archive_pointer(
+            replacement,
+            archive_id,
+            str(request.tool["name"]),
+        )
+        or not _verified_archive(
+            data_root,
+            str(request.session["id"]),
+            archive_id,
+            str(request.tool["name"]),
+            "external",
+        )
+    ):
+        return _allow()
+    response = _allow()
+    response["replacementText"] = replacement
+    response["archiveId"] = archive_id
+    if not _fits(
+        json.dumps(response, ensure_ascii=True, separators=(",", ":")),
+        MAX_RESPONSE_BYTES,
+    ):
+        return _allow()
+    return response
+
+
+def _bash_post_tool(
+    request: Request,
+    payload: Dict[str, object],
+    data_root: Path,
+    text: str,
+) -> Dict[str, object]:
+    try:
+        hook_payload = dict(payload)
+        hook_payload["tool_response"] = {
+            "stdout": text,
+            "stderr": "",
+            "interrupted": False,
+            "isImage": False,
+        }
+        output = _known_hook_output(
+            _capture_hook(_load_engine("bash_compress_hook"), hook_payload),
+            "PostToolUse",
+        )
+        if output is None or set(output) != {"hookEventName", "updatedToolOutput"}:
+            return _allow()
+        updated = output.get("updatedToolOutput")
+        if not isinstance(updated, dict) or set(updated) != {
+            "stdout",
+            "stderr",
+            "interrupted",
+            "isImage",
+        }:
+            return _allow()
+        replacement = updated.get("stdout")
+        if (
+            not isinstance(replacement, str)
+            or not replacement
+            or replacement == text
+            or updated.get("stderr") != ""
+            or updated.get("interrupted") is not False
+            or updated.get("isImage") is not False
+        ):
+            return _allow()
+        archive_id = _archive_id_from_pointer(replacement)
+        if archive_id is None or not _verified_archive(
+            data_root,
+            str(request.session["id"]),
+            archive_id,
+            "Bash",
+        ):
+            return _allow()
+        response = _allow()
+        response["replacementText"] = replacement
+        response["archiveId"] = archive_id
+        if not _fits(
+            json.dumps(response, ensure_ascii=True, separators=(",", ":")),
+            MAX_RESPONSE_BYTES,
+        ):
+            return _allow()
+        return response
+    except (Exception, SystemExit) as error:
+        _diagnose("engine failure (" + type(error).__name__ + ")")
+        return _allow()
+    finally:
+        _best_effort_post_metadata(request, payload, text)
+
+
+def _post_tool(request: Request, data_root: Path) -> Dict[str, object]:
+    assert request.tool is not None
+    if request.args["isError"] or request.args["hasImages"]:
+        return _allow()
+    visible = str(request.args["text"])
+    name, payload = _tool_payload(request)
+    if request.tool["kind"] == "builtin" and name in {"Edit", "Write"}:
+        _invalidate_read_cache(payload)
+        _best_effort_post_metadata(request, payload, visible)
+        return _allow()
+    if "\x00" in visible:
+        return _allow()
+    if not _archive_destination_safe(data_root, str(request.session["id"])):
+        return _allow()
+    if request.tool["kind"] == "external":
+        return _external_post_tool(request, payload, data_root, visible)
+    if request.tool["kind"] == "builtin" and name == "Bash":
+        return _bash_post_tool(request, payload, data_root, _bash_output(request))
+    return _allow()
+
+
 def dispatch(request: Request) -> Dict[str, object]:
     pi_home, data_root = _configure_environment(request)
     if request.action in {"status", "doctor"}:
@@ -538,6 +1168,10 @@ def dispatch(request: Request) -> Dict[str, object]:
         reason = "disabled"
     elif config["consentGranted"] is not True:
         reason = "consent_required"
+    elif request.action == "pre_tool":
+        return _pre_tool(request)
+    elif request.action == "post_tool":
+        return _post_tool(request, data_root)
     else:
         return _error("not_implemented")
     return _ok({
@@ -570,7 +1204,8 @@ def main(
     error_stream = error_stream if error_stream is not None else sys.stderr
     try:
         request = parse_request(_read_request(input_stream))
-        response = dispatch(request)
+        with contextlib.redirect_stderr(error_stream):
+            response = dispatch(request)
     except ProtocolError as error:
         print(str(error), file=error_stream)
         response = _error(error.code)
