@@ -215,7 +215,10 @@ class PiBridgeProtocolTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertEqual(errors.getvalue(), "")
-        self.assertEqual(json.loads(output.getvalue())["errorCode"], "not_implemented")
+        self.assertEqual(json.loads(output.getvalue()), {
+            "protocolVersion": 1,
+            "ok": True,
+        })
         self.assertEqual(configured, {
             "TOKEN_OPTIMIZER_RUNTIME": "pi",
             "TOKEN_OPTIMIZER_PI_HOME": str(self.pi_home),
@@ -358,11 +361,18 @@ class PiBridgeProtocolTests(unittest.TestCase):
                     "configState": "valid",
                 })
 
-    def test_recognized_future_actions_are_not_implemented_only_after_config_gate(self):
+    def test_remaining_future_actions_are_not_implemented_only_after_config_gate(self):
         self.grant_consent()
         for action in (
             action for action in ACTIVITY_ACTIONS
-            if action not in {"pre_tool", "post_tool"}
+            if action not in {
+                "pre_tool",
+                "post_tool",
+                "before_prompt",
+                "session_start",
+                "pre_compact",
+                "post_compact",
+            }
         ):
             with self.subTest(action=action):
                 response, _stderr = self.invoke(self.action_request(action))
