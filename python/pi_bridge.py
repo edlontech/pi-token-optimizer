@@ -276,7 +276,7 @@ def _has_required_fields(request: Request) -> bool:
         full_output = args["fullOutputPath"]
         return (
             request.tool.get("kind") == "builtin"
-            and request.tool.get("name") == "bash"
+            and request.tool.get("name") in {"bash", "Bash"}
             and _is_nonempty_string(full_output)
         )
     if action == "before_prompt":
@@ -663,7 +663,7 @@ def _tool_payload(request: Request) -> Tuple[str, Dict[str, object]]:
     name = str(request.tool["name"])
     tool_input = dict(request.tool["input"])
     if request.tool["kind"] == "builtin":
-        name = ENGINE_TOOL_NAMES.get(name.lower(), "")
+        name = ENGINE_TOOL_NAMES.get(name.lower(), name)
         if name in {"Read", "Edit", "Write"}:
             path = tool_input.pop("path", None)
             if path is not None:

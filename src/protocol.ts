@@ -174,7 +174,7 @@ function hasRequiredRequestFields(request: BridgeRequest): boolean {
         && typeof request.args.hasImages === "boolean"
         && (request.args.fullOutputPath === undefined
           || (request.tool.kind === "builtin"
-            && request.tool.name === "bash"
+            && (request.tool.name === "bash" || request.tool.name === "Bash")
             && isNonemptyString(request.args.fullOutputPath)));
     case "before_prompt":
       return request.args !== undefined
