@@ -10,7 +10,8 @@
     "README.md",
     "LICENSE",
     "NOTICE",
-    "PRIVACY.md"
+    "PRIVACY.md",
+    "vendor"
   ],
   "pi": {
     "extensions": ["./extensions/index.ts"]
@@ -19,7 +20,9 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:python": "python3 -c 'import sys, unittest; result = unittest.TextTestRunner().run(unittest.defaultTestLoader.discover(\"tests/python\")); sys.exit(not result.wasSuccessful())'",
-    "check": "npm run typecheck && npm test && npm run test:python"
+    "vendor:check": "node scripts/check-vendor.mjs",
+    "vendor:sync": "node scripts/sync-upstream.mjs",
+    "check": "npm run typecheck && npm test && npm run test:python && npm run vendor:check"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",

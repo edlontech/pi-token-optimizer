@@ -1,0 +1,309 @@
+{
+  "upstream": {
+    "repository": "https://github.com/alexgreensh/token-optimizer",
+    "ref": "v5.13.4",
+    "commit": "eda65d61b4750b530a6f9956193d4e4632aca0cb",
+    "version": "5.13.4"
+  },
+  "protocol": {
+    "version": 1
+  },
+  "files": {
+    "LICENSE": {
+      "sha256": "6bccffcb3545e3918832905c19db3be80e6cd1ce4c279093297ad93b1886b156",
+      "mode": "100644"
+    },
+    "PRIVACY.md": {
+      "sha256": "7dc323ce147d7aab6484703265e0bf3f1f045258a769fafec898cfbe03605601",
+      "mode": "100644"
+    },
+    "hooks/python-launcher.sh": {
+      "sha256": "33ea668808ac3c9b10f154447341d03c2bf0ab5b5641d295a33dd0b75ba71cc0",
+      "mode": "100755"
+    },
+    "skills/token-optimizer/assets/dashboard.html": {
+      "sha256": "940dbc480f8a343f83b95797f3ac56f056f51b64edbc286a27f010703dd5d0c4",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/activity_tracker.py": {
+      "sha256": "b1ccc6e69e2632966bc474db62027579966bba36e9fd33aed75233b71c921bcf",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/archive_result.py": {
+      "sha256": "8d3a0d4647827dac44ca6d605e35956c4d7bfd633ac137fd50766034a5496ea0",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/bash_compress.py": {
+      "sha256": "231e561e90307556b5bb0590e5644ec56d8257ea504bccded7922fd163432dff",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/bash_compress_hook.py": {
+      "sha256": "0395a9fe640119dd0fea30d6c4c0e11815dab80efd6899f89347d33efd6e70a8",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/bash_hook.py": {
+      "sha256": "3bb5e3132d60e0864553cd7f481b79e6b2ec7d14943592b8b08eea1f06a9ca9e",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/benchmark.py": {
+      "sha256": "0e2e3eacfba6fbfd4c48a088076c7f19cfa281a63158e541ed050ccfc71fe1ab",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_compact_prompt.py": {
+      "sha256": "cab3c67cfdea13d3b729e38372dbbf34adb118448aa620b8289efdf63eed11a8",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_doctor.py": {
+      "sha256": "28217cfe237eac2a9039e4cb45ffad2f2339e6a8d9cfa7fc44845a76c050a6e0",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_hook_bridge.py": {
+      "sha256": "f905cc6ec58066d3ff557c76be19858216c0c34a02f4e32acf2beee804362e6f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_install.py": {
+      "sha256": "65694a8506224c8019cadc5c3c3e3dcc90f678086e0872445860ee3723cd6283",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_io.py": {
+      "sha256": "d60ec7cabc85af30e329a210d2acb6d02fd2c19c63dec95559027c38243b2588",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_session.py": {
+      "sha256": "1bb0f3dfd8c3bbba3e41574deb58ab8a6066853db1231b0db3ad90ddd9acd36b",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_state.py": {
+      "sha256": "0307c300f082d151109f5deb0f3fbf60bcc5bdc0dca943c78235248f46e399de",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/codex_statusline.py": {
+      "sha256": "0544d1bf0568884a9bdcc973a6c2fe416ed3997be4885faad6f660e8d95c4ca9",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/command_filters.py": {
+      "sha256": "bbb2e5845933d4e4f166e1a551b743a56db61e49d0b0cf715f8a1ca239cae5a9",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/compression_backfill.py": {
+      "sha256": "d0dfe6ae4454fcb8ac993954801e512ef2edf7e0683669a8ccb3b343f06adb97",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/compression_log.py": {
+      "sha256": "347df1e311d1fdd993661b909406921a8dc3c36a8bdc47e2a56972aa794a5aad",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/context_intel.py": {
+      "sha256": "ec76ead70f24db78d3c5df70c908affd740cf9b92909ce3a181f453bc5345c1c",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/context_pressure.py": {
+      "sha256": "dbd7e280acfbe4b0842839d221748b6ba1122fb6828bd822a4e36d61c4e7d2be",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/copilot_doctor.py": {
+      "sha256": "8459b630d900420aa0d520893435c1a96f381ceea5985a40ccbb9b7a2f3a78a8",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/copilot_hook_bridge.py": {
+      "sha256": "94304fa730448ac579ef39ba5f5fcd5435845eacffcf71500c07652b400145ea",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/copilot_install.py": {
+      "sha256": "aa666af98b1e7b566ae71d305a7ccf170435292dab3d369c0e6604c2b425d9ec",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/copilot_session.py": {
+      "sha256": "fc96119d03c0da668fdb50ba7bb2bd43d6180cb31a519e0364e8d295015f7503",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/copilot_state.py": {
+      "sha256": "f48509dd4ad59eff4b409d931ca13bc726e0cd80eeff5eff69518c5da6ac2184",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/copilot_vscode.py": {
+      "sha256": "ab3c0e0defc4746a7e6876c5286b0a54db6c68e6bf0306d93dd29282ed8296c4",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/cowork_doctor.py": {
+      "sha256": "905151d845113c277efbb89976415f24f06169251749306f80292640cde579f9",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/cowork_install.py": {
+      "sha256": "9f08f8b41a3cce0c78e3ce503642f4683da1f71d031d5ce8d36d591682e2e84b",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/credential_patterns.py": {
+      "sha256": "e669d7b58c6d06c30a169264ad49012d3637f2f88306449ddfffbdca212cfed1",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/delta_diff.py": {
+      "sha256": "de506f1aea65d21570b6cd8d47ba12feed7d5dca51e0a8fcbeaad63c32465cf1",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/__init__.py": {
+      "sha256": "a010b8469a17165848e4a0777af59350c308dd4139721271894f3df2063a75d0",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/bad_decomposition.py": {
+      "sha256": "cf4e8751d33ae096ffee05171fb739d0f167d253ab1dcaa544e755f03e25da7f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/cache_instability.py": {
+      "sha256": "029489bd5910f7b57157dae583636bc10cf04e34bb3d520101cb8d210b1253d7",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/looping.py": {
+      "sha256": "bda6d69a36ff7a0fcff1e4a55372c37035e172ed03d89a911fbfc83a6e0800ba",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/output_waste.py": {
+      "sha256": "cf38a337323ec84028f374868e84aad42ad1a3314d2854d5d96114eda0ff9925",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/overpowered.py": {
+      "sha256": "317c76d7391626223ae18207511a0abb7efb030a9548fd0a079b2ac25e0d3847",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/pdf_ingestion.py": {
+      "sha256": "f72ea1bfed510c1e2711c314a9e0d6d81ba82c185b6a3655d6772af124e8c243",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/registry.py": {
+      "sha256": "81a93d3c01a7fe80b16fcff7151680243b40ced6671903fe843a3aa0069470b8",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/respond_to_bash.py": {
+      "sha256": "eaa3e181ba2db02650d5b30e73ea17e13a4e58518ba712a48078de3cd01f31d7",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/retry_churn.py": {
+      "sha256": "ee5b0e91cce18a825a401f7fe6b85911be15e259db3f2f4afc0b326b19128385",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/tool_cascade.py": {
+      "sha256": "833496b308cd3034ac1fd9401c1b824c3c64cd02f89abac02d6f4cd97e9ea16f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/wasteful_thinking.py": {
+      "sha256": "b8345d767a48f40d275480973681baf56dc76329d8f3eaa6260966d6d6b787cd",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/weak_model.py": {
+      "sha256": "12be4d19c375a14d8a7b8c159ab0f1b70ea3b2b14dde5892a9aefceb30953f5f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/detectors/websearch_routing.py": {
+      "sha256": "fef4a2385caf3c9495987007d16edf73a022cddbd0aecf2293025e3d9599996d",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hermes_doctor.py": {
+      "sha256": "cf6c86ac9b21728242760177668b0ce166a7addc9264511fb43f799171c1f39f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hermes_hook_bridge.py": {
+      "sha256": "15eb39e9c1a156a113e47da4ab76143fbe05347faeb31a012e35113a452dcb13",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hermes_install.py": {
+      "sha256": "0f95ac20a725048513f44d91acce358a20a292d726f028f780bd653a8d30037f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hermes_session.py": {
+      "sha256": "5807067d0f9824a6068fa4a5e18ffb8756fbde6c938909f4f3284abcfbc38d4a",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hermes_state.py": {
+      "sha256": "9afe6d23f67b31c224b66e5053bde9a3050fefbc381fd4b13f5ed14de5aa5dcf",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hook_io.py": {
+      "sha256": "0e1f662fbaf21fa645257cdecd4d96bed6b1560768fcdaefa7e4811e0a332ad8",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/hook_runtime.py": {
+      "sha256": "48891de2b99bae5d8405cd8de71a63bb826bffa18a302e2d22f5ff57f3544b9a",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/injection.py": {
+      "sha256": "f647eabc7067499b74f72c4ba5c55738fdc18c6539a7a5b99c65d03126016d8d",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/install_reconcile.py": {
+      "sha256": "1552f3f45a2790709dd1c7fd527adb592e30b2783739e37cf4c993b1cfafeb59",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/measure.py": {
+      "sha256": "edc7ea0fc9a59a5cc0918674cb3173e26b1a883b65b129e5893d9216fb7038e9",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/outline.py": {
+      "sha256": "bd27835f85c5fd45c9cf67cb8b969038489249c56182ec2638a4f1223799b98f",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/pipeline_analyzer.py": {
+      "sha256": "d2c3a75011f2b83e42e2d81a1318b97fa18f7cd99e93645d56ada31184f72ca5",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/plugin_env.py": {
+      "sha256": "551d8eec1e17fc8b9c562ee3e102831f8afdcfe32391a537801771119c6a1e18",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/quality_cache_gate.py": {
+      "sha256": "03f6dce67e36484baa8d85d2ba3cda8198f9c9c82b560cf98d646718385131d8",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/read_cache.py": {
+      "sha256": "06b29fa864d288b35a63e29cc432c4c0fe73691a8ea0fc509edf376a9820fbb2",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/refetch_fingerprint.py": {
+      "sha256": "da4d63ecccfb9580ff9a560da853dfd069c37fe0b077aaef4991014a97d831a3",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/refetch_guard.py": {
+      "sha256": "d761be22347359029e6f898df20f3074fd720f1baa1b6e775f984fe7402a6785",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/routing_advisor.py": {
+      "sha256": "f098ece01bc8acf55493ee1f2f482af8fb16f4a9c6a4664784074fd73f41e866",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/runtime_env.py": {
+      "sha256": "6ac6a89a8e2d79813b226b9cf0f9c45d705ec9f9cbc9bb7427271afe9ca787a2",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/session_store.py": {
+      "sha256": "800f2f7ff5703cd9af9543b5ea9c9e6dbaf87057e18370ae8c1b527ff2ef7843",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/spawn_utils.py": {
+      "sha256": "25ab1506d4887c6bce2490b47d272f7405c564936a76d03cc23649f1c678d7c5",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/statusline.js": {
+      "sha256": "ade9d7b5fc8ecd6fe10295444dc71aae9e259a298186894752263874cb41a8f9",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/structure_map.py": {
+      "sha256": "8dd436af01c65357955cf4377a8365ce3d6e8f2fb4e7d6d8af66179449002729",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/structure_map_ts.py": {
+      "sha256": "4fe0f40dc7e482bc21ff3091d1761a70af454b0d1dd6bcb985457f72315a5481",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/structure_replay.py": {
+      "sha256": "32ce4867ed403eef0806a1d83cab867f4740944043002a553bdae093b1b84245",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/token_estimate.py": {
+      "sha256": "9bc912e9896e16c921c907d6fdf2e558413846c7f20a43eaa153a87c30a4d5e5",
+      "mode": "100644"
+    },
+    "skills/token-optimizer/scripts/utf8_io.py": {
+      "sha256": "5cc0fc48134c10ffb0c0e2589b49298d01d63608cac68ec67cb8df15944a263d",
+      "mode": "100644"
+    }
+  }
+}
