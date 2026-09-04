@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
@@ -21,6 +22,7 @@ import {
   type OptimizerConfig,
 } from "./config.ts";
 import {
+  MAX_ID_LENGTH,
   PROTOCOL_VERSION,
   isBridgeResponse,
   isHealthyStatus,
@@ -46,6 +48,7 @@ const BUILTIN_NAMES: Readonly<Record<string, string>> = {
   write: "Write",
 };
 const PATH_TO_FILE_PATH = new Set(["read", "edit", "write"]);
+const BRIDGE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const FAILURE_MESSAGES = {
   config: "Token Optimizer config unavailable.",
   bridge: "Token Optimizer bridge unavailable.",
@@ -58,6 +61,11 @@ type FailureClass = keyof typeof FAILURE_MESSAGES;
 type PiAPI = Pick<ExtensionAPI, "getAllTools" | "sendMessage">;
 type BridgeRunner = Pick<BridgeClient, "run" | "runTracked" | "drainOrKill">;
 type ConfigLoader = Pick<ConfigStore, "load">;
+
+function bridgeToolId(id: string): string {
+  if (id.length <= MAX_ID_LENGTH && BRIDGE_ID_PATTERN.test(id)) return id;
+  return `tool_${createHash("sha256").update(id).digest("hex")}`;
+}
 
 export function sessionDescriptor(ctx: ExtensionContext): SessionDescriptor {
   const file = ctx.sessionManager.getSessionFile();
@@ -487,6 +495,7 @@ export class PiAdapter {
     name: string,
     input: Record<string, unknown>,
   ): ToolDescriptor {
+    id = bridgeToolId(id);
     const builtin =
       this.pi.getAllTools().find((tool) => tool.name === name)?.sourceInfo
         .source === "builtin";

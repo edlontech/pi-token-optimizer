@@ -360,6 +360,42 @@ test("normalizes a builtin read and builds the current Pi session descriptor", a
   assert.deepEqual(event.input, { path: "src/main.ts", offset: 4, limit: 20 });
 });
 
+test("normalizes current Pi tool call ids consistently", async () => {
+  const requests: BridgeRequest[] = [];
+  const adapter = await activeAdapter(
+    piWithTools([{ name: "read", source: "builtin" }]),
+    bridgeReturning({ protocolVersion: 1, ok: true, decision: "allow" }, requests),
+  );
+  const toolCallId =
+    "call_o44mkoVZvLN4B2j9T8ZQinpg|fc_0d47f241fc54b03d016a9aad8e996087d297ec0097a3b1d174";
+  const expectedId =
+    "tool_e153ecf5256ff0fcfdc8bcf54168f07a7d62e5805c8ce47991768ef214853d7c";
+  const call: ToolCallEvent = {
+    type: "tool_call",
+    toolName: "read",
+    toolCallId,
+    input: { path: "src/main.ts" },
+  };
+  const result: ToolResultEvent = {
+    type: "tool_result",
+    toolName: "read",
+    toolCallId,
+    input: { path: "src/main.ts" },
+    content: [{ type: "text", text: "output" }],
+    details: undefined,
+    isError: false,
+  };
+
+  await adapter.beforeTool(call, context());
+  await adapter.afterTool(result, context());
+
+  assert.deepEqual(
+    requests.map((request) => request.tool?.id),
+    [expectedId, expectedId],
+  );
+  assert.equal(requests.every(isBridgeRequest), true);
+});
+
 test("maps only source-proven builtins and leaves unknown or external tools untouched", async () => {
   const requests: BridgeRequest[] = [];
   const tools = [
