@@ -165,6 +165,28 @@ export class PiAdapter {
     return this.activeState;
   }
 
+  isActive(): boolean {
+    return this.active();
+  }
+
+  async compacted(ctx: ExtensionContext): Promise<void> {
+    if (!this.active()) return;
+    const generation = this.generation;
+    try {
+      const response = await this.bridge.run({
+        protocolVersion: PROTOCOL_VERSION,
+        action: "post_compact",
+        session: this.session(ctx),
+      }, { timeoutMs: BRIDGE_TIMEOUT_MS, signal: ctx.signal });
+      if (generation === this.generation
+        && (!isBridgeResponse(response, "post_compact") || !response.ok)) {
+        this.warn(ctx, "bridge");
+      }
+    } catch {
+      if (generation === this.generation) this.warn(ctx, "bridge");
+    }
+  }
+
   async runControl(
     action: Extract<BridgeAction, "status" | "doctor" | "dashboard" | "expand">,
     ctx: ExtensionContext,

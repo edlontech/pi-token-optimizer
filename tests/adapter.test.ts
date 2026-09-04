@@ -1044,6 +1044,61 @@ test("headless contexts never receive failure notifications", async () => {
   assert.equal(notifications, 0);
 });
 
+test("successful compaction clears only the active current session and fails open", async () => {
+  const requests: BridgeRequest[] = [];
+  let response: BridgeResponse | null = { protocolVersion: 1, ok: true };
+  const adapter = await activeAdapter(piWithTools([]), {
+    run: async (request) => {
+      requests.push(request);
+      return response;
+    },
+  });
+  const current = context({
+    cwd: "/work/current",
+    sessionManager: {
+      getSessionId: () => "current-session",
+      getSessionFile: () => "/sessions/current.jsonl",
+    } as ExtensionContext["sessionManager"],
+  });
+
+  assert.equal(adapter.isActive(), true);
+  await adapter.compacted(current);
+  response = null;
+  await adapter.compacted(current);
+
+  assert.deepEqual(requests, [
+    {
+      protocolVersion: 1,
+      action: "post_compact",
+      session: {
+        id: "current-session",
+        cwd: "/work/current",
+        file: "/sessions/current.jsonl",
+        provider: "anthropic",
+        model: "sonnet",
+        reasoningLevel: "high",
+      },
+    },
+    {
+      protocolVersion: 1,
+      action: "post_compact",
+      session: {
+        id: "current-session",
+        cwd: "/work/current",
+        file: "/sessions/current.jsonl",
+        provider: "anthropic",
+        model: "sonnet",
+        reasoningLevel: "high",
+      },
+    },
+  ]);
+
+  adapter.disableForSession(current);
+  assert.equal(adapter.isActive(), false);
+  await adapter.compacted(current);
+  assert.equal(requests.length, 2);
+});
+
 test("post-tool bridge failures and replacements for errors fail open", async () => {
   const event = (): ToolResultEvent => ({
     type: "tool_result",

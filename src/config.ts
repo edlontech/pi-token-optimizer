@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 
 export const CONFIG_SCHEMA_VERSION = 1 as const;
 export const CONSENT_NOTICE_VERSION = 1 as const;
+export const CONSENT_NOTICE = "Pi Token Optimizer processes session activity locally and persists credential-redacted read-cache source excerpts, tool archives, metrics, and continuity checkpoints containing brief conversation snippets under the Pi agent directory. Local retention limits apply, and /token-optimizer purge removes this stored optimizer data. The optimizer sends no external telemetry. During custom compaction, Pi sends the current session context together with optimizer guidance to your selected Pi provider as a normal model call.";
 export const TOKEN_OPTIMIZER_DIRECTORY = "token-optimizer";
 
 export interface OptimizerConfig {

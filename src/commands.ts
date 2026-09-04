@@ -9,6 +9,7 @@ import type {
 import { Type } from "typebox";
 
 import {
+  CONSENT_NOTICE,
   CONSENT_NOTICE_VERSION,
   type ConfigStore,
   type OptimizerConfig,
@@ -34,7 +35,6 @@ const COMMANDS = [
 ] as const;
 const CONSENT_COMMANDS = ["show", "grant", "reset"] as const;
 const USAGE = "Usage: /token-optimizer status|doctor|dashboard|enable|disable|consent show|grant|reset|expand <id>|purge";
-const CONSENT_NOTICE = "Token Optimizer processes current Pi session activity locally, stores credential-redacted archives and metrics under the Pi agent directory, and sends no optimizer data over the network.";
 
 type ControlAction = Extract<BridgeAction, "status" | "doctor" | "dashboard" | "expand">;
 

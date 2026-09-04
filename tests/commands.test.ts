@@ -12,7 +12,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { PiAdapter } from "../src/adapter.ts";
-import type { ConfigStore, OptimizerConfig, PurgePreview, PurgeResult } from "../src/config.ts";
+import {
+  CONSENT_NOTICE,
+  type ConfigStore,
+  type OptimizerConfig,
+  type PurgePreview,
+  type PurgeResult,
+} from "../src/config.ts";
 import type { BridgeAction, BridgeResponse } from "../src/protocol.ts";
 import {
   registerExpandTool,
@@ -261,8 +267,18 @@ test("consent and disable transitions save locally and gate activity immediately
   const command = h.commands.get("token-optimizer")!;
 
   let notices = await invoke(command, "consent show", "print");
-  assert.match(notices.at(-1)?.message ?? "", /local/i);
-  assert.match(notices.at(-1)?.message ?? "", /not granted/i);
+  const shownNotice = notices.at(-1)?.message ?? "";
+  assert.equal(shownNotice.startsWith(`${CONSENT_NOTICE}\n\n`), true);
+  assert.match(shownNotice, /read-cache source excerpts/i);
+  assert.match(shownNotice, /tool archives/i);
+  assert.match(shownNotice, /metrics/i);
+  assert.match(shownNotice, /continuity checkpoints.*brief conversation snippets/i);
+  assert.match(shownNotice, /retention/i);
+  assert.match(shownNotice, /purge/i);
+  assert.match(shownNotice, /no external telemetry/i);
+  assert.match(shownNotice, /custom compaction.*current session context.*optimizer guidance/i);
+  assert.match(shownNotice, /selected Pi provider.*normal model call/i);
+  assert.match(shownNotice, /not granted/i);
 
   notices = await invoke(command, "consent grant");
   assert.deepEqual(config.current().consent, {
