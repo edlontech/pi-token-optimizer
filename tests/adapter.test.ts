@@ -511,6 +511,44 @@ test("settled uses tracked rollups and disableForSession gates activity immediat
   assert.deepEqual(statuses.at(-1), ["token-optimizer", undefined]);
 });
 
+test("purge drain permanently retires hot paths for this adapter instance", async () => {
+  const direct: BridgeRequest[] = [];
+  const tracked: BridgeRequest[] = [];
+  const events: string[] = [];
+  const adapter = new PiAdapter(piWithTools([]), {
+    run: async (request) => {
+      direct.push(request);
+      return request.action === "status"
+        ? healthyStatus
+        : { protocolVersion: 1, ok: true };
+    },
+    runTracked: (request) => {
+      events.push("rollup");
+      tracked.push(request);
+    },
+    drainOrKill: async () => { events.push("drain"); },
+  }, {
+    load: async () => structuredClone(activeConfig),
+  });
+  const ctx = context();
+  await adapter.start(ctx, "startup");
+  adapter.settled(ctx);
+
+  adapter.disableForSession(ctx);
+  await adapter.drainBridge();
+  assert.equal(await adapter.refresh(ctx), false);
+  await adapter.start(ctx, "new");
+  adapter.settled(ctx);
+  assert.equal(await adapter.beforePrompt(
+    { type: "before_agent_start", prompt: "ignored" } as BeforeAgentStartEvent,
+    ctx,
+  ), undefined);
+
+  assert.deepEqual(events, ["rollup", "drain"]);
+  assert.deepEqual(tracked.map(({ action }) => action), ["rollup"]);
+  assert.deepEqual(direct.map(({ action }) => action), ["status", "session_start"]);
+});
+
 test("disableForSession ignores in-flight bridge decisions", async () => {
   const pending = new Map<string, (response: BridgeResponse) => void>();
   const adapter = await activeAdapter(piWithTools([

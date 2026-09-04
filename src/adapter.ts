@@ -21,7 +21,9 @@ import {
 import {
   PROTOCOL_VERSION,
   isBridgeResponse,
+  type BridgeAction,
   type BridgeRequest,
+  type BridgeResponse,
   type SessionDescriptor,
   type ToolDescriptor,
 } from "./protocol.ts";
@@ -59,6 +61,7 @@ export class PiAdapter {
   private activeState = false;
   private finalizable = false;
   private generation = 0;
+  private retired = false;
   private shutdownPromise?: Promise<void>;
   private readonly warned = new Set<FailureClass>();
 
@@ -69,12 +72,11 @@ export class PiAdapter {
   ) {}
 
   async start(ctx: ExtensionContext, reason: SessionStartEvent["reason"]): Promise<void> {
-    const generation = ++this.generation;
     this.warned.clear();
-    this.compatible = false;
-    this.activeState = false;
-    this.finalizable = false;
     this.shutdownPromise = undefined;
+    if (!await this.refresh(ctx)) return;
+
+    const generation = this.generation;
     let session: SessionDescriptor;
     let signal: AbortSignal | undefined;
     try {
@@ -84,52 +86,6 @@ export class PiAdapter {
       this.warn(ctx, "lifecycle");
       return;
     }
-
-    let config: OptimizerConfig | undefined;
-    try {
-      config = await this.configStore.load();
-    } catch {
-      this.warn(ctx, "config");
-    }
-    if (generation !== this.generation) return;
-
-    let status;
-    try {
-      status = await this.bridge.run({
-        protocolVersion: PROTOCOL_VERSION,
-        action: "status",
-        session,
-      }, { timeoutMs: BRIDGE_TIMEOUT_MS, signal });
-    } catch {
-      if (generation === this.generation) this.warn(ctx, "bridge");
-    }
-    if (generation !== this.generation) return;
-
-    try {
-      this.compatible = isBridgeResponse(status, "status")
-        && status.ok
-        && status.data?.runtime === "pi"
-        && status.data.protocolVersion === PROTOCOL_VERSION
-        && status.data.healthy === true;
-    } catch {
-      this.compatible = false;
-    }
-    if (!this.compatible) this.warn(ctx, "bridge");
-    try {
-      this.activeState = this.compatible
-        && config !== undefined
-        && this.hasConsent(config)
-        && status?.data?.active === true;
-    } catch {
-      config = undefined;
-      this.activeState = false;
-      this.warn(ctx, "config");
-    }
-    this.finalizable = this.activeState;
-    this.setStatus(ctx, config === undefined || !this.compatible
-      ? "optimizer unavailable"
-      : this.activeState ? "optimizer on" : "optimizer off");
-    if (!this.activeState) return;
 
     try {
       const response = await this.bridge.run({
@@ -153,6 +109,86 @@ export class PiAdapter {
     } catch {
       if (generation === this.generation) this.warn(ctx, "lifecycle");
     }
+  }
+
+  async refresh(ctx: ExtensionContext): Promise<boolean> {
+    const generation = ++this.generation;
+    this.compatible = false;
+    this.activeState = false;
+    this.finalizable = false;
+    if (this.retired) {
+      this.setStatus(ctx, "optimizer off");
+      return false;
+    }
+    let session: SessionDescriptor;
+    try {
+      session = this.session(ctx);
+    } catch {
+      this.warn(ctx, "lifecycle");
+      return false;
+    }
+
+    let config: OptimizerConfig | undefined;
+    try {
+      config = await this.configStore.load();
+    } catch {
+      this.warn(ctx, "config");
+    }
+    if (generation !== this.generation) return false;
+
+    let status: BridgeResponse | null | undefined;
+    try {
+      status = await this.bridge.run({
+        protocolVersion: PROTOCOL_VERSION,
+        action: "status",
+        session,
+      }, { timeoutMs: BRIDGE_TIMEOUT_MS, signal: ctx.signal });
+    } catch {
+      if (generation === this.generation) this.warn(ctx, "bridge");
+    }
+    if (generation !== this.generation) return false;
+
+    this.compatible = isBridgeResponse(status, "status")
+      && status.ok
+      && status.data?.runtime === "pi"
+      && status.data.protocolVersion === PROTOCOL_VERSION
+      && status.data.healthy === true;
+    if (!this.compatible) this.warn(ctx, "bridge");
+    this.activeState = this.compatible
+      && config !== undefined
+      && this.hasConsent(config)
+      && status?.data?.active === true;
+    this.finalizable = this.activeState;
+    this.setStatus(ctx, config === undefined || !this.compatible
+      ? "optimizer unavailable"
+      : this.activeState ? "optimizer on" : "optimizer off");
+    return this.activeState;
+  }
+
+  async runControl(
+    action: Extract<BridgeAction, "status" | "doctor" | "dashboard" | "expand">,
+    ctx: ExtensionContext,
+    args: Record<string, unknown> | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<BridgeResponse | null> {
+    try {
+      return await this.bridge.run({
+        protocolVersion: PROTOCOL_VERSION,
+        action,
+        session: this.session(ctx),
+        ...(args === undefined ? {} : { args }),
+      }, { timeoutMs: BRIDGE_TIMEOUT_MS, signal });
+    } catch {
+      return null;
+    }
+  }
+
+  drainBridge(): Promise<void> {
+    this.retired = true;
+    this.generation += 1;
+    this.activeState = false;
+    this.finalizable = false;
+    return this.bridge.drainOrKill(BRIDGE_TIMEOUT_MS);
   }
 
   async beforePrompt(
