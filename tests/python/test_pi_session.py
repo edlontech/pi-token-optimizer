@@ -1,15 +1,14 @@
 import json
 import math
 import os
-from pathlib import Path
 import shutil
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from python import pi_session
-
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 
@@ -52,7 +51,9 @@ def message_entry(entry_id, parent_id, message):
     }
 
 
-def assistant_message(call_id, tool_name, path, text="assistant decision because it matters"):
+def assistant_message(
+    call_id, tool_name, path, text="assistant decision because it matters"
+):
     return {
         "role": "assistant",
         "content": [
@@ -377,8 +378,7 @@ class ActiveBranchTests(AuthorizedSessionTestCase):
             with self.subTest(location="record", value=name):
                 path = self.session_root / f"record-{name}.jsonl"
                 path.write_text(
-                    valid_header
-                    + '{"type":"message","id":"strict01","parentId":null,'
+                    valid_header + '{"type":"message","id":"strict01","parentId":null,'
                     f'"extra":{value},"message":{{"role":"user","content":"test"}}}}\n',
                     encoding="utf-8",
                 )
@@ -438,7 +438,9 @@ class SessionMetricsTests(AuthorizedSessionTestCase):
         )
 
     def test_uses_only_usage_from_the_active_branch(self):
-        parsed = pi_session.parse_session_jsonl(self.fixture("pi-session-branched.jsonl"))
+        parsed = pi_session.parse_session_jsonl(
+            self.fixture("pi-session-branched.jsonl")
+        )
 
         self.assertIsNotNone(parsed)
         assert parsed is not None
@@ -668,7 +670,10 @@ class SessionMetricsTests(AuthorizedSessionTestCase):
 
         self.assertIsNone(pi_session.parse_session_jsonl(path))
         self.assertTrue(
-            all(math.isfinite(turn["cost_usd"]) for turn in pi_session.parse_session_turns(path))
+            all(
+                math.isfinite(turn["cost_usd"])
+                for turn in pi_session.parse_session_turns(path)
+            )
         )
 
     def test_session_metrics_read_the_file_once(self):
@@ -719,9 +724,10 @@ class QualityParserTests(AuthorizedSessionTestCase):
             [item[1] for item in quality["tool_results"]],
             ["call-retained", "call-later"],
         )
-        self.assertEqual([item[1] for item in quality["messages"]], [
-            "user", "assistant", "user", "assistant"
-        ])
+        self.assertEqual(
+            [item[1] for item in quality["messages"]],
+            ["user", "assistant", "user", "assistant"],
+        )
         self.assertNotIn("old.py", repr(quality))
         self.assertEqual(quality["context_tokens"], 123)
         self.assertEqual(quality["model"], "gpt-later")
@@ -731,11 +737,13 @@ class QualityParserTests(AuthorizedSessionTestCase):
     def test_legacy_compaction_materializes_first_kept_entry_range(self):
         records = [
             json.loads(line)
-            for line in (FIXTURES / "pi-session-compacted.jsonl").read_text(
-                encoding="utf-8"
-            ).splitlines()
+            for line in (FIXTURES / "pi-session-compacted.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
         ]
-        compaction = next(record for record in records if record["type"] == "compaction")
+        compaction = next(
+            record for record in records if record["type"] == "compaction"
+        )
         compaction.pop("retainedTail")
         compaction["firstKeptEntryId"] = "10000002"
         path = self.write_session("legacy-compaction.jsonl", records)
@@ -759,11 +767,13 @@ class QualityParserTests(AuthorizedSessionTestCase):
     def test_empty_retained_tail_is_authoritative(self):
         records = [
             json.loads(line)
-            for line in (FIXTURES / "pi-session-compacted.jsonl").read_text(
-                encoding="utf-8"
-            ).splitlines()
+            for line in (FIXTURES / "pi-session-compacted.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
         ]
-        compaction = next(record for record in records if record["type"] == "compaction")
+        compaction = next(
+            record for record in records if record["type"] == "compaction"
+        )
         compaction["retainedTail"] = []
         compaction["firstKeptEntryId"] = "10000002"
         path = self.write_session("empty-retained-tail.jsonl", records)
@@ -788,11 +798,13 @@ class QualityParserTests(AuthorizedSessionTestCase):
     def test_retained_persisted_tool_call_is_not_double_counted(self):
         records = [
             json.loads(line)
-            for line in (FIXTURES / "pi-session-compacted.jsonl").read_text(
-                encoding="utf-8"
-            ).splitlines()
+            for line in (FIXTURES / "pi-session-compacted.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
         ]
-        compaction = next(record for record in records if record["type"] == "compaction")
+        compaction = next(
+            record for record in records if record["type"] == "compaction"
+        )
         compaction["retainedTail"] = [
             record["message"]
             for record in records
@@ -854,7 +866,9 @@ class ContinuityAndOutputTests(AuthorizedSessionTestCase):
         self.assertEqual(state["recent_reads"], ["src/app.py"])
         self.assertTrue(any("parser?" in item for item in state["open_questions"]))
         self.assertTrue(any("decided" in item for item in state["decisions"]))
-        self.assertEqual(state["current_step"]["last_assistant"], "The parser is ready.")
+        self.assertEqual(
+            state["current_step"]["last_assistant"], "The parser is ready."
+        )
 
     def test_iterates_only_large_or_high_signal_materialized_tool_outputs(self):
         path = self.fixture("pi-session-linear.jsonl")

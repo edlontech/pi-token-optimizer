@@ -2,7 +2,6 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
@@ -10,12 +9,11 @@ import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest import mock
-
 
 sys.dont_write_bytecode = True
 from python import pi_bridge
-
 
 ROOT = Path(__file__).parents[2]
 BRIDGE = ROOT / "python" / "pi_bridge.py"
@@ -30,15 +28,20 @@ class PiBridgeToolTests(unittest.TestCase):
         self.data_root = self.pi_home / "token-optimizer" / "data"
         self.data_root.mkdir(parents=True)
         config = self.pi_home / "token-optimizer" / "config.json"
-        config.write_text(json.dumps({
-            "schemaVersion": 1,
-            "enabled": True,
-            "consent": {
-                "granted": True,
-                "noticeVersion": 1,
-                "grantedAt": "2026-09-03T12:00:00.000Z",
-            },
-        }), encoding="utf-8")
+        config.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "enabled": True,
+                    "consent": {
+                        "granted": True,
+                        "noticeVersion": 1,
+                        "grantedAt": "2026-09-03T12:00:00.000Z",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         self.environment = {
             "HOME": str(self.root),
             "PATH": os.environ.get("PATH", ""),
@@ -93,7 +96,9 @@ class PiBridgeToolTests(unittest.TestCase):
             env=self.environment if environment is None else environment,
             check=False,
         )
-        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+        self.assertEqual(
+            completed.returncode, 0, completed.stderr.decode("utf-8", "replace")
+        )
         stdout = completed.stdout.decode("utf-8", "strict")
         self.assertEqual(len(stdout.splitlines()), 1, stdout)
         return json.loads(stdout), completed.stderr.decode("utf-8", "replace")
@@ -117,11 +122,14 @@ class PiBridgeToolTests(unittest.TestCase):
                 response, _stderr = self.invoke(
                     self.request("bash", "builtin", {"command": command})
                 )
-                self.assertEqual(response, {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "decision": "allow",
-                })
+                self.assertEqual(
+                    response,
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "decision": "allow",
+                    },
+                )
 
     def test_read_honors_project_contextignore(self):
         ignored = self.root / "ignored.py"
@@ -142,10 +150,13 @@ class PiBridgeToolTests(unittest.TestCase):
 
     def test_read_substitutes_unchanged_rereads_then_uses_escape_hatch(self):
         source = self.root / "sample.py"
-        source.write_text("\n\n".join(
-            f"def function_{index}(value):\n    return value + {index}"
-            for index in range(120)
-        ), encoding="utf-8")
+        source.write_text(
+            "\n\n".join(
+                f"def function_{index}(value):\n    return value + {index}"
+                for index in range(120)
+            ),
+            encoding="utf-8",
+        )
 
         first, _stderr = self.invoke(
             self.request("read", "builtin", {"path": str(source)}, "read-1")
@@ -166,11 +177,14 @@ class PiBridgeToolTests(unittest.TestCase):
         self.assertIn("python signatures", second["data"]["additionalContext"])
         self.assertEqual(third["decision"], "block")
         self.assertNotIn("additionalContext", third["data"])
-        self.assertEqual(fourth, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            fourth,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
 
     def test_read_returns_changed_file_delta_and_allows_specific_range(self):
         source = self.root / "changed.py"
@@ -196,12 +210,14 @@ class PiBridgeToolTests(unittest.TestCase):
         changed, _stderr = self.invoke(
             self.request("read", "builtin", {"path": str(source)}, "read-2")
         )
-        ranged, _stderr = self.invoke(self.request(
-            "read",
-            "builtin",
-            {"path": str(source), "offset": 1, "limit": 5},
-            "read-3",
-        ))
+        ranged, _stderr = self.invoke(
+            self.request(
+                "read",
+                "builtin",
+                {"path": str(source), "offset": 1, "limit": 5},
+                "read-3",
+            )
+        )
 
         self.assertEqual(changed["decision"], "block")
         self.assertIn("showing diff", changed["data"]["reason"])
@@ -217,21 +233,27 @@ class PiBridgeToolTests(unittest.TestCase):
             ensure_ascii=False,
             default=str,
         )
-        fingerprint = hashlib.sha256(
-            f"{tool_name}\0{normalized}".encode("utf-8")
-        ).hexdigest()[:16]
+        fingerprint = hashlib.sha256(f"{tool_name}\0{normalized}".encode()).hexdigest()[
+            :16
+        ]
         archive = self.data_root / "tool-archive" / "session-1"
         archive.mkdir(parents=True)
         (archive / "archived-1.json").write_text(
             json.dumps({"response": "saved result"}),
             encoding="utf-8",
         )
-        (archive / "manifest.jsonl").write_text(json.dumps({
-            "tool_name": tool_name,
-            "tool_use_id": "archived-1",
-            "args_hash": fingerprint,
-            "tokens_est": 2000,
-        }) + "\n", encoding="utf-8")
+        (archive / "manifest.jsonl").write_text(
+            json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "tool_use_id": "archived-1",
+                    "args_hash": fingerprint,
+                    "tokens_est": 2000,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         blocked, stderr = self.invoke(
             self.request(tool_name, "external", tool_input, "external-2")
@@ -259,15 +281,20 @@ class PiBridgeToolTests(unittest.TestCase):
                 errors = io.StringIO()
                 with (
                     mock.patch.dict(os.environ, self.environment, clear=True),
-                    mock.patch.object(pi_bridge, "_capture_hook", return_value=engine_output),
+                    mock.patch.object(
+                        pi_bridge, "_capture_hook", return_value=engine_output
+                    ),
                     mock.patch("sys.stderr", errors),
                 ):
                     pi_bridge.main(io.StringIO(json.dumps(request)), output, errors)
-                self.assertEqual(json.loads(output.getvalue()), {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "decision": "allow",
-                })
+                self.assertEqual(
+                    json.loads(output.getvalue()),
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "decision": "allow",
+                    },
+                )
                 self.assertEqual(len(output.getvalue().splitlines()), 1)
                 self.assertLessEqual(len(errors.getvalue()), 600)
 
@@ -285,11 +312,14 @@ class PiBridgeToolTests(unittest.TestCase):
             mock.patch("sys.stdout", leaked),
         ):
             pi_bridge.main(io.StringIO(json.dumps(external)), output, errors)
-        self.assertEqual(json.loads(output.getvalue()), {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
         self.assertEqual(len(output.getvalue().splitlines()), 1)
         self.assertEqual(leaked.getvalue(), "")
         self.assertLessEqual(len(errors.getvalue()), 600)
@@ -314,14 +344,19 @@ class PiBridgeToolTests(unittest.TestCase):
         finally:
             connection.rollback()
             connection.close()
-        self.assertEqual(locked, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            locked,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
         self.assertLessEqual(len(stderr), 600)
 
-    def test_post_tool_errors_images_and_binary_text_pass_through_without_persistence(self):
+    def test_post_tool_errors_images_and_binary_text_pass_through_without_persistence(
+        self,
+    ):
         cases = (
             {"text": "failure\n" * 1000, "is_error": True},
             {"text": "image metadata\n" * 1000, "has_images": True},
@@ -337,11 +372,14 @@ class PiBridgeToolTests(unittest.TestCase):
                     **options,
                 )
                 response, stderr = self.invoke(request)
-                self.assertEqual(response, {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "decision": "allow",
-                })
+                self.assertEqual(
+                    response,
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "decision": "allow",
+                    },
+                )
                 self.assertEqual(stderr, "")
         self.assertFalse((self.data_root / "tool-archive").exists())
         self.assertFalse((self.data_root / "session-store").exists())
@@ -359,32 +397,43 @@ class PiBridgeToolTests(unittest.TestCase):
                 source.write_text(original, encoding="utf-8")
 
                 first, _stderr = self.invoke(
-                    self.request("read", "builtin", {"path": str(source)}, f"{tool_name}-read-1")
+                    self.request(
+                        "read", "builtin", {"path": str(source)}, f"{tool_name}-read-1"
+                    )
                 )
                 self.assertEqual(first["decision"], "allow")
 
                 source.write_text(changed, encoding="utf-8")
-                post, stderr = self.invoke(self.post_request(
-                    tool_name,
-                    "builtin",
-                    {"path": str(source)},
-                    "success",
-                    tool_id=f"{tool_name}-1",
-                ))
+                post, stderr = self.invoke(
+                    self.post_request(
+                        tool_name,
+                        "builtin",
+                        {"path": str(source)},
+                        "success",
+                        tool_id=f"{tool_name}-1",
+                    )
+                )
                 reread, _stderr = self.invoke(
-                    self.request("read", "builtin", {"path": str(source)}, f"{tool_name}-read-2")
+                    self.request(
+                        "read", "builtin", {"path": str(source)}, f"{tool_name}-read-2"
+                    )
                 )
 
-                self.assertEqual(post, {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "decision": "allow",
-                })
+                self.assertEqual(
+                    post,
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "decision": "allow",
+                    },
+                )
                 self.assertEqual(stderr, "")
                 self.assertEqual(reread["decision"], "block")
                 self.assertIn("signatures view", reread["data"]["reason"])
                 self.assertIn("new_marker_0", reread["data"]["additionalContext"])
-                self.assertNotIn("old_marker_0(value)", reread["data"]["additionalContext"])
+                self.assertNotIn(
+                    "old_marker_0(value)", reread["data"]["additionalContext"]
+                )
 
                 cleared = subprocess.run(
                     [sys.executable, str(read_cache), "--clear-compacted", "--quiet"],
@@ -399,21 +448,27 @@ class PiBridgeToolTests(unittest.TestCase):
                     ),
                     check=False,
                 )
-                self.assertEqual(cleared.returncode, 0, cleared.stderr.decode("utf-8", "replace"))
+                self.assertEqual(
+                    cleared.returncode, 0, cleared.stderr.decode("utf-8", "replace")
+                )
                 after_compaction, _stderr = self.invoke(
-                    self.request("read", "builtin", {"path": str(source)}, f"{tool_name}-read-3")
+                    self.request(
+                        "read", "builtin", {"path": str(source)}, f"{tool_name}-read-3"
+                    )
                 )
                 self.assertEqual(after_compaction["decision"], "allow")
 
     def test_external_text_is_archived_replaced_and_returns_expand_id(self):
         text = "result line with useful detail\n" * 300
-        response, stderr = self.invoke(self.post_request(
-            "acme.search",
-            "external",
-            {"query": "needle"},
-            text,
-            tool_id="external-1",
-        ))
+        response, stderr = self.invoke(
+            self.post_request(
+                "acme.search",
+                "external",
+                {"query": "needle"},
+                text,
+                tool_id="external-1",
+            )
+        )
 
         self.assertEqual(response["archiveId"], "external-1")
         self.assertIn("Full result archived", response["replacementText"])
@@ -447,17 +502,28 @@ class PiBridgeToolTests(unittest.TestCase):
             )
 
         def invoke_result(archive_id, replacement, entry_kind, manifest_kind):
-            (archive / f"{archive_id}.json").write_text(json.dumps({
-                "tool_use_id": archive_id,
-                "tool_name": "acme.search",
-                "tool_kind": entry_kind,
-                "response": "saved result",
-            }), encoding="utf-8")
-            (archive / "manifest.jsonl").write_text(json.dumps({
-                "tool_use_id": archive_id,
-                "tool_name": "acme.search",
-                "tool_kind": manifest_kind,
-            }) + "\n", encoding="utf-8")
+            (archive / f"{archive_id}.json").write_text(
+                json.dumps(
+                    {
+                        "tool_use_id": archive_id,
+                        "tool_name": "acme.search",
+                        "tool_kind": entry_kind,
+                        "response": "saved result",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (archive / "manifest.jsonl").write_text(
+                json.dumps(
+                    {
+                        "tool_use_id": archive_id,
+                        "tool_name": "acme.search",
+                        "tool_kind": manifest_kind,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             result = {
                 "archive_id": archive_id,
                 "replacement_text": replacement,
@@ -467,7 +533,9 @@ class PiBridgeToolTests(unittest.TestCase):
                     "tool_kind": "external",
                 },
             }
-            module = types.SimpleNamespace(archive_result=mock.Mock(return_value=result))
+            module = types.SimpleNamespace(
+                archive_result=mock.Mock(return_value=result)
+            )
             real_load = pi_bridge._load_engine
 
             def load(name):
@@ -509,11 +577,14 @@ class PiBridgeToolTests(unittest.TestCase):
             self.post_request("acme.search", "external", {}, text, tool_id="exempt-1"),
             allowlisted,
         )
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
 
         pruned = dict(
             self.environment,
@@ -524,11 +595,14 @@ class PiBridgeToolTests(unittest.TestCase):
             self.post_request("other.search", "external", {}, text, tool_id="pruned-1"),
             pruned,
         )
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
         self.assertFalse(
             (self.data_root / "tool-archive" / "session-1" / "pruned-1.json").exists()
         )
@@ -538,29 +612,36 @@ class PiBridgeToolTests(unittest.TestCase):
         archive_root = self.data_root / "tool-archive"
         shutil.rmtree(archive_root)
         archive_root.symlink_to(shutil_target, target_is_directory=True)
-        response, _stderr = self.invoke(self.post_request(
-            "other.search",
-            "external",
-            {},
-            text,
-            tool_id="failed-1",
-        ))
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        response, _stderr = self.invoke(
+            self.post_request(
+                "other.search",
+                "external",
+                {},
+                text,
+                tool_id="failed-1",
+            )
+        )
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
         self.assertEqual(list(shutil_target.iterdir()), [])
 
     def test_bash_success_compresses_only_with_verified_archive(self):
         text = "test_example PASSED\n" * 300 + "300 passed in 1.00s\n"
-        response, stderr = self.invoke(self.post_request(
-            "bash",
-            "builtin",
-            {"command": "pytest tests/"},
-            text,
-            tool_id="bash-1",
-        ))
+        response, stderr = self.invoke(
+            self.post_request(
+                "bash",
+                "builtin",
+                {"command": "pytest tests/"},
+                text,
+                tool_id="bash-1",
+            )
+        )
 
         self.assertIn("Full result archived", response["replacementText"])
         archive_id = response["archiveId"]
@@ -568,40 +649,49 @@ class PiBridgeToolTests(unittest.TestCase):
         self.assertIn("measure.py expand " + archive_id, response["replacementText"])
         archive = self.data_root / "tool-archive" / "session-1"
         self.assertTrue((archive / f"{archive_id}.json").is_file())
-        self.assertIn(archive_id, (archive / "manifest.jsonl").read_text(encoding="utf-8"))
+        self.assertIn(
+            archive_id, (archive / "manifest.jsonl").read_text(encoding="utf-8")
+        )
         self.assertEqual(stderr, "")
 
     def test_bash_uses_safe_full_output_file_and_ignores_unsafe_path(self):
         full_text = "test_from_file PASSED\n" * 300 + "300 passed in 1.00s\n"
         output_path = self.root / "bash-output.txt"
         output_path.write_text(full_text, encoding="utf-8")
-        response, _stderr = self.invoke(self.post_request(
-            "bash",
-            "builtin",
-            {"command": "pytest tests/"},
-            "visible truncation",
-            tool_id="bash-file-1",
-            full_output_path=output_path,
-        ))
+        response, _stderr = self.invoke(
+            self.post_request(
+                "bash",
+                "builtin",
+                {"command": "pytest tests/"},
+                "visible truncation",
+                tool_id="bash-file-1",
+                full_output_path=output_path,
+            )
+        )
         self.assertIn(f"{len(full_text):,} chars", response["replacementText"])
 
         outside = self.root / "outside.txt"
         outside.write_text(full_text, encoding="utf-8")
         symlink = self.root / "linked-output.txt"
         symlink.symlink_to(outside)
-        response, _stderr = self.invoke(self.post_request(
-            "bash",
-            "builtin",
-            {"command": "pytest tests/"},
-            "visible truncation",
-            tool_id="bash-file-2",
-            full_output_path=symlink,
-        ))
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        response, _stderr = self.invoke(
+            self.post_request(
+                "bash",
+                "builtin",
+                {"command": "pytest tests/"},
+                "visible truncation",
+                tool_id="bash-file-2",
+                full_output_path=symlink,
+            )
+        )
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
 
         unsafe_paths = []
         oversized = self.root / "oversized.txt"
@@ -618,19 +708,24 @@ class PiBridgeToolTests(unittest.TestCase):
 
         for index, unsafe_path in enumerate(unsafe_paths, start=3):
             with self.subTest(path=unsafe_path.name):
-                response, _stderr = self.invoke(self.post_request(
-                    "bash",
-                    "builtin",
-                    {"command": "pytest tests/"},
-                    "visible truncation",
-                    tool_id=f"bash-file-{index}",
-                    full_output_path=unsafe_path,
-                ))
-                self.assertEqual(response, {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "decision": "allow",
-                })
+                response, _stderr = self.invoke(
+                    self.post_request(
+                        "bash",
+                        "builtin",
+                        {"command": "pytest tests/"},
+                        "visible truncation",
+                        tool_id=f"bash-file-{index}",
+                        full_output_path=unsafe_path,
+                    )
+                )
+                self.assertEqual(
+                    response,
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "decision": "allow",
+                    },
+                )
 
     def test_due_quality_refresh_disables_host_settings_self_heal(self):
         request = self.post_request(
@@ -652,7 +747,9 @@ class PiBridgeToolTests(unittest.TestCase):
 
             heal = mock.Mock(side_effect=AssertionError("host settings self-heal"))
             setup = mock.Mock(side_effect=AssertionError("host settings write"))
-            settings_access = mock.Mock(side_effect=AssertionError("host settings access"))
+            settings_access = mock.Mock(
+                side_effect=AssertionError("host settings access")
+            )
             real_read_text = Path.read_text
             real_write_text = Path.write_text
 
@@ -683,11 +780,14 @@ class PiBridgeToolTests(unittest.TestCase):
             ):
                 pi_bridge.main(io.StringIO(json.dumps(request)), output, errors)
 
-        self.assertEqual(json.loads(output.getvalue()), {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
         quality_cache.assert_called_once()
         heal.assert_not_called()
         setup.assert_not_called()
@@ -706,35 +806,42 @@ class PiBridgeToolTests(unittest.TestCase):
             '{"hookSpecificOutput":{"hookEventName":"PostToolUse"}} trailing',
             '{"hookSpecificOutput":{"hookEventName":"PreToolUse",'
             '"updatedToolOutput":{"stdout":"lossy"}}}',
-            json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "PostToolUse",
-                    "updatedToolOutput": {
-                        "stdout": (
-                            "lossy\n\n[Full result archived (4,000 chars) — saved to disk, not lost.\n"
-                            "Do NOT re-run the original tool to get this data — read the saved copy by running this in Bash:\n"
-                            f"    python3 {pi_bridge.MEASURE_PATH} expand missing-1]"
-                        ),
-                        "stderr": "",
-                        "interrupted": False,
-                        "isImage": False,
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PostToolUse",
+                        "updatedToolOutput": {
+                            "stdout": (
+                                "lossy\n\n[Full result archived (4,000 chars) — saved to disk, not lost.\n"
+                                "Do NOT re-run the original tool to get this data — read the saved copy by running this in Bash:\n"
+                                f"    python3 {pi_bridge.MEASURE_PATH} expand missing-1]"
+                            ),
+                            "stderr": "",
+                            "interrupted": False,
+                            "isImage": False,
+                        },
                     },
-                },
-            }),
+                }
+            ),
         ):
             with self.subTest(engine_output=engine_output):
                 output = io.StringIO()
                 errors = io.StringIO()
                 with (
                     mock.patch.dict(os.environ, self.environment, clear=True),
-                    mock.patch.object(pi_bridge, "_capture_hook", return_value=engine_output),
+                    mock.patch.object(
+                        pi_bridge, "_capture_hook", return_value=engine_output
+                    ),
                 ):
                     pi_bridge.main(io.StringIO(json.dumps(request)), output, errors)
-                self.assertEqual(json.loads(output.getvalue()), {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "decision": "allow",
-                })
+                self.assertEqual(
+                    json.loads(output.getvalue()),
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "decision": "allow",
+                    },
+                )
                 self.assertEqual(len(output.getvalue().splitlines()), 1)
                 self.assertLessEqual(len(errors.getvalue()), 600)
 
@@ -747,13 +854,15 @@ class PiBridgeToolTests(unittest.TestCase):
             connection.execute("CREATE TABLE blocker (id INTEGER PRIMARY KEY)")
             connection.commit()
             connection.execute("BEGIN EXCLUSIVE")
-            response, stderr = self.invoke(self.post_request(
-                "acme.search",
-                "external",
-                {"query": "needle"},
-                "result line\n" * 500,
-                tool_id="contended-1",
-            ))
+            response, stderr = self.invoke(
+                self.post_request(
+                    "acme.search",
+                    "external",
+                    {"query": "needle"},
+                    "result line\n" * 500,
+                    tool_id="contended-1",
+                )
+            )
         finally:
             connection.rollback()
             connection.close()
@@ -763,17 +872,22 @@ class PiBridgeToolTests(unittest.TestCase):
         self.assertLessEqual(len(stderr), 600)
 
     def test_unsupported_post_tool_returns_allow_without_replacement(self):
-        response, _stderr = self.invoke(self.post_request(
-            "future_builtin",
-            "builtin",
-            {"value": 1},
-            "result line\n" * 500,
-        ))
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        response, _stderr = self.invoke(
+            self.post_request(
+                "future_builtin",
+                "builtin",
+                {"value": 1},
+                "result line\n" * 500,
+            )
+        )
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
 
     def test_config_gate_prevents_every_tool_engine_import(self):
         (self.pi_home / "token-optimizer" / "config.json").unlink()
@@ -800,11 +914,14 @@ class PiBridgeToolTests(unittest.TestCase):
                 ):
                     pi_bridge.main(io.StringIO(json.dumps(request)), output, errors)
 
-                self.assertEqual(json.loads(output.getvalue())["data"], {
-                    "active": False,
-                    "reason": "consent_required",
-                    "configState": "missing",
-                })
+                self.assertEqual(
+                    json.loads(output.getvalue())["data"],
+                    {
+                        "active": False,
+                        "reason": "consent_required",
+                        "configState": "missing",
+                    },
+                )
                 engine.assert_not_called()
                 self.assertEqual(errors.getvalue(), "")
 

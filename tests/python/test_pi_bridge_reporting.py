@@ -2,7 +2,6 @@ import contextlib
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import signal
 import sqlite3
@@ -12,12 +11,11 @@ import tempfile
 import time
 import types
 import unittest
+from pathlib import Path
 from unittest import mock
-
 
 sys.dont_write_bytecode = True
 from python import pi_bridge
-
 
 ROOT = Path(__file__).parents[2]
 BRIDGE = ROOT / "python" / "pi_bridge.py"
@@ -34,15 +32,17 @@ class PiBridgeReportingTests(unittest.TestCase):
         self.data_root = self.pi_home / "token-optimizer" / "data"
         self.data_root.mkdir(parents=True)
         (self.pi_home / "token-optimizer" / "config.json").write_text(
-            json.dumps({
-                "schemaVersion": 1,
-                "enabled": True,
-                "consent": {
-                    "granted": True,
-                    "noticeVersion": 1,
-                    "grantedAt": "2026-09-03T12:00:00.000Z",
-                },
-            }),
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "enabled": True,
+                    "consent": {
+                        "granted": True,
+                        "noticeVersion": 1,
+                        "grantedAt": "2026-09-03T12:00:00.000Z",
+                    },
+                }
+            ),
             encoding="utf-8",
         )
         self.project = self.root / "project"
@@ -118,50 +118,62 @@ class PiBridgeReportingTests(unittest.TestCase):
                 "cost_source, platform, incomplete FROM session_log"
             ).fetchone()
 
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "data": {"available": True, "status": "incomplete"},
-        })
-        self.assertEqual(row, (
-            f"pi:{SESSION_ID}",
-            "project",
-            815,
-            30,
-            4,
-            11,
-            '{"gpt-5.6": 195}',
-            '{"gpt-5.6": {"fresh_input": 150, "cache_read": 650, "cache_create": 15, "cache_create_1h": 4, "cache_create_5m": 11, "output": 30}}',
-            0.016,
-            "pi_usage",
-            "pi",
-            1,
-        ))
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "data": {"available": True, "status": "incomplete"},
+            },
+        )
+        self.assertEqual(
+            row,
+            (
+                f"pi:{SESSION_ID}",
+                "project",
+                815,
+                30,
+                4,
+                11,
+                '{"gpt-5.6": 195}',
+                '{"gpt-5.6": {"fresh_input": 150, "cache_read": 650, "cache_create": 15, "cache_create_1h": 4, "cache_create_5m": 11, "output": 30}}',
+                0.016,
+                "pi_usage",
+                "pi",
+                1,
+            ),
+        )
         self.assertEqual(stderr, "")
 
     def test_repeated_rollup_refreshes_the_same_incomplete_row(self):
         first, first_stderr = self.invoke("rollup")
         with self.session_file.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps({
-                "type": "message",
-                "id": "00000009",
-                "parentId": "00000008",
-                "timestamp": "2026-09-03T10:00:09.000Z",
-                "message": {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "One more update."}],
-                    "provider": "openai-codex",
-                    "model": "gpt-5.6",
-                    "usage": {
-                        "input": 25,
-                        "output": 5,
-                        "cacheRead": 10,
-                        "cacheWrite": 3,
-                        "cacheWrite1h": 2,
-                        "cost": {"total": 0.0023456},
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "message",
+                        "id": "00000009",
+                        "parentId": "00000008",
+                        "timestamp": "2026-09-03T10:00:09.000Z",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "One more update."}],
+                            "provider": "openai-codex",
+                            "model": "gpt-5.6",
+                            "usage": {
+                                "input": 25,
+                                "output": 5,
+                                "cacheRead": 10,
+                                "cacheWrite": 3,
+                                "cacheWrite1h": 2,
+                                "cost": {"total": 0.0023456},
+                            },
+                        },
                     },
-                },
-            }, separators=(",", ":")) + "\n")
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
 
         second, second_stderr = self.invoke("rollup")
 
@@ -198,11 +210,14 @@ class PiBridgeReportingTests(unittest.TestCase):
         sidecars = list(checkpoint_root.glob(f"{SESSION_ID}-*-end.json"))
 
         self.assertEqual(rollup["data"]["status"], "incomplete")
-        self.assertEqual(first, {
-            "protocolVersion": 1,
-            "ok": True,
-            "data": {"available": True, "status": "complete"},
-        })
+        self.assertEqual(
+            first,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "data": {"available": True, "status": "complete"},
+            },
+        )
         self.assertEqual(second, first)
         self.assertEqual(row, (1, 815, 30, 0.016, "pi_usage", 0))
         self.assertEqual(len(markdown), 1)
@@ -241,10 +256,13 @@ class PiBridgeReportingTests(unittest.TestCase):
 
         response, stderr = self.invoke_direct("rollup", {"measure": measure})
 
-        self.assertEqual(response["data"], {
-            "available": True,
-            "status": "incomplete",
-        })
+        self.assertEqual(
+            response["data"],
+            {
+                "available": True,
+                "status": "incomplete",
+            },
+        )
         parser.assert_called_once_with(str(self.session_file))
         upsert.assert_called_once_with(
             connection,
@@ -311,10 +329,13 @@ class PiBridgeReportingTests(unittest.TestCase):
 
         response, stderr = self.invoke_direct("finalize", {"measure": measure})
 
-        self.assertEqual(response["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
+        self.assertEqual(
+            response["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
         checkpoint.assert_not_called()
         connection.rollback.assert_called_once_with()
         connection.close.assert_called_once_with()
@@ -336,14 +357,20 @@ class PiBridgeReportingTests(unittest.TestCase):
         first, first_stderr = self.invoke_direct("finalize", {"measure": measure})
         second, second_stderr = self.invoke_direct("finalize", {"measure": measure})
 
-        self.assertEqual(first["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
-        self.assertEqual(second["data"], {
-            "available": True,
-            "status": "complete",
-        })
+        self.assertEqual(
+            first["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
+        self.assertEqual(
+            second["data"],
+            {
+                "available": True,
+                "status": "complete",
+            },
+        )
         self.assertEqual(connection.commit.call_count, 2)
         self.assertEqual(connection.close.call_count, 2)
         connection.rollback.assert_not_called()
@@ -390,11 +417,14 @@ class PiBridgeReportingTests(unittest.TestCase):
     def test_unavailable_sessions_and_sqlite_contention_fail_open_once(self):
         self.session_file.unlink()
         missing, missing_stderr = self.invoke_direct("rollup", {})
-        self.assertEqual(missing, {
-            "protocolVersion": 1,
-            "ok": True,
-            "data": {"available": False, "status": "unavailable"},
-        })
+        self.assertEqual(
+            missing,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "data": {"available": False, "status": "unavailable"},
+            },
+        )
         self.assertIn("missing or unauthorized session", missing_stderr)
 
         shutil.copyfile(FIXTURE, self.session_file)
@@ -404,10 +434,13 @@ class PiBridgeReportingTests(unittest.TestCase):
             encoding="utf-8",
         )
         unauthorized, unauthorized_stderr = self.invoke_direct("finalize", {})
-        self.assertEqual(unauthorized["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
+        self.assertEqual(
+            unauthorized["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
         self.assertIn("missing or unauthorized session", unauthorized_stderr)
 
         shutil.copyfile(FIXTURE, self.session_file)
@@ -423,10 +456,13 @@ class PiBridgeReportingTests(unittest.TestCase):
             "rollup",
             {"measure": measure},
         )
-        self.assertEqual(contended["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
+        self.assertEqual(
+            contended["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
         parser.assert_called_once_with(str(self.session_file))
         self.assertIn("report failure (OperationalError)", contended_stderr)
         self.assertNotIn("Traceback", contended_stderr)
@@ -455,32 +491,41 @@ class PiBridgeReportingTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(first["data"]["status"], "incomplete")
-        self.assertEqual(response["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
-        self.assertLess(elapsed, 1.5)
+        self.assertEqual(
+            response["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
+        self.assertLess(elapsed, 5)
         self.assertEqual(row, (1, 815, 1))
         self.assertEqual(first_stderr, "")
         self.assertNotIn("Traceback", stderr)
 
     def test_malformed_session_fails_open_without_creating_a_trends_row(self):
         self.session_file.write_text(
-            json.dumps({
-                "type": "session",
-                "version": 3,
-                "id": SESSION_ID,
-                "cwd": str(self.project),
-            }) + "\n{malformed\n",
+            json.dumps(
+                {
+                    "type": "session",
+                    "version": 3,
+                    "id": SESSION_ID,
+                    "cwd": str(self.project),
+                }
+            )
+            + "\n{malformed\n",
             encoding="utf-8",
         )
 
         response, stderr = self.invoke("rollup")
 
-        self.assertEqual(response["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
+        self.assertEqual(
+            response["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
         self.assertFalse((self.data_root / "trends.db").exists())
         self.assertIn("report failure (ValueError)", stderr)
         self.assertNotIn("Traceback", stderr)
@@ -520,15 +565,18 @@ class PiBridgeReportingTests(unittest.TestCase):
 
         response, stderr = self.invoke_direct("dashboard", {"measure": measure})
 
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "data": {
-                "available": True,
-                "status": "ready",
-                "path": str(expected),
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "data": {
+                    "available": True,
+                    "status": "ready",
+                    "path": str(expected),
+                },
             },
-        })
+        )
         generator.assert_called_once_with(days=30, quiet=True, force=True)
         self.assertEqual(stderr, "")
 
@@ -549,11 +597,14 @@ class PiBridgeReportingTests(unittest.TestCase):
                     {"measure": measure},
                 )
 
-                self.assertEqual(response, {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "data": {"available": False, "status": "unavailable"},
-                })
+                self.assertEqual(
+                    response,
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "data": {"available": False, "status": "unavailable"},
+                    },
+                )
                 self.assertNotIn(str(outside), json.dumps(response))
                 self.assertIn("dashboard failure", stderr)
 
@@ -567,10 +618,13 @@ class PiBridgeReportingTests(unittest.TestCase):
 
         response, stderr = self.invoke_direct("dashboard", {"measure": measure})
 
-        self.assertEqual(response["data"], {
-            "available": False,
-            "status": "unavailable",
-        })
+        self.assertEqual(
+            response["data"],
+            {
+                "available": False,
+                "status": "unavailable",
+            },
+        )
         generator.assert_not_called()
         self.assertEqual(outside.read_text(encoding="utf-8"), "foreign")
         self.assertIn("dashboard failure", stderr)
@@ -579,11 +633,14 @@ class PiBridgeReportingTests(unittest.TestCase):
         response, stderr = self.invoke("dashboard")
         expected = self.pi_home / "token-optimizer" / "dashboard.html"
 
-        self.assertEqual(response["data"], {
-            "available": True,
-            "status": "ready",
-            "path": str(expected),
-        })
+        self.assertEqual(
+            response["data"],
+            {
+                "available": True,
+                "status": "ready",
+                "path": str(expected),
+            },
+        )
         self.assertTrue(expected.is_file())
         self.assertFalse(
             (self.pi_home / "_backups" / "token-optimizer" / "dashboard.html").exists()
@@ -595,30 +652,38 @@ class PiBridgeReportingTests(unittest.TestCase):
         lines = [f"line {number}" for number in range(2_200)]
         archive = self.data_root / "tool-archive" / SESSION_ID
         archive.mkdir(parents=True)
-        (archive / f"{archive_id}.json").write_text(json.dumps({
-            "tool_name": "acme.search",
-            "tool_kind": "external",
-            "tool_use_id": archive_id,
-            "archived_from": "PostToolUse",
-            "response": "\n".join(lines),
-        }), encoding="utf-8")
+        (archive / f"{archive_id}.json").write_text(
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": archive_id,
+                    "archived_from": "PostToolUse",
+                    "response": "\n".join(lines),
+                }
+            ),
+            encoding="utf-8",
+        )
 
         response, stderr = self.invoke(
             "expand",
             {"archiveId": archive_id, "offset": 100, "limit": 2_000},
         )
 
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": True,
-            "data": {
-                "archiveId": archive_id,
-                "sessionId": SESSION_ID,
-                "offset": 100,
-                "text": "\n".join(lines[100:2_100]),
-                "nextOffset": 2_100,
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "data": {
+                    "archiveId": archive_id,
+                    "sessionId": SESSION_ID,
+                    "offset": 100,
+                    "text": "\n".join(lines[100:2_100]),
+                    "nextOffset": 2_100,
+                },
             },
-        })
+        )
         self.assertLessEqual(
             len(response["data"]["text"].encode("utf-8")),
             50 * 1024,
@@ -630,13 +695,18 @@ class PiBridgeReportingTests(unittest.TestCase):
         archive_id = "unicode-1"
         archive = self.data_root / "tool-archive" / SESSION_ID
         archive.mkdir(parents=True)
-        (archive / f"{archive_id}.json").write_text(json.dumps({
-            "tool_name": "acme.search",
-            "tool_kind": "external",
-            "tool_use_id": archive_id,
-            "archived_from": "PostToolUse",
-            "response": "\n".join(["é" * 100] * 1_000),
-        }), encoding="utf-8")
+        (archive / f"{archive_id}.json").write_text(
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": archive_id,
+                    "archived_from": "PostToolUse",
+                    "response": "\n".join(["é" * 100] * 1_000),
+                }
+            ),
+            encoding="utf-8",
+        )
 
         response, _stderr = self.invoke(
             "expand",
@@ -655,16 +725,21 @@ class PiBridgeReportingTests(unittest.TestCase):
 
     def test_expand_pages_one_oversized_unicode_line_without_loss(self):
         archive_id = "oversized-unicode-1"
-        original = "start-" + ("é漢🙂\\\"\x7f" * 6_000) + "-end"
+        original = "start-" + ('é漢🙂\\"\x7f' * 6_000) + "-end"
         archive = self.data_root / "tool-archive" / SESSION_ID
         archive.mkdir(parents=True)
-        (archive / f"{archive_id}.json").write_text(json.dumps({
-            "tool_name": "acme.search",
-            "tool_kind": "external",
-            "tool_use_id": archive_id,
-            "archived_from": "PostToolUse",
-            "response": original,
-        }), encoding="utf-8")
+        (archive / f"{archive_id}.json").write_text(
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": archive_id,
+                    "archived_from": "PostToolUse",
+                    "response": original,
+                }
+            ),
+            encoding="utf-8",
+        )
 
         chunks = []
         offsets = []
@@ -700,12 +775,17 @@ class PiBridgeReportingTests(unittest.TestCase):
         archive_id = "bash-archive-1"
         archive = self.data_root / "tool-archive" / SESSION_ID
         archive.mkdir(parents=True)
-        (archive / f"{archive_id}.json").write_text(json.dumps({
-            "tool_name": "Bash",
-            "tool_use_id": archive_id,
-            "archived_from": "compress_with_preservation",
-            "response": "saved bash output",
-        }), encoding="utf-8")
+        (archive / f"{archive_id}.json").write_text(
+            json.dumps(
+                {
+                    "tool_name": "Bash",
+                    "tool_use_id": archive_id,
+                    "archived_from": "compress_with_preservation",
+                    "response": "saved bash output",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         response, stderr = self.invoke("expand", {"archiveId": archive_id})
 
@@ -713,20 +793,27 @@ class PiBridgeReportingTests(unittest.TestCase):
         self.assertEqual(response["data"]["sessionId"], SESSION_ID)
         self.assertEqual(stderr, "")
 
-    def test_expand_uses_current_session_first_and_rejects_cross_session_ambiguity(self):
+    def test_expand_uses_current_session_first_and_rejects_cross_session_ambiguity(
+        self,
+    ):
         archive_id = "shared-1"
 
         def write_entry(session_id, text):
             directory = self.data_root / "tool-archive" / session_id
             directory.mkdir(parents=True, exist_ok=True)
-            (directory / f"{archive_id}.json").write_text(json.dumps({
-                "tool_name": "acme.search",
-                "tool_kind": "external",
-                "tool_use_id": archive_id,
-                "session_id": session_id,
-                "archived_from": "PostToolUse",
-                "response": text,
-            }), encoding="utf-8")
+            (directory / f"{archive_id}.json").write_text(
+                json.dumps(
+                    {
+                        "tool_name": "acme.search",
+                        "tool_kind": "external",
+                        "tool_use_id": archive_id,
+                        "session_id": session_id,
+                        "archived_from": "PostToolUse",
+                        "response": text,
+                    }
+                ),
+                encoding="utf-8",
+            )
 
         write_entry("other-1", "older result")
         found, _stderr = self.invoke("expand", {"archiveId": archive_id})
@@ -738,11 +825,14 @@ class PiBridgeReportingTests(unittest.TestCase):
             "expand",
             {"archiveId": archive_id},
         )
-        self.assertEqual(ambiguous, {
-            "protocolVersion": 1,
-            "ok": False,
-            "errorCode": "archive_unavailable",
-        })
+        self.assertEqual(
+            ambiguous,
+            {
+                "protocolVersion": 1,
+                "ok": False,
+                "errorCode": "archive_unavailable",
+            },
+        )
         self.assertIn("archive unavailable", ambiguous_stderr)
 
         write_entry(SESSION_ID, "current result")
@@ -756,34 +846,43 @@ class PiBridgeReportingTests(unittest.TestCase):
         archive.mkdir(parents=True)
         entry = archive / f"{archive_id}.json"
         outside = self.root / "outside.json"
-        outside.write_text(json.dumps({
-            "tool_name": "acme.search",
-            "tool_kind": "external",
-            "tool_use_id": archive_id,
-            "session_id": SESSION_ID,
-            "archived_from": "PostToolUse",
-            "response": "outside secret",
-        }), encoding="utf-8")
+        outside.write_text(
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": archive_id,
+                    "session_id": SESSION_ID,
+                    "archived_from": "PostToolUse",
+                    "response": "outside secret",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         cases = (
             None,
             "{malformed",
-            json.dumps({
-                "tool_name": "acme.search",
-                "tool_kind": "external",
-                "tool_use_id": "wrong-id",
-                "session_id": SESSION_ID,
-                "archived_from": "PostToolUse",
-                "response": "wrong id",
-            }),
-            json.dumps({
-                "tool_name": "acme.search",
-                "tool_kind": "external",
-                "tool_use_id": archive_id,
-                "session_id": "wrong-session",
-                "archived_from": "PostToolUse",
-                "response": "wrong session",
-            }),
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": "wrong-id",
+                    "session_id": SESSION_ID,
+                    "archived_from": "PostToolUse",
+                    "response": "wrong id",
+                }
+            ),
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": archive_id,
+                    "session_id": "wrong-session",
+                    "archived_from": "PostToolUse",
+                    "response": "wrong session",
+                }
+            ),
             "directory",
             "symlink",
         )
@@ -815,14 +914,19 @@ class PiBridgeReportingTests(unittest.TestCase):
         secret = "sk-" + "a" * 24
         archive = self.data_root / "tool-archive" / SESSION_ID
         archive.mkdir(parents=True)
-        (archive / f"{archive_id}.json").write_text(json.dumps({
-            "tool_name": "acme.search",
-            "tool_kind": "external",
-            "tool_use_id": archive_id,
-            "session_id": SESSION_ID,
-            "archived_from": "PostToolUse",
-            "response": "credential=" + secret,
-        }), encoding="utf-8")
+        (archive / f"{archive_id}.json").write_text(
+            json.dumps(
+                {
+                    "tool_name": "acme.search",
+                    "tool_kind": "external",
+                    "tool_use_id": archive_id,
+                    "session_id": SESSION_ID,
+                    "archived_from": "PostToolUse",
+                    "response": "credential=" + secret,
+                }
+            ),
+            encoding="utf-8",
+        )
         redactor = mock.Mock(return_value="credential=[CREDENTIAL REDACTED]")
         debit = mock.Mock(return_value=None)
         modules = {

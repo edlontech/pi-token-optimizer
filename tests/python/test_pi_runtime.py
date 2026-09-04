@@ -3,14 +3,13 @@ import importlib
 import io
 import json
 import os
-from pathlib import Path
 import shlex
 import shutil
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
-
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).parents[2]
@@ -75,7 +74,9 @@ class PiRuntimeTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     runtime_env.runtime_home()
 
-    def test_tool_call_thresholds_use_base_when_context_window_is_unavailable_or_nonpositive(self):
+    def test_tool_call_thresholds_use_base_when_context_window_is_unavailable_or_nonpositive(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             pi_home = root / "pi"
@@ -134,13 +135,25 @@ class PiRuntimeTests(unittest.TestCase):
                 adapter.iter_tool_outputs.return_value = [{"tool_name": "external"}]
                 measure.pi_session = adapter
 
-                self.assertEqual(measure._find_all_jsonl_files(7), [(session, 1.0, "project")])
+                self.assertEqual(
+                    measure._find_all_jsonl_files(7), [(session, 1.0, "project")]
+                )
                 self.assertEqual(measure._find_current_session_jsonl(), session)
-                self.assertEqual(measure._find_session_jsonl_by_id("session-id"), session)
-                self.assertEqual(measure._parse_session_jsonl(session), {"runtime": "pi"})
-                self.assertEqual(measure.parse_session_turns(session), [{"model": "pi-model"}])
-                self.assertEqual(measure._parse_jsonl_for_quality(session), {"messages": []})
-                self.assertEqual(measure._extract_session_state(session), {"active_files": []})
+                self.assertEqual(
+                    measure._find_session_jsonl_by_id("session-id"), session
+                )
+                self.assertEqual(
+                    measure._parse_session_jsonl(session), {"runtime": "pi"}
+                )
+                self.assertEqual(
+                    measure.parse_session_turns(session), [{"model": "pi-model"}]
+                )
+                self.assertEqual(
+                    measure._parse_jsonl_for_quality(session), {"messages": []}
+                )
+                self.assertEqual(
+                    measure._extract_session_state(session), {"active_files": []}
+                )
                 self.assertEqual(
                     measure._iter_tool_outputs(session),
                     [{"tool_name": "external"}],
@@ -200,7 +213,9 @@ class PiRuntimeTests(unittest.TestCase):
                 "TOKEN_OPTIMIZER_NO_PROC_SCAN": "1",
             }
             expected = pi_home.resolve() / "token-optimizer" / "dashboard.html"
-            legacy = pi_home.resolve() / "_backups" / "token-optimizer" / "dashboard.html"
+            legacy = (
+                pi_home.resolve() / "_backups" / "token-optimizer" / "dashboard.html"
+            )
 
             with mock.patch.dict(os.environ, env, clear=True):
                 measure = fresh_import("measure")
@@ -222,14 +237,21 @@ class PiRuntimeTests(unittest.TestCase):
                 finally:
                     conn.close()
 
-                blocked = mock.Mock(side_effect=AssertionError("foreign dashboard helper called"))
+                blocked = mock.Mock(
+                    side_effect=AssertionError("foreign dashboard helper called")
+                )
                 real_open = open
                 real_path_open = Path.open
 
                 def reject_foreign(path):
                     candidate = Path(path)
-                    if any(candidate == foreign or foreign in candidate.parents for foreign in foreign_paths):
-                        raise AssertionError(f"foreign dashboard path read: {candidate}")
+                    if any(
+                        candidate == foreign or foreign in candidate.parents
+                        for foreign in foreign_paths
+                    ):
+                        raise AssertionError(
+                            f"foreign dashboard path read: {candidate}"
+                        )
 
                 def guarded_open(path, *args, **kwargs):
                     reject_foreign(path)
@@ -260,12 +282,19 @@ class PiRuntimeTests(unittest.TestCase):
                     "keepwarm_cache_health_block",
                     "runway_snapshot",
                 )
-                patches = [mock.patch.object(measure, name, blocked) for name in blocked_helpers]
+                patches = [
+                    mock.patch.object(measure, name, blocked)
+                    for name in blocked_helpers
+                ]
                 with contextlib.ExitStack() as stack:
                     for patch in patches:
                         stack.enter_context(patch)
-                    stack.enter_context(mock.patch("builtins.open", side_effect=guarded_open))
-                    stack.enter_context(mock.patch.object(Path, "open", guarded_path_open))
+                    stack.enter_context(
+                        mock.patch("builtins.open", side_effect=guarded_open)
+                    )
+                    stack.enter_context(
+                        mock.patch.object(Path, "open", guarded_path_open)
+                    )
                     output = measure.generate_standalone_dashboard(
                         days=3650,
                         quiet=True,
@@ -309,18 +338,24 @@ class PiRuntimeTests(unittest.TestCase):
             }
             with mock.patch.dict(os.environ, env, clear=True):
                 measure = fresh_import("measure")
-                blocked = mock.Mock(side_effect=AssertionError("foreign host collector called"))
+                blocked = mock.Mock(
+                    side_effect=AssertionError("foreign host collector called")
+                )
                 with (
                     mock.patch.object(measure, "_read_settings_json", blocked),
                     mock.patch.object(measure, "find_projects_dir", blocked),
-                    mock.patch.object(measure, "_collect_posix_claude_sessions", blocked),
+                    mock.patch.object(
+                        measure, "_collect_posix_claude_sessions", blocked
+                    ),
                     mock.patch.object(measure, "_collect_git_commits", blocked),
                 ):
                     components = measure.measure_components()
                     self.assertEqual(components["pi_runtime"]["runtime"], "pi")
                     self.assertEqual(measure.get_session_baselines(), [])
                     self.assertEqual(
-                        measure._collect_hook_status_for_dashboard()["pi_extension"]["managed_by"],
+                        measure._collect_hook_status_for_dashboard()["pi_extension"][
+                            "managed_by"
+                        ],
                         "pi",
                     )
                     self.assertEqual(measure._collect_management_data()["mode"], "pi")
@@ -582,7 +617,9 @@ class PiArchiveAndBashTests(unittest.TestCase):
                     mock.patch("builtins.open", side_effect=tracking_open),
                     mock.patch.object(archive_result, "_ARCHIVE_THRESHOLD", 32),
                 ):
-                    result = archive_result.archive_result(quiet=True, hook_input=payload)
+                    result = archive_result.archive_result(
+                        quiet=True, hook_input=payload
+                    )
                     self.assertIsNone(archive_result._resolve_mcp_cap_tokens())
 
             self.assertIsNotNone(result)
@@ -661,7 +698,9 @@ class PiArchiveAndBashTests(unittest.TestCase):
             with mock.patch.dict(os.environ, env, clear=True):
                 archive_result = fresh_import("archive_result")
                 with mock.patch.object(archive_result, "_ARCHIVE_THRESHOLD", 32):
-                    result = archive_result.archive_result(quiet=True, hook_input=payload)
+                    result = archive_result.archive_result(
+                        quiet=True, hook_input=payload
+                    )
 
             self.assertIsNotNone(result)
             assert result is not None
@@ -702,7 +741,9 @@ class PiArchiveAndBashTests(unittest.TestCase):
             with mock.patch.dict(os.environ, env, clear=True):
                 archive_result = fresh_import("archive_result")
                 with mock.patch.object(archive_result, "_ARCHIVE_THRESHOLD", 32):
-                    result = archive_result.archive_result(quiet=True, hook_input=payload)
+                    result = archive_result.archive_result(
+                        quiet=True, hook_input=payload
+                    )
 
             self.assertIsNone(result)
             self.assertFalse(
