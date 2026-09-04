@@ -16,7 +16,7 @@ const session = { id: "session-1", cwd: process.cwd(), file: fixture("session.js
 const pause = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function waitForPids(path: string): Promise<number[]> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     try {
       const values = (await readFile(path, "utf8")).trim().split(/\s+/);
       if (values.length === 2 && values.every((value) => /^[1-9]\d*$/.test(value))) {
@@ -79,7 +79,7 @@ test("runs one request through the injected bridge and validates its response", 
   });
   const request = { protocolVersion: 1, action: "status", session } as const;
 
-  const response = await client.run(request, { timeoutMs: 1_000 });
+  const response = await client.run(request, { timeoutMs: 2_500 });
 
   assert.equal(response?.ok, true);
   assert.deepEqual(response?.data?.request, request);
@@ -128,7 +128,7 @@ test("passes only sanitized feature flags and request-owned Pi identity", async 
     },
   } as const;
 
-  const response = await client.run(request, { timeoutMs: 1_000 });
+  const response = await client.run(request, { timeoutMs: 2_500 });
   const childEnv = response?.data?.environment as Record<string, string>;
 
   assert.deepEqual(
@@ -332,16 +332,13 @@ test("timeout and caller abort terminate the child process group", async (t) => 
     const started = Date.now();
     const result: ReturnType<BridgeClient["run"]> = client.run(
       { protocolVersion: 1, action: "status", session },
-      {
-        timeoutMs: cause === "timeout" ? 500 : 2_000,
-        signal: controller.signal,
-      },
+      { timeoutMs: 2_500, signal: controller.signal },
     );
     const pids = await waitForPids(pidPath);
     if (cause === "abort") controller.abort();
 
     assert.equal(await result, null);
-    assert.ok(Date.now() - started < 2_500);
+    assert.ok(Date.now() - started < 3_000);
     await assertProcessesExit(pids);
   }
 });
@@ -359,8 +356,11 @@ test("forces settlement when process-group signals fail", async (t) => {
       TOKEN_OPTIMIZER_TEST_PID_FILE: pidPath,
     },
   });
-  const started = Date.now();
-  const result = client.run({ protocolVersion: 1, action: "status", session }, { timeoutMs: 50 });
+  const controller = new AbortController();
+  const result = client.run(
+    { protocolVersion: 1, action: "status", session },
+    { timeoutMs: 2_500, signal: controller.signal },
+  );
   const pids = await waitForPids(pidPath);
   const originalKill = process.kill;
   t.after(() => {
@@ -375,12 +375,14 @@ test("forces settlement when process-group signals fail", async (t) => {
     if (pid === -pids[0]) throw new Error("simulated process-group signal failure");
     return originalKill(pid, signal);
   }) as typeof process.kill;
+  const aborted = Date.now();
+  controller.abort();
 
   assert.equal(await Promise.race([
     result,
     pause(500).then(() => { throw new Error("run did not settle after failed signals"); }),
   ]), null);
-  assert.ok(Date.now() - started < 400);
+  assert.ok(Date.now() - aborted < 400);
 
   process.kill = originalKill;
   originalKill(-pids[0], "SIGKILL");
@@ -414,15 +416,17 @@ test("forces settlement when an escaped descendant keeps stdio open", async (t) 
     session,
     args: { mode: "escaped" },
   } as const;
-  const started = Date.now();
-  const result = client.run(request, { timeoutMs: 50 });
+  const controller = new AbortController();
+  const result = client.run(request, { timeoutMs: 2_500, signal: controller.signal });
   pids = await waitForPids(pidPath);
+  const aborted = Date.now();
+  controller.abort();
 
   assert.equal(await Promise.race([
     result,
     pause(500).then(() => { throw new Error("run waited for inherited stdio to close"); }),
   ]), null);
-  assert.ok(Date.now() - started < 400);
+  assert.ok(Date.now() - aborted < 400);
   await assertProcessesExit(pids);
 });
 

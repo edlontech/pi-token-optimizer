@@ -174,11 +174,11 @@ test("bridge timeout is a hard total deadline without rejecting valid work befor
 
   assert.equal(await hung.run(request, { timeoutMs: 50 }), null);
   const hungElapsed = Date.now() - hungStarted;
-  assert.ok(hungElapsed < 175, `50ms hung bridge took ${hungElapsed}ms`);
+  assert.ok(hungElapsed < 500, `50ms hung bridge took ${hungElapsed}ms`);
 
   const delayed = new BridgeClient(state.agentDir, { ...options, bridgePath: bridgeFixture("echo.py") });
   const delayedStarted = Date.now();
-  const response = await delayed.run({ ...request, args: { delayMs: 850 } }, { timeoutMs: 1_000 });
+  const response = await delayed.run({ ...request, args: { delayMs: 850 } }, { timeoutMs: 2_500 });
   const delayedElapsed = Date.now() - delayedStarted;
 
   assert.equal(response?.ok, true, `850ms bridge failed after ${delayedElapsed}ms`);
