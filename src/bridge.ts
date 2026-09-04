@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -22,19 +23,34 @@ export interface BridgeClientOptions {
   trackedTimeoutMs?: number;
 }
 
-const DEFAULT_LAUNCHER_PATH = fileURLToPath(new URL(
-  "../vendor/token-optimizer/hooks/python-launcher.sh",
-  import.meta.url,
-));
-const DEFAULT_BRIDGE_PATH = fileURLToPath(new URL("../python/pi_bridge.py", import.meta.url));
-const REQUIRED_ENV_KEYS = ["HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "TEMP", "TMP", "TMPDIR"];
+const DEFAULT_LAUNCHER_PATH = fileURLToPath(
+  new URL(
+    "../vendor/token-optimizer/hooks/python-launcher.sh",
+    import.meta.url,
+  ),
+);
+const DEFAULT_BRIDGE_PATH = fileURLToPath(
+  new URL("../python/pi_bridge.py", import.meta.url),
+);
+const REQUIRED_ENV_KEYS = [
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "PATH",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+];
 const PI_ENV_KEYS = new Set([
   "TOKEN_OPTIMIZER_RUNTIME",
   "TOKEN_OPTIMIZER_PI_HOME",
   "TOKEN_OPTIMIZER_SNAPSHOT_DIR",
 ]);
-const FOREIGN_IDENTITY = /(CLAUDE|CODEX|OPENCODE|OPEN_CODE|HERMES|COPILOT|CURSOR)/i;
-const CREDENTIAL = /(^|_)(API_?KEY|AUTH|CREDENTIALS?|PASSWORD|PASSWD|SECRET|TOKEN)($|_)/i;
+const FOREIGN_IDENTITY =
+  /(CLAUDE|CODEX|OPENCODE|OPEN_CODE|HERMES|COPILOT|CURSOR)/i;
+const CREDENTIAL =
+  /(^|_)(API_?KEY|AUTH|CREDENTIALS?|PASSWORD|PASSWD|SECRET|TOKEN)($|_)/i;
 const TERMINATION_GRACE_MS = 100;
 
 function sanitizedEnvironment(
@@ -48,11 +64,13 @@ function sanitizedEnvironment(
   }
   for (const [key, value] of Object.entries(source)) {
     const featureName = key.slice("TOKEN_OPTIMIZER_".length);
-    if (key.startsWith("TOKEN_OPTIMIZER_")
-      && !PI_ENV_KEYS.has(key)
-      && !FOREIGN_IDENTITY.test(featureName)
-      && !CREDENTIAL.test(featureName)
-      && value !== undefined) {
+    if (
+      key.startsWith("TOKEN_OPTIMIZER_") &&
+      !PI_ENV_KEYS.has(key) &&
+      !FOREIGN_IDENTITY.test(featureName) &&
+      !CREDENTIAL.test(featureName) &&
+      value !== undefined
+    ) {
       env[key] = value;
     }
   }
@@ -65,8 +83,10 @@ function sanitizedEnvironment(
   env.TOKEN_OPTIMIZER_PI_HOME = agentDir;
   env.TOKEN_OPTIMIZER_SNAPSHOT_DIR = join(agentDir, "token-optimizer", "data");
   env.PI_SESSION_ID = request.session.id;
-  if (request.session.file !== undefined) env.PI_SESSION_FILE = request.session.file;
-  if (request.session.provider !== undefined) env.PI_PROVIDER = request.session.provider;
+  if (request.session.file !== undefined)
+    env.PI_SESSION_FILE = request.session.file;
+  if (request.session.provider !== undefined)
+    env.PI_PROVIDER = request.session.provider;
   if (request.session.model !== undefined) env.PI_MODEL = request.session.model;
   if (request.session.reasoningLevel !== undefined) {
     env.PI_REASONING_LEVEL = request.session.reasoningLevel;
@@ -74,7 +94,10 @@ function sanitizedEnvironment(
   return env;
 }
 
-function signalProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+function signalProcessGroup(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): void {
   if (child.pid === undefined || child.pid <= 0) return;
   try {
     process.kill(process.platform === "win32" ? child.pid : -child.pid, signal);
@@ -99,10 +122,17 @@ export class BridgeClient {
     this.trackedTimeoutMs = options.trackedTimeoutMs ?? 2_500;
   }
 
-  async run(request: BridgeRequest, options: BridgeRunOptions): Promise<BridgeResponse | null> {
+  async run(
+    request: BridgeRequest,
+    options: BridgeRunOptions,
+  ): Promise<BridgeResponse | null> {
     try {
       validateBridgeRequest(request);
-      if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0 || options.signal?.aborted) {
+      if (
+        !Number.isFinite(options.timeoutMs) ||
+        options.timeoutMs <= 0 ||
+        options.signal?.aborted
+      ) {
         return null;
       }
       return await this.spawnOnce(request, JSON.stringify(request), options);
@@ -112,7 +142,11 @@ export class BridgeClient {
   }
 
   runTracked(request: BridgeRequest): void {
-    if (this.draining || (request.action !== "rollup" && request.action !== "finalize")) return;
+    if (
+      this.draining ||
+      (request.action !== "rollup" && request.action !== "finalize")
+    )
+      return;
     if (this.tracked !== undefined) {
       this.pending = request;
       return;
@@ -128,7 +162,8 @@ export class BridgeClient {
     while (this.tracked !== undefined) {
       const state = this.tracked;
       const remaining = deadline - Date.now();
-      if (remaining > 0 && await this.waitFor(state.done, remaining)) continue;
+      if (remaining > 0 && (await this.waitFor(state.done, remaining)))
+        continue;
 
       state.controller.abort();
       await this.waitFor(state.done, TERMINATION_GRACE_MS);
@@ -154,16 +189,13 @@ export class BridgeClient {
   }
 
   private waitFor(done: Promise<void>, timeoutMs: number): Promise<boolean> {
-    return new Promise((resolveWait) => {
-      const timer = setTimeout(() => resolveWait(false), timeoutMs);
-      done.then(() => {
-        clearTimeout(timer);
-        resolveWait(true);
-      }, () => {
-        clearTimeout(timer);
-        resolveWait(true);
-      });
-    });
+    return Promise.race([
+      done.then(
+        () => true,
+        () => true,
+      ),
+      delay(timeoutMs, false, { ref: false }),
+    ]);
   }
 
   private spawnOnce(
@@ -232,15 +264,18 @@ export class BridgeClient {
       const remainingMs = Math.max(0, deadline - Date.now());
       const deadlineTimer = setTimeout(forceStop, remainingMs);
       if (options.timeoutMs > TERMINATION_GRACE_MS) {
-        terminationTimer = setTimeout(stop, Math.max(0, remainingMs - TERMINATION_GRACE_MS));
+        terminationTimer = setTimeout(
+          stop,
+          Math.max(0, remainingMs - TERMINATION_GRACE_MS),
+        );
       }
 
       options.signal?.addEventListener("abort", stop, { once: true });
       if (options.signal?.aborted) stop();
       child.once("error", stop);
-      child.stdin.on("error", stop);
-      child.stdout.on("error", stop);
-      child.stderr.on("error", stop);
+      for (const stream of [child.stdin, child.stdout, child.stderr]) {
+        stream.on("error", stop);
+      }
       child.stdout.on("data", (chunk: Buffer) => {
         stdoutBytes += chunk.length;
         if (stdoutBytes > MAX_RESPONSE_BYTES) {
@@ -260,7 +295,9 @@ export class BridgeClient {
           return;
         }
         try {
-          const parsed: unknown = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+          const parsed: unknown = JSON.parse(
+            Buffer.concat(stdout).toString("utf8"),
+          );
           finish(validateBridgeResponse(parsed, request.action));
         } catch {
           finish(null);

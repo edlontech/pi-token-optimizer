@@ -7,17 +7,17 @@ import {
   type SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
 
+import { NUDGE_TYPE, sessionDescriptor } from "./adapter.ts";
 import type { BridgeClient } from "./bridge.ts";
 import {
   MAX_EXPANSION_TEXT_BYTES,
   PROTOCOL_VERSION,
   isBridgeResponse,
-  type SessionDescriptor,
 } from "./protocol.ts";
+import { isRecord } from "./config.ts";
 
 const BRIDGE_TIMEOUT_MS = 15_000;
 const MAX_SUMMARY_TOKENS = 8_192;
-const NUDGE_TYPE = "token-optimizer-nudge";
 
 const SYSTEM_PROMPT = `You are a context summarization assistant. Summarize the supplied conversation for another LLM to continue the work.
 
@@ -61,45 +61,77 @@ export async function prepareOptimizedCompaction(
   if (model === undefined || event.signal.aborted) return;
 
   try {
-    const response = await bridge.run({
-      protocolVersion: PROTOCOL_VERSION,
-      action: "pre_compact",
-      session: sessionDescriptor(ctx, model),
-    }, { timeoutMs: BRIDGE_TIMEOUT_MS, signal: event.signal });
-    if (event.signal.aborted || !isBridgeResponse(response, "pre_compact") || !response.ok) return;
+    const response = await bridge.run(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        action: "pre_compact",
+        session: sessionDescriptor(ctx),
+      },
+      { timeoutMs: BRIDGE_TIMEOUT_MS, signal: event.signal },
+    );
+    if (
+      event.signal.aborted ||
+      !isBridgeResponse(response, "pre_compact") ||
+      !response.ok
+    )
+      return;
 
     const guidance = response.data?.guidance;
-    if (response.data?.available !== true
-      || typeof guidance !== "string"
-      || guidance.trim().length === 0
-      || Buffer.byteLength(guidance, "utf8") > MAX_EXPANSION_TEXT_BYTES) return;
+    if (
+      response.data?.available !== true ||
+      typeof guidance !== "string" ||
+      guidance.trim().length === 0 ||
+      Buffer.byteLength(guidance, "utf8") > MAX_EXPANSION_TEXT_BYTES
+    )
+      return;
 
     const preparation = event.preparation;
-    const withoutNudges = (messages: typeof preparation.messagesToSummarize) => messages
-      .filter((message) => message.role !== "custom" || message.customType !== NUDGE_TYPE);
-    const conversation = serializeConversation(convertToLlm(withoutNudges(preparation.messagesToSummarize)));
-    const turnPrefix = serializeConversation(convertToLlm(withoutNudges(preparation.turnPrefixMessages)));
-    const completion = await ctx.modelRegistry.complete(model, {
-      systemPrompt: SYSTEM_PROMPT,
-      messages: [{
-        role: "user",
-        content: [{ type: "text", text: summaryPrompt(event, conversation, turnPrefix, guidance) }],
-        timestamp: Date.now(),
-      }],
-    }, {
-      maxTokens: Math.min(
-        MAX_SUMMARY_TOKENS,
-        model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
-      ),
-      signal: event.signal,
-      cacheRetention: "none",
-      sessionId: uuidv7(),
-    });
+    const withoutNudges = (messages: typeof preparation.messagesToSummarize) =>
+      messages.filter(
+        (message) =>
+          message.role !== "custom" || message.customType !== NUDGE_TYPE,
+      );
+    const conversation = serializeConversation(
+      convertToLlm(withoutNudges(preparation.messagesToSummarize)),
+    );
+    const turnPrefix = serializeConversation(
+      convertToLlm(withoutNudges(preparation.turnPrefixMessages)),
+    );
+    const completion = await ctx.modelRegistry.complete(
+      model,
+      {
+        systemPrompt: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: summaryPrompt(event, conversation, turnPrefix, guidance),
+              },
+            ],
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      {
+        maxTokens: Math.min(
+          MAX_SUMMARY_TOKENS,
+          model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
+        ),
+        signal: event.signal,
+        cacheRetention: "none",
+        sessionId: uuidv7(),
+      },
+    );
 
     if (event.signal.aborted) return;
     const summary = validSummary(completion);
     if (summary === undefined) return;
-    const modified = new Set([...preparation.fileOps.written, ...preparation.fileOps.edited]);
+    const modified = new Set([
+      ...preparation.fileOps.written,
+      ...preparation.fileOps.edited,
+    ]);
 
     return {
       compaction: {
@@ -118,18 +150,6 @@ export async function prepareOptimizedCompaction(
   } catch {
     return;
   }
-}
-
-function sessionDescriptor(ctx: ExtensionContext, model: NonNullable<ExtensionContext["model"]>): SessionDescriptor {
-  const file = ctx.sessionManager.getSessionFile();
-  return {
-    id: ctx.sessionManager.getSessionId(),
-    cwd: ctx.cwd,
-    ...(file === undefined ? {} : { file }),
-    provider: model.provider,
-    model: model.id,
-    ...(ctx.thinkingLevel === undefined ? {} : { reasoningLevel: ctx.thinkingLevel }),
-  };
 }
 
 function summaryPrompt(
@@ -157,41 +177,54 @@ ${SUMMARY_FORMAT}`;
 }
 
 function validSummary(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null) return;
-  const message = value as Record<string, unknown>;
-  if (message.role !== "assistant"
-    || message.stopReason !== "stop"
-    || typeof message.api !== "string"
-    || typeof message.provider !== "string"
-    || typeof message.model !== "string"
-    || typeof message.timestamp !== "number"
-    || !Number.isFinite(message.timestamp)
-    || !validUsage(message.usage)
-    || !Array.isArray(message.content)) return;
+  if (!isRecord(value)) return;
+  const message = value;
+  if (
+    message.role !== "assistant" ||
+    message.stopReason !== "stop" ||
+    typeof message.api !== "string" ||
+    typeof message.provider !== "string" ||
+    typeof message.model !== "string" ||
+    typeof message.timestamp !== "number" ||
+    !Number.isFinite(message.timestamp) ||
+    !validUsage(message.usage) ||
+    !Array.isArray(message.content)
+  )
+    return;
 
   const text: string[] = [];
   for (const block of message.content) {
-    if (typeof block !== "object" || block === null) return;
-    const content = block as Record<string, unknown>;
-    if (content.type === "text" && typeof content.text === "string") text.push(content.text);
-    else if (content.type !== "thinking" || typeof content.thinking !== "string") return;
+    if (!isRecord(block)) return;
+    const content = block;
+    if (content.type === "text" && typeof content.text === "string")
+      text.push(content.text);
+    else if (
+      content.type !== "thinking" ||
+      typeof content.thinking !== "string"
+    )
+      return;
   }
   const summary = text.join("\n").trim();
   return summary.length === 0 ? undefined : summary;
 }
 
 function validUsage(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const usage = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const usage = value;
   const cost = usage.cost;
-  if (typeof cost !== "object" || cost === null || Array.isArray(cost)) return false;
-  const costs = cost as Record<string, unknown>;
-  return ["input", "output", "cacheRead", "cacheWrite", "totalTokens"]
-    .every((key) => isNonnegativeNumber(usage[key]))
-    && ["input", "output", "cacheRead", "cacheWrite", "total"]
-      .every((key) => isNonnegativeNumber(costs[key]))
-    && (usage.reasoning === undefined || isNonnegativeNumber(usage.reasoning))
-    && (usage.cacheWrite1h === undefined || isNonnegativeNumber(usage.cacheWrite1h));
+  if (!isRecord(cost)) return false;
+  const costs = cost;
+  return (
+    ["input", "output", "cacheRead", "cacheWrite", "totalTokens"].every((key) =>
+      isNonnegativeNumber(usage[key]),
+    ) &&
+    ["input", "output", "cacheRead", "cacheWrite", "total"].every((key) =>
+      isNonnegativeNumber(costs[key]),
+    ) &&
+    (usage.reasoning === undefined || isNonnegativeNumber(usage.reasoning)) &&
+    (usage.cacheWrite1h === undefined ||
+      isNonnegativeNumber(usage.cacheWrite1h))
+  );
 }
 
 function isNonnegativeNumber(value: unknown): boolean {

@@ -11,14 +11,18 @@ import { Type } from "typebox";
 import {
   CONSENT_NOTICE,
   CONSENT_NOTICE_VERSION,
+  hasCurrentConsent,
+  isRecord,
   type ConfigStore,
   type OptimizerConfig,
 } from "./config.ts";
 import {
   MAX_EXPANSION_LINES,
   MAX_ID_LENGTH,
-  PROTOCOL_VERSION,
   isBridgeResponse,
+  isHealthyStatus,
+  isLimit,
+  isOffset,
   type BridgeAction,
   type BridgeResponse,
 } from "./protocol.ts";
@@ -34,9 +38,19 @@ const COMMANDS = [
   "purge",
 ] as const;
 const CONSENT_COMMANDS = ["show", "grant", "reset"] as const;
-const USAGE = "Usage: /token-optimizer status|doctor|dashboard|enable|disable|consent show|grant|reset|expand <id>|purge";
+const VALID_COMMANDS = new Set<string>([
+  ...COMMANDS.filter(
+    (command) => command !== "consent" && command !== "expand",
+  ),
+  ...CONSENT_COMMANDS.map((command) => `consent ${command}`),
+]);
+const USAGE =
+  "Usage: /token-optimizer status|doctor|dashboard|enable|disable|consent show|grant|reset|expand <id>|purge";
 
-type ControlAction = Extract<BridgeAction, "status" | "doctor" | "dashboard" | "expand">;
+type ControlAction = Extract<
+  BridgeAction,
+  "status" | "doctor" | "dashboard" | "expand"
+>;
 
 type CommandAdapter = {
   runControl(
@@ -56,25 +70,27 @@ export interface TokenOptimizerCommandOptions {
   platform?: NodeJS.Platform;
 }
 
-function completions(prefix: string): Array<{ value: string; label: string }> | null {
+function completions(
+  prefix: string,
+): Array<{ value: string; label: string }> | null {
   const normalized = prefix.replace(/^\s+/, "");
   const values = normalized.startsWith("consent ")
     ? CONSENT_COMMANDS.map((command) => `consent ${command}`)
-    : normalized.includes(" ") ? [] : [...COMMANDS];
+    : normalized.includes(" ")
+      ? []
+      : [...COMMANDS];
   const matches = values.filter((value) => value.startsWith(normalized));
-  return matches.length === 0 ? null : matches.map((value) => ({ value, label: value }));
+  return matches.length === 0
+    ? null
+    : matches.map((value) => ({ value, label: value }));
 }
 
 function parsed(args: string): string[] | undefined {
   const tokens = args.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 1 && COMMANDS.includes(tokens[0] as typeof COMMANDS[number])) {
-    if (tokens[0] !== "consent" && tokens[0] !== "expand") return tokens;
-  }
-  if (tokens.length === 2
-    && tokens[0] === "consent"
-    && CONSENT_COMMANDS.includes(tokens[1] as typeof CONSENT_COMMANDS[number])) return tokens;
-  if (tokens.length === 2 && tokens[0] === "expand") return tokens;
-  return undefined;
+  const valid =
+    VALID_COMMANDS.has(tokens.join(" ")) ||
+    (tokens.length === 2 && tokens[0] === "expand");
+  return valid ? tokens : undefined;
 }
 
 function notify(
@@ -85,11 +101,17 @@ function notify(
   ctx.ui.notify(message, level);
 }
 
+function unsupported(what: string): string {
+  return `${what} unavailable: Pi 0.84.4 or newer is required.`;
+}
+
 function validArchiveId(value: unknown): value is string {
-  return typeof value === "string"
-    && value.length > 0
-    && value.length <= MAX_ID_LENGTH
-    && /^[A-Za-z0-9_-]+$/.test(value);
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_ID_LENGTH &&
+    /^[A-Za-z0-9_-]+$/.test(value)
+  );
 }
 
 function validExpansionArgs(value: unknown): value is {
@@ -97,23 +119,16 @@ function validExpansionArgs(value: unknown): value is {
   offset?: number;
   limit?: number;
 } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const args = value as Record<string, unknown>;
-  return Object.keys(args).every((key) => ["archiveId", "offset", "limit"].includes(key))
-    && validArchiveId(args.archiveId)
-    && (args.offset === undefined || (Number.isSafeInteger(args.offset) && (args.offset as number) >= 0))
-    && (args.limit === undefined
-      || (Number.isSafeInteger(args.limit)
-        && (args.limit as number) >= 1
-        && (args.limit as number) <= MAX_EXPANSION_LINES));
-}
-
-function validHealth(response: BridgeResponse | null): boolean {
-  return isBridgeResponse(response, "status")
-    && response.ok
-    && response.data?.runtime === "pi"
-    && response.data.protocolVersion === PROTOCOL_VERSION
-    && response.data.healthy === true;
+  if (!isRecord(value)) return false;
+  const args = value;
+  return (
+    Object.keys(args).every((key) =>
+      ["archiveId", "offset", "limit"].includes(key),
+    ) &&
+    validArchiveId(args.archiveId) &&
+    (args.offset === undefined || isOffset(args.offset)) &&
+    (args.limit === undefined || isLimit(args.limit))
+  );
 }
 
 async function status(
@@ -125,14 +140,18 @@ async function status(
   const response = supported
     ? await adapter.runControl("status", ctx, undefined, ctx.signal)
     : null;
-  const bridge = validHealth(response) ? "healthy" : "unavailable";
-  notify(ctx, [
-    "Token Optimizer status",
-    `Enabled: ${config.enabled ? "yes" : "no"}`,
-    `Consent: ${config.consent.granted ? "granted" : "not granted"}`,
-    `Pi integration: ${supported ? "supported" : "unsupported (requires Pi 0.84.4+)"}`,
-    `Python bridge: ${bridge}`,
-  ].join("\n"), bridge === "healthy" || !supported ? "info" : "warning");
+  const bridge = isHealthyStatus(response) ? "healthy" : "unavailable";
+  notify(
+    ctx,
+    [
+      "Token Optimizer status",
+      `Enabled: ${config.enabled ? "yes" : "no"}`,
+      `Consent: ${config.consent.granted ? "granted" : "not granted"}`,
+      `Pi integration: ${supported ? "supported" : "unsupported (requires Pi 0.84.4+)"}`,
+      `Python bridge: ${bridge}`,
+    ].join("\n"),
+    bridge === "healthy" || !supported ? "info" : "warning",
+  );
 }
 
 type Expansion = {
@@ -148,28 +167,39 @@ function expansion(
 ): Expansion | undefined {
   if (!isBridgeResponse(response, "expand") || !response.ok) return undefined;
   const data = response.data;
-  if (data?.archiveId !== archiveId
-    || data.offset !== offset
-    || typeof data.text !== "string"
-    || (data.nextOffset !== undefined
-      && (!Number.isSafeInteger(data.nextOffset) || (data.nextOffset as number) <= offset))) {
+  if (
+    data?.archiveId !== archiveId ||
+    data.offset !== offset ||
+    typeof data.text !== "string" ||
+    (data.nextOffset !== undefined &&
+      (!isOffset(data.nextOffset) || data.nextOffset <= offset))
+  ) {
     return undefined;
   }
   return {
     text: data.text,
     offset,
-    ...(data.nextOffset === undefined ? {} : { nextOffset: data.nextOffset as number }),
+    ...(data.nextOffset === undefined ? {} : { nextOffset: data.nextOffset }),
   };
 }
 
 function doctorText(response: BridgeResponse | null): string | undefined {
-  if (!isBridgeResponse(response, "doctor") || !response.ok || response.data === undefined) {
+  if (
+    !isBridgeResponse(response, "doctor") ||
+    !response.ok ||
+    response.data === undefined
+  ) {
     return undefined;
   }
   const data = response.data;
-  const checks = typeof data.checks === "object" && data.checks !== null && !Array.isArray(data.checks)
-    ? Object.entries(data.checks).map(([name, passed]) => `${name}=${passed === true ? "yes" : "no"}`).join(", ")
-    : "unavailable";
+  const checks =
+    typeof data.checks === "object" &&
+    data.checks !== null &&
+    !Array.isArray(data.checks)
+      ? Object.entries(data.checks)
+          .map(([name, passed]) => `${name}=${passed === true ? "yes" : "no"}`)
+          .join(", ")
+      : "unavailable";
   return [
     `Doctor: ${data.healthy === true ? "healthy" : "unhealthy"}`,
     `Python: ${typeof data.pythonVersion === "string" ? data.pythonVersion : "unavailable"}`,
@@ -190,16 +220,68 @@ async function purge(
     notify(ctx, `Purge refused without confirmation.\n${summary}`, "warning");
     return;
   }
-  if (!await ctx.ui.confirm("Purge Pi Token Optimizer data?", summary)) {
+  if (!(await ctx.ui.confirm("Purge Pi Token Optimizer data?", summary))) {
     notify(ctx, "Purge cancelled.");
     return;
   }
   adapter.disableForSession(ctx);
   await adapter.drainBridge();
   const result = await config.purgeData();
-  notify(ctx, result.purged
-    ? `Purged ${result.count} files (${result.bytes} bytes) from ${result.root}.`
-    : `Nothing to purge at ${result.root}.`);
+  notify(
+    ctx,
+    result.purged
+      ? `Purged ${result.count} files (${result.bytes} bytes) from ${result.root}.`
+      : `Nothing to purge at ${result.root}.`,
+  );
+}
+
+async function dashboardPath(
+  ctx: ExtensionContext,
+  adapter: CommandAdapter,
+  config: ConfigStore,
+): Promise<string | undefined> {
+  const root = (await config.previewPurge()).root;
+  const expected = join(root, "dashboard.html");
+  const response = await adapter.runControl(
+    "dashboard",
+    ctx,
+    undefined,
+    ctx.signal,
+  );
+  const path = response?.data?.path;
+  let available =
+    isBridgeResponse(response, "dashboard") &&
+    response.ok &&
+    response.data?.available === true &&
+    response.data.status === "ready" &&
+    typeof path === "string" &&
+    resolve(path) === resolve(expected);
+
+  if (available) {
+    try {
+      const [rootInfo, fileInfo, canonicalRoot, canonicalFile] =
+        await Promise.all([
+          lstat(root),
+          lstat(expected),
+          realpath(root),
+          realpath(expected),
+        ]);
+      available =
+        !rootInfo.isSymbolicLink() &&
+        rootInfo.isDirectory() &&
+        !fileInfo.isSymbolicLink() &&
+        fileInfo.isFile() &&
+        canonicalRoot === resolve(root) &&
+        canonicalFile === resolve(expected) &&
+        dirname(canonicalFile) === canonicalRoot;
+    } catch {
+      available = false;
+    }
+  }
+
+  if (available) return expected;
+  notify(ctx, "Dashboard unavailable.", "warning");
+  return undefined;
 }
 
 async function dashboard(
@@ -209,54 +291,29 @@ async function dashboard(
   config: ConfigStore,
   platform: NodeJS.Platform,
 ): Promise<void> {
-  const root = (await config.previewPurge()).root;
-  const expected = join(root, "dashboard.html");
-  const response = await adapter.runControl("dashboard", ctx, undefined, ctx.signal);
-  const path = response?.data?.path;
-  if (!isBridgeResponse(response, "dashboard")
-    || !response.ok
-    || response.data?.available !== true
-    || response.data.status !== "ready"
-    || typeof path !== "string"
-    || resolve(path) !== resolve(expected)) {
-    notify(ctx, "Dashboard unavailable.", "warning");
-    return;
-  }
-  try {
-    const [rootInfo, fileInfo, canonicalRoot, canonicalFile] = await Promise.all([
-      lstat(root),
-      lstat(expected),
-      realpath(root),
-      realpath(expected),
-    ]);
-    if (rootInfo.isSymbolicLink()
-      || !rootInfo.isDirectory()
-      || fileInfo.isSymbolicLink()
-      || !fileInfo.isFile()
-      || canonicalRoot !== resolve(root)
-      || canonicalFile !== resolve(expected)
-      || dirname(canonicalFile) !== canonicalRoot) {
-      notify(ctx, "Dashboard unavailable.", "warning");
-      return;
-    }
-  } catch {
-    notify(ctx, "Dashboard unavailable.", "warning");
-    return;
-  }
+  const path = await dashboardPath(ctx, adapter, config);
+  if (path === undefined) return;
 
-  const opener = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : undefined;
+  const opener =
+    platform === "darwin"
+      ? "open"
+      : platform === "linux"
+        ? "xdg-open"
+        : undefined;
   if (opener === undefined) {
-    notify(ctx, `Dashboard ready at ${expected}; opener unavailable.`, "warning");
+    notify(ctx, `Dashboard ready at ${path}; opener unavailable.`, "warning");
     return;
   }
+  let opened = false;
   try {
-    const result = await pi.exec(opener, [expected]);
-    if (result.code === 0 && !result.killed) {
-      notify(ctx, `Dashboard opened: ${expected}`);
-      return;
-    }
+    const result = await pi.exec(opener, [path]);
+    opened = result.code === 0 && !result.killed;
   } catch {}
-  notify(ctx, `Dashboard ready at ${expected}; opener unavailable.`, "warning");
+  if (opened) {
+    notify(ctx, `Dashboard opened: ${path}`);
+    return;
+  }
+  notify(ctx, `Dashboard ready at ${path}; opener unavailable.`, "warning");
 }
 
 export function registerTokenOptimizerCommand(
@@ -288,7 +345,7 @@ export function registerTokenOptimizerCommand(
             return;
           }
           if (!supported) {
-            notify(ctx, "Expansion unavailable: Pi 0.84.4 or newer is required.", "warning");
+            notify(ctx, unsupported("Expansion"), "warning");
             return;
           }
           const page = expansion(
@@ -302,26 +359,40 @@ export function registerTokenOptimizerCommand(
           }
           notify(ctx, page.text);
           if (page.nextOffset !== undefined) {
-            notify(ctx, `More archive content is available at next offset: ${page.nextOffset}.`);
+            notify(
+              ctx,
+              `More archive content is available at next offset: ${page.nextOffset}.`,
+            );
           }
           return;
         }
         if (command[0] === "doctor") {
           if (!supported) {
-            notify(ctx, "Doctor unavailable: Pi 0.84.4 or newer is required.", "warning");
+            notify(ctx, unsupported("Doctor"), "warning");
             return;
           }
-          const result = doctorText(await adapter.runControl("doctor", ctx, undefined, ctx.signal));
-          notify(ctx, result ?? "Doctor unavailable: Python bridge failed.",
-            result === undefined ? "warning" : "info");
+          const result = doctorText(
+            await adapter.runControl("doctor", ctx, undefined, ctx.signal),
+          );
+          notify(
+            ctx,
+            result ?? "Doctor unavailable: Python bridge failed.",
+            result === undefined ? "warning" : "info",
+          );
           return;
         }
         if (command[0] === "dashboard") {
           if (!supported) {
-            notify(ctx, "Dashboard unavailable: Pi 0.84.4 or newer is required.", "warning");
+            notify(ctx, unsupported("Dashboard"), "warning");
             return;
           }
-          await dashboard(pi, ctx, adapter, config, options.platform ?? process.platform);
+          await dashboard(
+            pi,
+            ctx,
+            adapter,
+            config,
+            options.platform ?? process.platform,
+          );
           return;
         }
 
@@ -331,7 +402,10 @@ export function registerTokenOptimizerCommand(
           return;
         }
         if (command[0] === "consent" && command[1] === "show") {
-          notify(ctx, `${CONSENT_NOTICE}\n\nConsent: ${current.consent.granted ? `granted${current.consent.grantedAt === undefined ? "" : ` at ${current.consent.grantedAt}`}` : "not granted"}.`);
+          notify(
+            ctx,
+            `${CONSENT_NOTICE}\n\nConsent: ${current.consent.granted ? `granted${current.consent.grantedAt === undefined ? "" : ` at ${current.consent.grantedAt}`}` : "not granted"}.`,
+          );
           return;
         }
         if (command[0] === "consent" && command[1] === "grant") {
@@ -343,15 +417,13 @@ export function registerTokenOptimizerCommand(
               grantedAt: (options.now ?? (() => new Date()))().toISOString(),
             },
           });
-          const active = !current.enabled || !supported ? false : await adapter.refresh(ctx);
-          notify(ctx, `Consent granted.${current.enabled && !active ? " Optimizer remains unavailable." : ""}`,
-            current.enabled && !active ? "warning" : "info");
-          return;
-        }
-        if (command[0] === "disable") {
-          adapter.disableForSession(ctx);
-          await config.save({ ...current, enabled: false });
-          notify(ctx, "Token Optimizer disabled.");
+          const active =
+            !current.enabled || !supported ? false : await adapter.refresh(ctx);
+          notify(
+            ctx,
+            `Consent granted.${current.enabled && !active ? " Optimizer remains unavailable." : ""}`,
+            current.enabled && !active ? "warning" : "info",
+          );
           return;
         }
         if (command[0] === "consent" && command[1] === "reset") {
@@ -363,21 +435,38 @@ export function registerTokenOptimizerCommand(
           notify(ctx, "Token Optimizer consent reset; activity is disabled.");
           return;
         }
+        if (command[0] === "disable") {
+          adapter.disableForSession(ctx);
+          await config.save({ ...current, enabled: false });
+          notify(ctx, "Token Optimizer disabled.");
+          return;
+        }
         if (command[0] === "enable") {
-          if (!current.consent.granted
-            || current.consent.noticeVersion !== CONSENT_NOTICE_VERSION) {
-            notify(ctx, "Cannot enable Token Optimizer: grant current consent first.", "warning");
+          if (!hasCurrentConsent(current)) {
+            notify(
+              ctx,
+              "Cannot enable Token Optimizer: grant current consent first.",
+              "warning",
+            );
             return;
           }
           await config.save({ ...current, enabled: true });
-          if (!supported || !await adapter.refresh(ctx)) {
-            notify(ctx, "Token Optimizer enabled locally; activation awaits a compatible runtime or reload.", "warning");
+          if (!supported || !(await adapter.refresh(ctx))) {
+            notify(
+              ctx,
+              "Token Optimizer enabled locally; activation awaits a compatible runtime or reload.",
+              "warning",
+            );
             return;
           }
           notify(ctx, "Token Optimizer enabled.");
           return;
         }
-        notify(ctx, `Token Optimizer ${command.join(" ")} unavailable.`, "warning");
+        notify(
+          ctx,
+          `Token Optimizer ${command.join(" ")} unavailable.`,
+          "warning",
+        );
       } catch {
         notify(ctx, "Token Optimizer command failed.", "error");
       }
@@ -385,15 +474,22 @@ export function registerTokenOptimizerCommand(
   });
 }
 
-const ExpandParameters = Type.Object({
-  archiveId: Type.String({
-    minLength: 1,
-    maxLength: MAX_ID_LENGTH,
-    pattern: "^[A-Za-z0-9_-]+$",
-  }),
-  offset: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_EXPANSION_LINES })),
-}, { additionalProperties: false });
+const ExpandParameters = Type.Object(
+  {
+    archiveId: Type.String({
+      minLength: 1,
+      maxLength: MAX_ID_LENGTH,
+      pattern: "^[A-Za-z0-9_-]+$",
+    }),
+    offset: Type.Optional(
+      Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    ),
+    limit: Type.Optional(
+      Type.Integer({ minimum: 1, maximum: MAX_EXPANSION_LINES }),
+    ),
+  },
+  { additionalProperties: false },
+);
 
 export function registerExpandTool(
   pi: Pick<ExtensionAPI, "registerTool">,
@@ -404,13 +500,17 @@ export function registerExpandTool(
   pi.registerTool({
     name: "token_optimizer_expand",
     label: "Token Optimizer Expand",
-    description: "Read up to 50 KiB or 2000 lines from a local Token Optimizer archive, with pagination metadata.",
+    description:
+      "Read up to 50 KiB or 2000 lines from a local Token Optimizer archive, with pagination metadata.",
     parameters: ExpandParameters,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (!supported) {
-        throw new Error("Token Optimizer archive expansion unavailable: Pi 0.84.4 or newer is required");
+        throw new Error(
+          "Token Optimizer archive expansion unavailable: Pi 0.84.4 or newer is required",
+        );
       }
-      if (!validExpansionArgs(params)) throw new Error("Invalid archive expansion arguments");
+      if (!validExpansionArgs(params))
+        throw new Error("Invalid archive expansion arguments");
       const offset = params.offset ?? 0;
       const args = {
         archiveId: params.archiveId,
@@ -428,10 +528,14 @@ export function registerExpandTool(
       return {
         content: [
           { type: "text" as const, text: page.text },
-          ...(page.nextOffset === undefined ? [] : [{
-            type: "text" as const,
-            text: `Continue with token_optimizer_expand using archiveId ${params.archiveId} and offset ${page.nextOffset}.`,
-          }]),
+          ...(page.nextOffset === undefined
+            ? []
+            : [
+                {
+                  type: "text" as const,
+                  text: `Continue with token_optimizer_expand using archiveId ${params.archiveId} and offset ${page.nextOffset}.`,
+                },
+              ]),
         ],
         details: {
           archiveId: params.archiveId,

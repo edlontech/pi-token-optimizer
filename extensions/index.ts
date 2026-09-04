@@ -7,17 +7,22 @@ import {
 
 import { PiAdapter } from "../src/adapter.ts";
 import { BridgeClient } from "../src/bridge.ts";
-import { registerExpandTool, registerTokenOptimizerCommand } from "../src/commands.ts";
+import {
+  registerExpandTool,
+  registerTokenOptimizerCommand,
+} from "../src/commands.ts";
 import { prepareOptimizedCompaction } from "../src/compaction.ts";
 import {
   CONSENT_NOTICE,
   CONSENT_NOTICE_VERSION,
   createConfigStore,
+  hasCurrentConsent,
   type ConfigStore,
 } from "../src/config.ts";
 
 const MINIMUM_PI_VERSION = [0, 84, 4] as const;
-const VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const VERSION_PATTERN =
+  /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 export interface TokenOptimizerRegistrationOptions {
   version?: string;
@@ -28,8 +33,12 @@ export function supportsPiVersion(version: string): boolean {
   const match = VERSION_PATTERN.exec(version.trim());
   if (match === null) return false;
   const current = match.slice(1, 4).map(Number);
-  if (current.some((part) => !Number.isSafeInteger(part))
-    || match[4]?.split(".").some((part) => part.length > 1 && /^\d+$/.test(part) && part[0] === "0")) {
+  if (
+    current.some((part) => !Number.isSafeInteger(part)) ||
+    match[4]
+      ?.split(".")
+      .some((part) => part.length > 1 && /^\d+$/.test(part) && part[0] === "0")
+  ) {
     return false;
   }
   for (let index = 0; index < MINIMUM_PI_VERSION.length; index += 1) {
@@ -40,7 +49,10 @@ export function supportsPiVersion(version: string): boolean {
   return match[4] === undefined;
 }
 
-async function requestConsent(config: ConfigStore, ctx: ExtensionContext): Promise<boolean> {
+async function requestConsent(
+  config: ConfigStore,
+  ctx: ExtensionContext,
+): Promise<boolean> {
   if (!ctx.hasUI || (ctx.mode !== "tui" && ctx.mode !== "rpc")) return false;
 
   let current;
@@ -49,11 +61,11 @@ async function requestConsent(config: ConfigStore, ctx: ExtensionContext): Promi
   } catch {
     return false;
   }
-  if (current.consent.granted
-    && current.consent.noticeVersion === CONSENT_NOTICE_VERSION) return false;
+  if (hasCurrentConsent(current)) return false;
 
   try {
-    if (!await ctx.ui.confirm("Enable Pi Token Optimizer?", CONSENT_NOTICE)) return false;
+    if (!(await ctx.ui.confirm("Enable Pi Token Optimizer?", CONSENT_NOTICE)))
+      return false;
     await config.save({
       ...current,
       consent: {
@@ -89,10 +101,13 @@ export function registerTokenOptimizer(
     sessionReason = event.reason;
     consentAttempt = undefined;
     consentStart = undefined;
-    const granted = ctx.mode === "tui"
-      ? await (consentAttempt = requestConsent(config, ctx))
-      : false;
-    const start = Promise.resolve().then(() => adapter.start(ctx, event.reason)).catch(() => {});
+    const granted =
+      ctx.mode === "tui"
+        ? await (consentAttempt = requestConsent(config, ctx))
+        : false;
+    const start = Promise.resolve()
+      .then(() => adapter.start(ctx, event.reason))
+      .catch(() => {});
     if (granted) consentStart = start;
     await start;
   });
@@ -105,7 +120,9 @@ export function registerTokenOptimizer(
     try {
       const granted = await (consentAttempt ??= requestConsent(config, ctx));
       if (granted) {
-        consentStart ??= Promise.resolve().then(() => adapter.start(ctx, sessionReason)).catch(() => {});
+        consentStart ??= Promise.resolve()
+          .then(() => adapter.start(ctx, sessionReason))
+          .catch(() => {});
         await consentStart;
       }
       return await adapter.beforePrompt(event, ctx);
