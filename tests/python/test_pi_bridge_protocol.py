@@ -1,17 +1,15 @@
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
-
 
 sys.dont_write_bytecode = True
 from python import pi_bridge
-
 
 ROOT = Path(__file__).parents[2]
 BRIDGE = ROOT / "python" / "pi_bridge.py"
@@ -71,7 +69,9 @@ class PiBridgeProtocolTests(unittest.TestCase):
             env=self.environment if environment is None else environment,
             check=False,
         )
-        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+        self.assertEqual(
+            completed.returncode, 0, completed.stderr.decode("utf-8", "replace")
+        )
         stdout = completed.stdout.decode("utf-8", "strict")
         self.assertEqual(len(stdout.splitlines()), 1, stdout)
         response, end = json.JSONDecoder().raw_decode(stdout)
@@ -93,15 +93,17 @@ class PiBridgeProtocolTests(unittest.TestCase):
         return path
 
     def grant_consent(self, enabled=True):
-        self.write_config({
-            "schemaVersion": 1,
-            "enabled": enabled,
-            "consent": {
-                "granted": True,
-                "noticeVersion": 1,
-                "grantedAt": "2026-09-03T12:00:00.000Z",
-            },
-        })
+        self.write_config(
+            {
+                "schemaVersion": 1,
+                "enabled": enabled,
+                "consent": {
+                    "granted": True,
+                    "noticeVersion": 1,
+                    "grantedAt": "2026-09-03T12:00:00.000Z",
+                },
+            }
+        )
 
     def action_request(self, action):
         request = self.request(action)
@@ -135,9 +137,11 @@ class PiBridgeProtocolTests(unittest.TestCase):
         self.assertRegex(response["data"]["pythonVersion"], r"^\d+\.\d+\.\d+$")
         self.assertEqual(response["data"]["paths"]["piHome"], str(self.pi_home))
         self.assertEqual(response["data"]["paths"]["dataRoot"], str(self.data_root))
-        self.assertEqual(response["data"]["paths"]["sessionFile"], str(self.session_file))
+        self.assertEqual(
+            response["data"]["paths"]["sessionFile"], str(self.session_file)
+        )
         self.assertEqual(response["data"]["config"]["state"], "missing")
-        self.assertTrue(response["data"]["checks"]["python39"])
+        self.assertTrue(response["data"]["checks"]["python312"])
         self.assertTrue(response["data"]["checks"]["manifest"])
         self.assertTrue(response["data"]["checks"]["vendorRuntime"])
         self.assertTrue(response["data"]["checks"]["vendorPatch"])
@@ -188,11 +192,13 @@ class PiBridgeProtocolTests(unittest.TestCase):
     def test_main_configures_request_owned_environment_before_dispatch(self):
         self.grant_consent()
         request = self.request("before_prompt")
-        request["session"].update({
-            "provider": "provider-1",
-            "model": "model-1",
-            "reasoningLevel": "high",
-        })
+        request["session"].update(
+            {
+                "provider": "provider-1",
+                "model": "model-1",
+                "reasoningLevel": "high",
+            }
+        )
         request["args"] = {"prompt": "continue"}
         output = io.StringIO()
         errors = io.StringIO()
@@ -215,20 +221,26 @@ class PiBridgeProtocolTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertEqual(errors.getvalue(), "")
-        self.assertEqual(json.loads(output.getvalue()), {
-            "protocolVersion": 1,
-            "ok": True,
-        })
-        self.assertEqual(configured, {
-            "TOKEN_OPTIMIZER_RUNTIME": "pi",
-            "TOKEN_OPTIMIZER_PI_HOME": str(self.pi_home),
-            "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(self.data_root),
-            "PI_SESSION_ID": "session-1",
-            "PI_SESSION_FILE": str(self.session_file),
-            "PI_PROVIDER": "provider-1",
-            "PI_MODEL": "model-1",
-            "PI_REASONING_LEVEL": "high",
-        })
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "protocolVersion": 1,
+                "ok": True,
+            },
+        )
+        self.assertEqual(
+            configured,
+            {
+                "TOKEN_OPTIMIZER_RUNTIME": "pi",
+                "TOKEN_OPTIMIZER_PI_HOME": str(self.pi_home),
+                "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(self.data_root),
+                "PI_SESSION_ID": "session-1",
+                "PI_SESSION_FILE": str(self.session_file),
+                "PI_PROVIDER": "provider-1",
+                "PI_MODEL": "model-1",
+                "PI_REASONING_LEVEL": "high",
+            },
+        )
 
     def test_safe_integer_json_numbers_match_javascript_semantics(self):
         for protocol_version in ("1.0", "1e0"):
@@ -251,7 +263,8 @@ class PiBridgeProtocolTests(unittest.TestCase):
         for schema, notice in (("1.0", "1e0"), ("1e0", "1.0")):
             with self.subTest(schema=schema, notice=notice):
                 config_path.write_text(
-                    '{"schemaVersion":' + schema
+                    '{"schemaVersion":'
+                    + schema
                     + ',"enabled":true,"consent":{"granted":true,"noticeVersion":'
                     + notice
                     + ',"grantedAt":"2026-09-03T12:00:00.000Z"}}',
@@ -286,7 +299,9 @@ class PiBridgeProtocolTests(unittest.TestCase):
                 response, _stderr = self.invoke(self.request())
                 self.assertEqual(response["data"]["config"]["state"], "malformed")
 
-    def test_unknown_version_and_action_return_stable_errors_without_engine_import(self):
+    def test_unknown_version_and_action_return_stable_errors_without_engine_import(
+        self,
+    ):
         requests = (
             ({**self.request(), "protocolVersion": 2}, "unsupported_protocol"),
             ({**self.request(), "action": "install"}, "unknown_action"),
@@ -306,7 +321,9 @@ class PiBridgeProtocolTests(unittest.TestCase):
                 with mock.patch("builtins.__import__", side_effect=guarded_import):
                     with mock.patch.dict(os.environ, {}, clear=True):
                         self.assertEqual(
-                            pi_bridge.main(io.StringIO(json.dumps(request)), output, errors),
+                            pi_bridge.main(
+                                io.StringIO(json.dumps(request)), output, errors
+                            ),
                             0,
                         )
                 self.assertEqual(json.loads(output.getvalue())["errorCode"], code)
@@ -328,11 +345,14 @@ class PiBridgeProtocolTests(unittest.TestCase):
                 pi_bridge.main(io.StringIO(json.dumps(request)), output, errors),
                 0,
             )
-        self.assertEqual(json.loads(output.getvalue()), {
-            "protocolVersion": 1,
-            "ok": True,
-            "decision": "allow",
-        })
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "protocolVersion": 1,
+                "ok": True,
+                "decision": "allow",
+            },
+        )
         self.assertNotIn("Traceback", output.getvalue())
         self.assertNotIn("Traceback", errors.getvalue())
 
@@ -340,26 +360,32 @@ class PiBridgeProtocolTests(unittest.TestCase):
         for action in ACTIVITY_ACTIONS:
             with self.subTest(action=action):
                 response, _stderr = self.invoke(self.action_request(action))
-                self.assertEqual(response, {
-                    "protocolVersion": 1,
-                    "ok": True,
-                    "data": {
-                        "active": False,
-                        "reason": "consent_required",
-                        "configState": "missing",
+                self.assertEqual(
+                    response,
+                    {
+                        "protocolVersion": 1,
+                        "ok": True,
+                        "data": {
+                            "active": False,
+                            "reason": "consent_required",
+                            "configState": "missing",
+                        },
                     },
-                })
+                )
 
     def test_all_activity_actions_are_inactive_while_disabled(self):
         self.grant_consent(enabled=False)
         for action in ACTIVITY_ACTIONS:
             with self.subTest(action=action):
                 response, _stderr = self.invoke(self.action_request(action))
-                self.assertEqual(response["data"], {
-                    "active": False,
-                    "reason": "disabled",
-                    "configState": "valid",
-                })
+                self.assertEqual(
+                    response["data"],
+                    {
+                        "active": False,
+                        "reason": "disabled",
+                        "configState": "valid",
+                    },
+                )
 
     def test_all_activity_actions_are_implemented_only_after_config_gate(self):
         self.grant_consent()
@@ -376,47 +402,63 @@ class PiBridgeProtocolTests(unittest.TestCase):
             (json.dumps({"schemaVersion": True}), "malformed"),
             (json.dumps({"schemaVersion": 2, "enabled": True}), "future"),
             (json.dumps({"enabled": "yes"}), "malformed"),
-            (json.dumps({"consent": {"granted": True, "noticeVersion": "1"}}), "malformed"),
-            (json.dumps({
-                "schemaVersion": 1,
-                "enabled": True,
-                "consent": {
-                    "granted": True,
-                    "noticeVersion": 1,
-                    "grantedAt": "not-a-date",
-                },
-            }), "malformed"),
+            (
+                json.dumps({"consent": {"granted": True, "noticeVersion": "1"}}),
+                "malformed",
+            ),
+            (
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "enabled": True,
+                        "consent": {
+                            "granted": True,
+                            "noticeVersion": 1,
+                            "grantedAt": "not-a-date",
+                        },
+                    }
+                ),
+                "malformed",
+            ),
         )
         for raw, state in cases:
             with self.subTest(state=state, raw=raw[:40]):
                 config_path.write_text(raw, encoding="utf-8")
                 response, _stderr = self.invoke(self.action_request("dashboard"))
-                self.assertEqual(response["data"], {
-                    "active": False,
-                    "reason": "config_invalid",
-                    "configState": state,
-                })
+                self.assertEqual(
+                    response["data"],
+                    {
+                        "active": False,
+                        "reason": "config_invalid",
+                        "configState": state,
+                    },
+                )
 
         config_path.unlink()
         response, _stderr = self.invoke(self.action_request("dashboard"))
         self.assertEqual(response["data"]["configState"], "missing")
 
     def test_config_migration_matches_typescript_activation_semantics(self):
-        self.write_config({
-            "schemaVersion": 0,
-            "consent": {
-                "granted": True,
-                "noticeVersion": 0,
-                "grantedAt": "2026-09-03T12:00:00.000Z",
-            },
-        })
+        self.write_config(
+            {
+                "schemaVersion": 0,
+                "consent": {
+                    "granted": True,
+                    "noticeVersion": 0,
+                    "grantedAt": "2026-09-03T12:00:00.000Z",
+                },
+            }
+        )
         response, _stderr = self.invoke(self.request())
-        self.assertEqual(response["data"]["config"], {
-            "state": "valid",
-            "enabled": True,
-            "consentGranted": False,
-            "noticeVersion": 1,
-        })
+        self.assertEqual(
+            response["data"]["config"],
+            {
+                "state": "valid",
+                "enabled": True,
+                "consentGranted": False,
+                "noticeVersion": 1,
+            },
+        )
 
         self.grant_consent()
         response, _stderr = self.invoke(self.request())
@@ -433,23 +475,36 @@ class PiBridgeProtocolTests(unittest.TestCase):
 
         config_path = self.pi_home / "token-optimizer" / "config.json"
         outside_config = outside / "config.json"
-        outside_config.write_text(json.dumps({
-            "schemaVersion": 1,
-            "enabled": True,
-            "consent": {"granted": True, "noticeVersion": 1},
-        }), encoding="utf-8")
+        outside_config.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "enabled": True,
+                    "consent": {"granted": True, "noticeVersion": 1},
+                }
+            ),
+            encoding="utf-8",
+        )
         config_path.symlink_to(outside_config)
         response, _stderr = self.invoke(self.action_request("pre_compact"))
-        self.assertEqual(response["data"], {
-            "active": False,
-            "reason": "config_invalid",
-            "configState": "malformed",
-        })
-        self.assertEqual(outside_config.read_text(encoding="utf-8"), json.dumps({
-            "schemaVersion": 1,
-            "enabled": True,
-            "consent": {"granted": True, "noticeVersion": 1},
-        }))
+        self.assertEqual(
+            response["data"],
+            {
+                "active": False,
+                "reason": "config_invalid",
+                "configState": "malformed",
+            },
+        )
+        self.assertEqual(
+            outside_config.read_text(encoding="utf-8"),
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "enabled": True,
+                    "consent": {"granted": True, "noticeVersion": 1},
+                }
+            ),
+        )
 
     def test_request_shape_and_action_specific_fields_mirror_typescript(self):
         tool = {
@@ -476,10 +531,22 @@ class PiBridgeProtocolTests(unittest.TestCase):
                 "session": {"id": "session-1", "cwd": str(self.root)},
             },
             {**self.request("expand"), "args": {"archiveId": "../archive"}},
-            {**self.request("expand"), "args": {"archiveId": "archive_1", "offset": None}},
-            {**self.request("expand"), "args": {"archiveId": "archive_1", "offset": True}},
-            {**self.request("expand"), "args": {"archiveId": "archive_1", "limit": None}},
-            {**self.request("expand"), "args": {"archiveId": "archive_1", "limit": 2_001}},
+            {
+                **self.request("expand"),
+                "args": {"archiveId": "archive_1", "offset": None},
+            },
+            {
+                **self.request("expand"),
+                "args": {"archiveId": "archive_1", "offset": True},
+            },
+            {
+                **self.request("expand"),
+                "args": {"archiveId": "archive_1", "limit": None},
+            },
+            {
+                **self.request("expand"),
+                "args": {"archiveId": "archive_1", "limit": 2_001},
+            },
             {
                 **self.request("post_tool"),
                 "tool": tool,
@@ -578,9 +645,15 @@ class PiBridgeProtocolTests(unittest.TestCase):
             (b"{", "invalid_json"),
             (b"\xff", "invalid_request"),
             ((valid + valid).encode("utf-8"), "invalid_json"),
-            ((" " * (pi_bridge.MAX_REQUEST_BYTES + 1)).encode("utf-8"), "request_too_large"),
-            (b'{"protocolVersion":1,"action":"status","session":{"id":"session-1",'
-             b'"cwd":"/tmp"},"args":{"number":NaN}}', "invalid_json"),
+            (
+                (" " * (pi_bridge.MAX_REQUEST_BYTES + 1)).encode("utf-8"),
+                "request_too_large",
+            ),
+            (
+                b'{"protocolVersion":1,"action":"status","session":{"id":"session-1",'
+                b'"cwd":"/tmp"},"args":{"number":NaN}}',
+                "invalid_json",
+            ),
         )
         for payload, code in cases:
             with self.subTest(code=code, size=len(payload)):
@@ -596,11 +669,14 @@ class PiBridgeProtocolTests(unittest.TestCase):
 
     def test_invalid_input_uses_stderr_for_diagnostics_and_never_stdout_text(self):
         response, stderr = self.invoke_raw("{")
-        self.assertEqual(response, {
-            "protocolVersion": 1,
-            "ok": False,
-            "errorCode": "invalid_json",
-        })
+        self.assertEqual(
+            response,
+            {
+                "protocolVersion": 1,
+                "ok": False,
+                "errorCode": "invalid_json",
+            },
+        )
         self.assertTrue(stderr.strip())
         self.assertNotIn("{", stderr)
 

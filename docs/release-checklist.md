@@ -13,10 +13,10 @@ Record the release commit, operator, date, operating system, Python version, and
 
 ## Supported environments
 
-The automated matrix must pass all four combinations before release: `macos-latest` and `ubuntu-latest`, each with Python `3.9` and `3.14.7`, using Node `26.8.1` and `npm ci`.
+The automated matrix must pass all four combinations before release: `macos-latest` and `ubuntu-latest`, each with Python `3.12` and `3.14.7`, using Node `26.8.1` and `npm ci`.
 
-- [ ] **PLATFORM-01 — The macOS matrix is green on Python 3.9 and 3.14.7.** Save links to both GitHub Actions jobs and record the resolved patch versions.
-- [ ] **PLATFORM-02 — The Linux matrix is green on Python 3.9 and 3.14.7.** Save links to both GitHub Actions jobs and record the resolved patch versions.
+- [ ] **PLATFORM-01 — The macOS matrix is green on Python 3.12 and 3.14.7.** Save links to both GitHub Actions jobs and record the resolved patch versions.
+- [ ] **PLATFORM-02 — The Linux matrix is green on Python 3.12 and 3.14.7.** Save links to both GitHub Actions jobs and record the resolved patch versions.
 - [ ] **PLATFORM-03 — Windows is marked unavailable for version 0.1.0.** Confirm `README.md` and `docs/capabilities.md` make no Windows support claim; no Windows release artifact is prepared.
 
 ## Automated checks
@@ -69,9 +69,9 @@ PI_TOKEN_OPTIMIZER_BENCH_ITERATIONS=2 npm run benchmark
 
 | OS | Architecture | Node | Python | pre_tool p50/p95 | post_tool p50/p95 | Record link |
 | --- | --- | --- | --- | --- | --- | --- |
-| macOS |  | 26.8.1 | 3.9 |  |  |  |
+| macOS |  | 26.8.1 | 3.12 |  |  |  |
 | macOS |  | 26.8.1 | 3.14.7 |  |  |  |
-| Linux |  | 26.8.1 | 3.9 |  |  |  |
+| Linux |  | 26.8.1 | 3.12 |  |  |  |
 | Linux |  | 26.8.1 | 3.14.7 |  |  |  |
 
 ## Exact package inspection

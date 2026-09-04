@@ -5,7 +5,7 @@ Pi Token Optimizer 0.1.0 is a Pi package that adapts a bounded set of Token Opti
 ## Requirements
 
 - Pi 0.84.4 or newer for automatic optimization, Python-backed controls, and `token_optimizer_expand`
-- Python 3.9 or newer available as `python3`
+- Python 3.12 or newer available as `python3`
 - macOS or Linux
 
 Pi's own current Node requirement applies; this package declares Node 22.19.0 or newer. Pi packages execute with the user's full local permissions, so review third-party package source before installation.
@@ -110,7 +110,7 @@ The dashboard is a static local file with no local listener. Opening it in a bro
 ## Troubleshooting
 
 1. Run `/token-optimizer status`, then `/token-optimizer doctor` on Pi 0.84.4 or newer.
-2. Verify `pi --version` is at least 0.84.4 and `python3 --version` is at least 3.9.
+2. Verify `pi --version` is at least 0.84.4 and `python3 --version` is at least 3.12.
 3. Run `/token-optimizer consent show`; grant only after reading the notice, then `/reload` if activation was previously unavailable.
 4. If the dashboard is ready but does not open, open the reported HTML path directly or install `xdg-open` on Linux. No local URL should be listening.
 5. A bridge warning means the original Pi action was preserved. Check restrictive path/symlink conditions and run `doctor`; do not assume optimization occurred.
@@ -119,7 +119,7 @@ The dashboard is a static local file with no local listener. Opening it in a bro
 
 ## Development
 
-The release toolchain is pinned in `mise.toml` to Node 26.8.1 and Python 3.14.7; CI also covers Python 3.9.
+The release toolchain is pinned in `mise.toml` to Node 26.8.1 and Python 3.14.7; CI also covers Python 3.12.
 
 ```sh
 mise install

@@ -4,25 +4,26 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 import io
 import json
 import math
 import os
-from pathlib import Path
 import re
 import signal
 import sqlite3
 import stat
 import sys
 import time
-from typing import Callable, Dict, Optional, TextIO, Tuple
-
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, TextIO
 
 sys.dont_write_bytecode = True
 
 PROTOCOL_VERSION = 1
+MIN_PYTHON = (3, 12)
 MAX_ID_LENGTH = 128
 MAX_DESCRIPTOR_STRING_BYTES = 4 * 1024
 MAX_TEXT_BYTES = 5 * 1024 * 1024
@@ -36,27 +37,27 @@ MAX_JSON_NUMBER_LENGTH = 128
 UPSTREAM_VERSION = "5.13.4"
 UPSTREAM_COMMIT = "eda65d61b4750b530a6f9956193d4e4632aca0cb"
 
-ACTIONS = frozenset({
-    "status",
-    "doctor",
-    "pre_tool",
-    "post_tool",
-    "before_prompt",
-    "session_start",
-    "pre_compact",
-    "post_compact",
-    "rollup",
-    "finalize",
-    "dashboard",
-    "expand",
-})
+ACTIONS = frozenset(
+    {
+        "status",
+        "doctor",
+        "pre_tool",
+        "post_tool",
+        "before_prompt",
+        "session_start",
+        "pre_compact",
+        "post_compact",
+        "rollup",
+        "finalize",
+        "dashboard",
+        "expand",
+    }
+)
 REQUEST_KEYS = frozenset({"protocolVersion", "action", "session", "tool", "args"})
 SESSION_KEYS = frozenset({"id", "cwd", "file", "provider", "model", "reasoningLevel"})
 TOOL_KEYS = frozenset({"id", "name", "kind", "input"})
 ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-ISO_DATE_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
-)
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = PACKAGE_ROOT / "vendor" / "manifest.json"
@@ -98,10 +99,9 @@ RECOVERY_FINALIZE_BUDGET_SECONDS = 0.2
 SESSION_STORE_RETENTION_SECONDS = 48 * 60 * 60
 REPORTING_DB_DEADLINE_SECONDS = 0.5
 REPORTING_DB_BUSY_TIMEOUT_MS = 250
+REPORTING_DB_BUSY_TIMEOUT_PRAGMA = f"PRAGMA busy_timeout={REPORTING_DB_BUSY_TIMEOUT_MS}"
 ARCHIVE_POINTER_RE = re.compile(
-    r"(?m)^    python3 "
-    + re.escape(str(MEASURE_PATH))
-    + r" expand ([A-Za-z0-9_-]+)\]$"
+    r"(?m)^    python3 " + re.escape(str(MEASURE_PATH)) + r" expand ([A-Za-z0-9_-]+)\]$"
 )
 
 
@@ -109,9 +109,9 @@ ARCHIVE_POINTER_RE = re.compile(
 class Request:
     protocol_version: int
     action: str
-    session: Dict[str, object]
-    tool: Optional[Dict[str, object]]
-    args: Dict[str, object]
+    session: dict[str, Any]
+    tool: dict[str, Any] | None
+    args: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -121,7 +121,7 @@ class RecoveryClaim:
 
 
 class RecoveryResponse(dict):
-    def __init__(self, response: Dict[str, object], claim: RecoveryClaim) -> None:
+    def __init__(self, response: dict[str, Any], claim: RecoveryClaim) -> None:
         super().__init__(response)
         self.claim = claim
 
@@ -132,7 +132,7 @@ class ProtocolError(ValueError):
         self.code = code
 
 
-class EnvironmentError(ValueError):
+class BridgeEnvironmentError(ValueError):
     pass
 
 
@@ -143,14 +143,7 @@ class _ReportingDeadlineExpired(BaseException):
 def _json_int(value: str) -> int:
     if len(value) > MAX_JSON_NUMBER_LENGTH:
         raise ValueError("JSON numeric lexeme is too large")
-    number = int(value)
-    try:
-        finite = math.isfinite(float(number))
-    except OverflowError:
-        finite = False
-    if not finite:
-        raise ValueError("JSON integer is not finite")
-    return number
+    return int(value)
 
 
 def _json_float(value: str) -> float:
@@ -166,7 +159,7 @@ def _reject_constant(value: str) -> None:
     raise ValueError("invalid JSON constant: " + value)
 
 
-def _loads(value: str) -> object:
+def _loads(value: str) -> Any:
     return json.loads(
         value,
         parse_int=_json_int,
@@ -183,7 +176,9 @@ def _fits(value: str, maximum: int) -> bool:
     return len(_text_encoder_normalized(value).encode("utf-8")) <= maximum
 
 
-def _is_nonempty_string(value: object, maximum: int = MAX_DESCRIPTOR_STRING_BYTES) -> bool:
+def _is_nonempty_string(
+    value: object, maximum: int = MAX_DESCRIPTOR_STRING_BYTES
+) -> bool:
     return isinstance(value, str) and bool(value.strip()) and _fits(value, maximum)
 
 
@@ -217,7 +212,7 @@ def _is_json_value(value: object, depth: int = 0) -> bool:
         return True
     if isinstance(value, str):
         return _fits(value, MAX_TEXT_BYTES)
-    if type(value) in {int, float}:
+    if isinstance(value, (int, float)):
         try:
             return math.isfinite(value)
         except OverflowError:
@@ -228,9 +223,7 @@ def _is_json_value(value: object, depth: int = 0) -> bool:
         )
     if isinstance(value, dict):
         return len(value) <= 1_000 and all(
-            isinstance(key, str)
-            and _fits(key, 256)
-            and _is_json_value(item, depth + 1)
+            isinstance(key, str) and _fits(key, 256) and _is_json_value(item, depth + 1)
             for key, item in value.items()
         )
     return False
@@ -332,7 +325,9 @@ def parse_request(value: object) -> Request:
     )
     if not _has_required_fields(request):
         raise ProtocolError("invalid_request", "missing or invalid action fields")
-    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    encoded = json.dumps(
+        value, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    )
     if not _fits(encoded, MAX_REQUEST_BYTES):
         raise ProtocolError("request_too_large", "request exceeds the size limit")
     return request
@@ -360,33 +355,58 @@ def _read_request(stream: TextIO) -> object:
 def _canonical_home() -> Path:
     raw = os.environ.get("TOKEN_OPTIMIZER_PI_HOME", "")
     if not raw.strip():
-        raise EnvironmentError("TOKEN_OPTIMIZER_PI_HOME is required")
+        raise BridgeEnvironmentError("TOKEN_OPTIMIZER_PI_HOME is required")
     candidate = Path(raw)
     try:
-        if not candidate.is_absolute() or candidate.is_symlink() or not candidate.is_dir():
-            raise EnvironmentError("TOKEN_OPTIMIZER_PI_HOME must be a real directory")
+        if (
+            not candidate.is_absolute()
+            or candidate.is_symlink()
+            or not candidate.is_dir()
+        ):
+            raise BridgeEnvironmentError(
+                "TOKEN_OPTIMIZER_PI_HOME must be a real directory"
+            )
         resolved = candidate.resolve(strict=True)
     except OSError as error:
-        raise EnvironmentError("TOKEN_OPTIMIZER_PI_HOME is not usable") from error
+        raise BridgeEnvironmentError("TOKEN_OPTIMIZER_PI_HOME is not usable") from error
     if resolved != candidate:
-        raise EnvironmentError("TOKEN_OPTIMIZER_PI_HOME must resolve exactly")
+        raise BridgeEnvironmentError("TOKEN_OPTIMIZER_PI_HOME must resolve exactly")
     return resolved
 
 
-def _configure_environment(request: Request) -> Tuple[Path, Path]:
+def _unsafe_dir(path: Path) -> bool:
+    """True when path exists but is a symlink, a non-directory, or resolves elsewhere."""
+    return path.is_symlink() or (
+        path.exists() and (not path.is_dir() or path.resolve() != path)
+    )
+
+
+def _lstat_dir(path: Path) -> bool | None:
+    """True for a real directory, None when missing, False for anything else."""
+    try:
+        return stat.S_ISDIR(path.lstat().st_mode)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return False
+
+
+def _owned_dir(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid()
+
+
+def _configure_environment(request: Request) -> tuple[Path, Path]:
     pi_home = _canonical_home()
     optimizer_root = pi_home / "token-optimizer"
     data_root = optimizer_root / "data"
-    if optimizer_root.is_symlink() or (
-        optimizer_root.exists()
-        and (not optimizer_root.is_dir() or optimizer_root.resolve() != optimizer_root)
-    ):
-        raise EnvironmentError("Pi optimizer root is unsafe")
-    if data_root.is_symlink() or (
-        data_root.exists()
-        and (not data_root.is_dir() or data_root.resolve() != data_root)
-    ):
-        raise EnvironmentError("TOKEN_OPTIMIZER_SNAPSHOT_DIR is unsafe")
+    if _unsafe_dir(optimizer_root):
+        raise BridgeEnvironmentError("Pi optimizer root is unsafe")
+    if _unsafe_dir(data_root):
+        raise BridgeEnvironmentError("TOKEN_OPTIMIZER_SNAPSHOT_DIR is unsafe")
 
     os.environ["TOKEN_OPTIMIZER_RUNTIME"] = "pi"
     os.environ["TOKEN_OPTIMIZER_PI_HOME"] = str(pi_home)
@@ -410,7 +430,7 @@ def _configure_environment(request: Request) -> Tuple[Path, Path]:
 
 
 def _is_iso_date(value: object) -> bool:
-    if not isinstance(value, str) or len(value) > 128 or ISO_DATE_RE.fullmatch(value) is None:
+    if not isinstance(value, str) or ISO_DATE_RE.fullmatch(value) is None:
         return False
     try:
         datetime.fromisoformat(value[:-1] + "+00:00")
@@ -419,45 +439,50 @@ def _is_iso_date(value: object) -> bool:
     return True
 
 
-def _config_result(pi_home: Path) -> Dict[str, object]:
+def _config_result(pi_home: Path) -> dict[str, Any]:
     root = pi_home / "token-optimizer"
     path = root / "config.json"
-    base: Dict[str, object] = {
+    base: dict[str, Any] = {
         "state": "missing",
         "enabled": True,
         "consentGranted": False,
         "noticeVersion": 1,
     }
+    malformed = dict(base, state="malformed")
     try:
-        if root.is_symlink() or (
-            root.exists() and (not root.is_dir() or root.resolve() != root)
-        ):
-            return dict(base, state="malformed")
+        if _unsafe_dir(root):
+            return malformed
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(str(path), flags)
     except FileNotFoundError:
         return base
     except OSError:
-        return dict(base, state="malformed")
+        return malformed
 
     try:
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CONFIG_BYTES:
-            return dict(base, state="malformed")
+            return malformed
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = -1
             raw = handle.read(MAX_CONFIG_BYTES + 1)
         if len(raw) > MAX_CONFIG_BYTES:
-            return dict(base, state="malformed")
+            return malformed
         value = _loads(raw.decode("utf-8", errors="strict"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
-        return dict(base, state="malformed")
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ):
+        return malformed
     finally:
         if descriptor >= 0:
             os.close(descriptor)
 
     if not isinstance(value, dict):
-        return dict(base, state="malformed")
+        return malformed
     enabled = value.get("enabled", True)
     schema = value.get("schemaVersion", 1)
     consent = value.get("consent", {})
@@ -466,19 +491,22 @@ def _config_result(pi_home: Path) -> Dict[str, object]:
         or not _is_safe_integer(schema)
         or not isinstance(consent, dict)
     ):
-        return dict(base, state="malformed")
+        return malformed
     if schema > 1:
         return dict(base, state="future")
     granted = consent.get("granted", False)
     notice = consent.get("noticeVersion")
-    if (
-        ("granted" in consent and type(granted) is not bool)
-        or ("noticeVersion" in consent and not _is_safe_integer(notice))
+    if ("granted" in consent and type(granted) is not bool) or (
+        "noticeVersion" in consent and not _is_safe_integer(notice)
     ):
-        return dict(base, state="malformed")
+        return malformed
     consent_granted = granted is True and notice == 1
-    if consent_granted and "grantedAt" in consent and not _is_iso_date(consent["grantedAt"]):
-        return dict(base, state="malformed")
+    if (
+        consent_granted
+        and "grantedAt" in consent
+        and not _is_iso_date(consent["grantedAt"])
+    ):
+        return malformed
     return {
         "state": "valid",
         "enabled": enabled,
@@ -487,7 +515,7 @@ def _config_result(pi_home: Path) -> Dict[str, object]:
     }
 
 
-def _contains(path: Path, snippets: Tuple[str, ...]) -> bool:
+def _contains(path: Path, snippets: tuple[str, ...]) -> bool:
     try:
         if path.is_symlink() or not path.is_file():
             return False
@@ -497,7 +525,7 @@ def _contains(path: Path, snippets: Tuple[str, ...]) -> bool:
     return all(snippet in text for snippet in snippets)
 
 
-def _runtime_checks(pi_home: Path, data_root: Path) -> Dict[str, bool]:
+def _runtime_checks(pi_home: Path, data_root: Path) -> dict[str, bool]:
     manifest_ok = False
     try:
         manifest = _loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -514,16 +542,17 @@ def _runtime_checks(pi_home: Path, data_root: Path) -> Dict[str, bool]:
         pass
 
     return {
-        "python39": sys.version_info >= (3, 9),
+        "python312": sys.version_info >= MIN_PYTHON,
         "piHome": pi_home.is_dir() and not pi_home.is_symlink(),
-        "dataRoot": not data_root.exists() or (data_root.is_dir() and not data_root.is_symlink()),
+        "dataRoot": not data_root.exists()
+        or (data_root.is_dir() and not data_root.is_symlink()),
         "manifest": manifest_ok,
         "vendorRuntime": _contains(
             RUNTIME_PATH,
-            ("_RUNTIME_PI = \"pi\"", "def pi_home()", "return \"Pi\""),
-        ) and _contains(
-            MEASURE_PATH,
-            ("import pi_session", "def _use_pi_session_adapter", "\"pi\"")
+            ('_RUNTIME_PI = "pi"', "def pi_home()", 'return "Pi"'),
+        )
+        and _contains(
+            MEASURE_PATH, ("import pi_session", "def _use_pi_session_adapter", '"pi"')
         ),
         "vendorPatch": PATCH_PATH.is_file() and not PATCH_PATH.is_symlink(),
         "piSessionParser": _contains(
@@ -538,7 +567,7 @@ def _runtime_checks(pi_home: Path, data_root: Path) -> Dict[str, bool]:
     }
 
 
-def _status_data(request: Request, pi_home: Path, data_root: Path) -> Dict[str, object]:
+def _status_data(request: Request, pi_home: Path, data_root: Path) -> dict[str, Any]:
     config = _config_result(pi_home)
     checks = _runtime_checks(pi_home, data_root)
     active = (
@@ -546,7 +575,7 @@ def _status_data(request: Request, pi_home: Path, data_root: Path) -> Dict[str, 
         and config["enabled"] is True
         and config["consentGranted"] is True
     )
-    paths: Dict[str, object] = {
+    paths: dict[str, Any] = {
         "piHome": str(pi_home),
         "dataRoot": str(data_root),
     }
@@ -566,18 +595,18 @@ def _status_data(request: Request, pi_home: Path, data_root: Path) -> Dict[str, 
     }
 
 
-def _ok(data: Optional[Dict[str, object]] = None) -> Dict[str, object]:
-    response: Dict[str, object] = {"protocolVersion": PROTOCOL_VERSION, "ok": True}
+def _ok(data: dict[str, Any] | None = None) -> dict[str, Any]:
+    response: dict[str, Any] = {"protocolVersion": PROTOCOL_VERSION, "ok": True}
     if data is not None:
         response["data"] = data
     return response
 
 
-def _error(code: str) -> Dict[str, object]:
+def _error(code: str) -> dict[str, Any]:
     return {"protocolVersion": PROTOCOL_VERSION, "ok": False, "errorCode": code}
 
 
-def _allow() -> Dict[str, object]:
+def _allow() -> dict[str, Any]:
     return {
         "protocolVersion": PROTOCOL_VERSION,
         "ok": True,
@@ -591,14 +620,25 @@ def _diagnose(message: str) -> None:
         print("pi bridge engine: " + text, file=sys.stderr)
 
 
-def _engine_module(name: str) -> object:
+def _diagnose_failure(label: str, error: BaseException) -> None:
+    _diagnose(label + " (" + type(error).__name__ + ")")
+
+
+def _response_fits(response: dict[str, Any]) -> bool:
+    encoded = json.dumps(
+        response, ensure_ascii=True, separators=(",", ":"), allow_nan=False
+    )
+    return _fits(encoded, MAX_RESPONSE_BYTES)
+
+
+def _engine_module(name: str) -> Any:
     scripts = str(SCRIPTS_PATH)
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
     return __import__(name)
 
 
-def _load_engine(name: str) -> object:
+def _load_engine(name: str) -> Any:
     output = io.StringIO()
     errors = io.StringIO()
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
@@ -611,9 +651,9 @@ def _load_engine(name: str) -> object:
 
 
 def _capture_hook(
-    module: object,
-    payload: Dict[str, object],
-    arguments: Tuple[str, ...] = (),
+    module: Any,
+    payload: dict[str, Any],
+    arguments: tuple[str, ...] = (),
     entrypoint: str = "main",
 ) -> str:
     hook_io = _load_engine("hook_io")
@@ -622,7 +662,10 @@ def _capture_hook(
     original_argv = sys.argv
     output = io.StringIO()
     errors = io.StringIO()
-    reader = lambda *args, **kwargs: payload
+
+    def reader(*_args, **_kwargs):
+        return payload
+
     hook_io.read_stdin_hook_input = reader
     if module_reader is not None:
         module.read_stdin_hook_input = reader
@@ -643,15 +686,14 @@ def _capture_hook(
 def _known_hook_output(
     raw: str,
     event_name: str = "PreToolUse",
-) -> Optional[Dict[str, object]]:
+) -> dict[str, Any] | None:
     if not raw.strip():
         return None
     try:
-        decoder = json.JSONDecoder()
-        value, end = decoder.raw_decode(raw)
-    except (json.JSONDecodeError, RecursionError, ValueError):
-        raise ValueError("malformed engine output")
-    if raw[end:].strip() or not isinstance(value, dict) or set(value) != {"hookSpecificOutput"}:
+        value = _loads(raw)
+    except (json.JSONDecodeError, RecursionError, ValueError) as error:
+        raise ValueError("malformed engine output") from error
+    if not isinstance(value, dict) or set(value) != {"hookSpecificOutput"}:
         raise ValueError("malformed engine output")
     output = value["hookSpecificOutput"]
     if not isinstance(output, dict) or output.get("hookEventName") != event_name:
@@ -659,7 +701,7 @@ def _known_hook_output(
     return output
 
 
-def _tool_payload(request: Request) -> Tuple[str, Dict[str, object]]:
+def _tool_payload(request: Request) -> tuple[str, dict[str, Any]]:
     assert request.tool is not None
     name = str(request.tool["name"])
     tool_input = dict(request.tool["input"])
@@ -679,7 +721,7 @@ def _tool_payload(request: Request) -> Tuple[str, Dict[str, object]]:
     }
 
 
-def _read_response(raw: str) -> Dict[str, object]:
+def _read_response(raw: str) -> dict[str, Any]:
     output = _known_hook_output(raw)
     if output is None:
         return _allow()
@@ -710,43 +752,36 @@ def _read_response(raw: str) -> Dict[str, object]:
         data["additionalContext"] = context
     if data:
         response["data"] = data
-    encoded = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
-    if not _fits(encoded, MAX_RESPONSE_BYTES):
+    if not _response_fits(response):
         raise ValueError("Read hook output exceeds response limit")
     return response
 
 
-def _external_pre_tool(request: Request, payload: Dict[str, object]) -> Dict[str, object]:
+def _external_pre_tool(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     assert request.tool is not None
+    session_id = request.session["id"]
+    tool_name = request.tool["name"]
     try:
         guard = _load_engine("refetch_guard")
-        output = io.StringIO()
-        errors = io.StringIO()
-        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-            fingerprint = guard.tool_fingerprint(
-                request.tool["name"],
-                payload["tool_input"],
-            )
+
+        def lookup() -> str | None:
+            fingerprint = guard.tool_fingerprint(tool_name, payload["tool_input"])
             archived_id, saved_tokens = guard._lookup_archived(
-                request.session["id"],
-                request.tool["name"],
-                fingerprint,
+                session_id, tool_name, fingerprint
             )
-            if _is_id(archived_id):
-                guard._log_refetch_block(
-                    request.session["id"],
-                    request.tool["name"],
-                    archived_id,
-                    saved_tokens,
-                )
-        if output.getvalue():
+            if not _is_id(archived_id):
+                return None
+            guard._log_refetch_block(session_id, tool_name, archived_id, saved_tokens)
+            return archived_id
+
+        archived_id, output = _capture_call(lookup)
+        if output:
             raise ValueError("refetch guard wrote to stdout")
-        if errors.getvalue():
-            _diagnose("engine diagnostic")
-        if not _is_id(archived_id):
+        if archived_id is None:
             return _allow()
         reason = (
-            "Token Optimizer: this exact " + str(request.tool["name"])
+            "Token Optimizer: this exact "
+            + str(tool_name)
             + " call already ran and its full result is archived on disk (id "
             + archived_id
             + ") — re-fetching would re-inflate context with data you already have. "
@@ -758,51 +793,44 @@ def _external_pre_tool(request: Request, payload: Dict[str, object]) -> Dict[str
         response["data"] = {"reason": reason}
         return response
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
         return _allow()
 
 
-def _pre_tool(request: Request) -> Dict[str, object]:
-    assert request.tool is not None
-    name, payload = _tool_payload(request)
-    if request.tool["kind"] == "external":
-        return _external_pre_tool(request, payload)
-    if request.tool["kind"] == "builtin" and name == "Read":
+def _read_pre_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        read_cache = _load_engine("read_cache")
+        original_escape = read_cache._check_escape_hatch
+
+        def persisted_escape(entry, *args, **kwargs):
+            entry["consecutive_denials"] = int(
+                entry.get("repeat_replacement_count", 0) or 0
+            )
+            return original_escape(entry, *args, **kwargs)
+
+        read_cache._check_escape_hatch = persisted_escape
         try:
-            read_cache = _load_engine("read_cache")
-            original_escape = read_cache._check_escape_hatch
-
-            def persisted_escape(entry, *args, **kwargs):
-                entry["consecutive_denials"] = int(
-                    entry.get("repeat_replacement_count", 0) or 0
-                )
-                return original_escape(entry, *args, **kwargs)
-
-            read_cache._check_escape_hatch = persisted_escape
-            try:
-                raw = _capture_hook(read_cache, payload, ("--quiet",))
-            finally:
-                read_cache._check_escape_hatch = original_escape
-            return _read_response(raw)
-        except (Exception, SystemExit) as error:
-            _diagnose("engine failure (" + type(error).__name__ + ")")
-            return _allow()
-    if request.tool["kind"] != "builtin" or name != "Bash":
+            raw = _capture_hook(read_cache, payload, ("--quiet",))
+        finally:
+            read_cache._check_escape_hatch = original_escape
+        return _read_response(raw)
+    except (Exception, SystemExit) as error:
+        _diagnose_failure("engine failure", error)
         return _allow()
+
+
+def _bash_pre_tool(payload: dict[str, Any]) -> dict[str, Any]:
     command = payload["tool_input"].get("command")
     if not isinstance(command, str) or not command:
         return _allow()
     try:
-        output = _known_hook_output(
-            _capture_hook(_load_engine("bash_hook"), payload)
-        )
+        output = _known_hook_output(_capture_hook(_load_engine("bash_hook"), payload))
         if output is None:
             return _allow()
-        if set(output) != {
-            "hookEventName",
-            "permissionDecision",
-            "updatedInput",
-        } or output.get("permissionDecision") != "allow":
+        if (
+            set(output) != {"hookEventName", "permissionDecision", "updatedInput"}
+            or output.get("permissionDecision") != "allow"
+        ):
             raise ValueError("unexpected Bash hook envelope")
         updated = output.get("updatedInput")
         if (
@@ -815,24 +843,31 @@ def _pre_tool(request: Request) -> Dict[str, object]:
             raise ValueError("invalid Bash rewrite")
         response = _allow()
         response["updatedInput"] = updated
-        encoded = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
-        if not _fits(encoded, MAX_RESPONSE_BYTES):
-            return _allow()
-        return response
+        return response if _response_fits(response) else _allow()
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
         return _allow()
 
 
-def _read_owned_regular(path: Path, maximum: int) -> Optional[bytes]:
+def _pre_tool(request: Request) -> dict[str, Any]:
+    assert request.tool is not None
+    name, payload = _tool_payload(request)
+    if request.tool["kind"] == "external":
+        return _external_pre_tool(request, payload)
+    if name == "Read":
+        return _read_pre_tool(payload)
+    if name == "Bash":
+        return _bash_pre_tool(payload)
+    return _allow()
+
+
+def _read_owned_regular(path: Path, maximum: int) -> bytes | None:
     descriptor = -1
     try:
         if path.is_symlink():
             return None
         flags = (
-            os.O_RDONLY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_NONBLOCK", 0)
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         )
         descriptor = os.open(str(path), flags)
         info = os.fstat(descriptor)
@@ -874,7 +909,7 @@ def _bash_output(request: Request) -> str:
         return visible
 
 
-def _archive_id_from_pointer(replacement: str) -> Optional[str]:
+def _archive_id_from_pointer(replacement: str) -> str | None:
     matches = ARCHIVE_POINTER_RE.findall(replacement)
     if len(matches) != 1 or not _is_id(matches[0]):
         return None
@@ -898,32 +933,21 @@ def _external_archive_pointer(
     )
 
 
-def _archive_destination_safe(data_root: Path, session_id: str) -> bool:
-    paths = (
-        data_root,
-        data_root / "tool-archive",
-        data_root / "tool-archive" / session_id,
-    )
-    for path in paths:
-        try:
-            if path.is_symlink() or (path.exists() and not path.is_dir()):
-                return False
-        except OSError:
-            return False
-    return True
-
-
-def _safe_archive_directory(data_root: Path, session_id: str) -> Optional[Path]:
+def _archive_chain(data_root: Path, session_id: str) -> tuple[Path, Path, Path]:
     archive_root = data_root / "tool-archive"
-    session_dir = archive_root / session_id
-    for path in (data_root, archive_root, session_dir):
-        try:
-            info = path.lstat()
-            if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
-                return None
-        except OSError:
-            return None
-    return session_dir
+    return data_root, archive_root, archive_root / session_id
+
+
+def _archive_destination_safe(data_root: Path, session_id: str) -> bool:
+    """Every path on the archive chain is a real directory or does not exist yet."""
+    return all(
+        _lstat_dir(path) is not False for path in _archive_chain(data_root, session_id)
+    )
+
+
+def _safe_archive_directory(data_root: Path, session_id: str) -> Path | None:
+    chain = _archive_chain(data_root, session_id)
+    return chain[-1] if all(_lstat_dir(path) for path in chain) else None
 
 
 def _verified_archive(
@@ -931,7 +955,7 @@ def _verified_archive(
     session_id: str,
     archive_id: str,
     tool_name: str,
-    tool_kind: Optional[str] = None,
+    tool_kind: str | None = None,
 ) -> bool:
     session_dir = _safe_archive_directory(data_root, session_id)
     if session_dir is None or not _is_id(archive_id):
@@ -956,21 +980,18 @@ def _verified_archive(
             or not isinstance(entry.get("response"), str)
         ):
             return False
-        matching = []
+        latest = None
         for line in manifest_raw.decode("utf-8", errors="strict").splitlines():
             record = _loads(line)
             if isinstance(record, dict) and record.get("tool_use_id") == archive_id:
-                matching.append(record)
-        return bool(matching) and (
-            matching[-1].get("tool_name") == tool_name
-            and (
-                tool_kind is None
-                or matching[-1].get("tool_kind") == tool_kind
-            )
+                latest = record
+        return (
+            latest is not None
+            and latest.get("tool_name") == tool_name
+            and (tool_kind is None or latest.get("tool_kind") == tool_kind)
         )
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
         return False
-    return False
 
 
 def _bounded_text(value: str, maximum: int) -> str:
@@ -983,39 +1004,37 @@ def _bounded_context(
     scope: str,
     opening: str = "",
     closing: str = "",
-) -> Optional[str]:
+) -> str | None:
     wrapper_bytes = len((opening + closing).encode("utf-8"))
     body = _bounded_text(value, max(0, MAX_CONTEXT_BYTES - wrapper_bytes))
 
     def fits(length: int) -> bool:
         response = _ok()
-        response["contexts"] = [{
-            "scope": scope,
-            "text": opening + body[:length] + closing,
-        }]
-        payload = json.dumps(
-            response,
-            ensure_ascii=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
-        return _fits(payload + "\n", MAX_RESPONSE_BYTES)
+        response["contexts"] = [
+            {"scope": scope, "text": opening + body[:length] + closing}
+        ]
+        return _response_fits(response)
 
+    bounded = body[: _longest_prefix(len(body), fits)]
+    return opening + bounded + closing if bounded.strip() else None
+
+
+def _longest_prefix(length: int, fits: Callable[[int], bool]) -> int:
+    """Binary search for the longest prefix length accepted by a monotonic predicate."""
     lower = 0
-    upper = len(body)
+    upper = length
     while lower < upper:
         middle = (lower + upper + 1) // 2
         if fits(middle):
             lower = middle
         else:
             upper = middle - 1
-    bounded = body[:lower]
-    return opening + bounded + closing if bounded.strip() else None
+    return lower
 
 
 def _best_effort_post_metadata(
     request: Request,
-    payload: Dict[str, object],
+    payload: dict[str, Any],
     text: str,
 ) -> None:
     context_payload = dict(payload)
@@ -1031,7 +1050,7 @@ def _best_effort_post_metadata(
     except (Exception, SystemExit) as error:
         _diagnose("metadata failure (" + type(error).__name__ + ")")
 
-    quality_payload: Dict[str, object] = {"session_id": request.session["id"]}
+    quality_payload: dict[str, Any] = {"session_id": request.session["id"]}
     session_file = request.session.get("file")
     if isinstance(session_file, str):
         quality_payload["transcript_path"] = session_file
@@ -1050,49 +1069,47 @@ def _best_effort_post_metadata(
         if raw.strip():
             raise ValueError("quality gate wrote to stdout")
     except (Exception, SystemExit) as error:
-        _diagnose("metadata failure (" + type(error).__name__ + ")")
+        _diagnose_failure("metadata failure", error)
 
 
-def _invalidate_read_cache(payload: Dict[str, object]) -> None:
+def _invalidate_read_cache(payload: dict[str, Any]) -> None:
     try:
-        output = io.StringIO()
-        errors = io.StringIO()
-        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-            _load_engine("read_cache").handle_invalidate(payload, quiet=True)
-        if output.getvalue().strip():
+        _, output = _capture_call(
+            _load_engine("read_cache").handle_invalidate, payload, quiet=True
+        )
+        if output.strip():
             raise ValueError("read cache invalidation wrote to stdout")
-        if errors.getvalue().strip():
-            _diagnose("engine diagnostic")
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
+
+
+def _archive_response_payload(replacement: str, archive_id: str) -> dict[str, Any]:
+    response = _allow()
+    response["replacementText"] = replacement
+    response["archiveId"] = archive_id
+    return response if _response_fits(response) else _allow()
 
 
 def _external_post_tool(
     request: Request,
-    payload: Dict[str, object],
+    payload: dict[str, Any],
     data_root: Path,
     text: str,
-) -> Dict[str, object]:
+) -> dict[str, Any]:
     assert request.tool is not None
+    tool_name = str(request.tool["name"])
     archive_result = None
     try:
-        module = _load_engine("archive_result")
-        output = io.StringIO()
-        errors = io.StringIO()
-        hook_payload = dict(payload)
-        hook_payload["tool_kind"] = request.tool["kind"]
-        hook_payload["tool_response"] = text
-        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-            archive_result = module.archive_result(
-                quiet=True,
-                hook_input=hook_payload,
-            )
-        if output.getvalue().strip():
+        hook_payload = dict(payload, tool_kind=request.tool["kind"], tool_response=text)
+        archive_result, output = _capture_call(
+            _load_engine("archive_result").archive_result,
+            quiet=True,
+            hook_input=hook_payload,
+        )
+        if output.strip():
             raise ValueError("archive result wrote to stdout")
-        if errors.getvalue().strip():
-            _diagnose("engine diagnostic")
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
 
     _best_effort_post_metadata(request, payload, text)
     if not isinstance(archive_result, dict) or set(archive_result) != {
@@ -1101,9 +1118,9 @@ def _external_post_tool(
         "metadata",
     }:
         return _allow()
-    archive_id = archive_result.get("archive_id")
-    replacement = archive_result.get("replacement_text")
-    metadata = archive_result.get("metadata")
+    archive_id = archive_result["archive_id"]
+    replacement = archive_result["replacement_text"]
+    metadata = archive_result["metadata"]
     if (
         not _is_id(archive_id)
         or not isinstance(replacement, str)
@@ -1111,39 +1128,27 @@ def _external_post_tool(
         or not isinstance(metadata, dict)
         or archive_id != request.tool["id"]
         or metadata.get("tool_use_id") != archive_id
-        or metadata.get("tool_name") != request.tool["name"]
+        or metadata.get("tool_name") != tool_name
         or metadata.get("tool_kind") != "external"
-        or not _external_archive_pointer(
-            replacement,
-            archive_id,
-            str(request.tool["name"]),
-        )
+        or not _external_archive_pointer(replacement, archive_id, tool_name)
         or not _verified_archive(
             data_root,
             str(request.session["id"]),
             archive_id,
-            str(request.tool["name"]),
+            tool_name,
             "external",
         )
     ):
         return _allow()
-    response = _allow()
-    response["replacementText"] = replacement
-    response["archiveId"] = archive_id
-    if not _fits(
-        json.dumps(response, ensure_ascii=True, separators=(",", ":")),
-        MAX_RESPONSE_BYTES,
-    ):
-        return _allow()
-    return response
+    return _archive_response_payload(replacement, archive_id)
 
 
 def _bash_post_tool(
     request: Request,
-    payload: Dict[str, object],
+    payload: dict[str, Any],
     data_root: Path,
     text: str,
-) -> Dict[str, object]:
+) -> dict[str, Any]:
     try:
         hook_payload = dict(payload)
         hook_payload["tool_response"] = {
@@ -1184,29 +1189,22 @@ def _bash_post_tool(
             "Bash",
         ):
             return _allow()
-        response = _allow()
-        response["replacementText"] = replacement
-        response["archiveId"] = archive_id
-        if not _fits(
-            json.dumps(response, ensure_ascii=True, separators=(",", ":")),
-            MAX_RESPONSE_BYTES,
-        ):
-            return _allow()
-        return response
+        return _archive_response_payload(replacement, archive_id)
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
         return _allow()
     finally:
         _best_effort_post_metadata(request, payload, text)
 
 
-def _post_tool(request: Request, data_root: Path) -> Dict[str, object]:
+def _post_tool(request: Request, data_root: Path) -> dict[str, Any]:
     assert request.tool is not None
     if request.args["isError"] or request.args["hasImages"]:
         return _allow()
     visible = str(request.args["text"])
     name, payload = _tool_payload(request)
-    if request.tool["kind"] == "builtin" and name in {"Edit", "Write"}:
+    external = request.tool["kind"] == "external"
+    if not external and name in {"Edit", "Write"}:
         _invalidate_read_cache(payload)
         _best_effort_post_metadata(request, payload, visible)
         return _allow()
@@ -1214,14 +1212,14 @@ def _post_tool(request: Request, data_root: Path) -> Dict[str, object]:
         return _allow()
     if not _archive_destination_safe(data_root, str(request.session["id"])):
         return _allow()
-    if request.tool["kind"] == "external":
+    if external:
         return _external_post_tool(request, payload, data_root, visible)
-    if request.tool["kind"] == "builtin" and name == "Bash":
+    if name == "Bash":
         return _bash_post_tool(request, payload, data_root, _bash_output(request))
     return _allow()
 
 
-def _current_session_file(request: Request) -> Optional[Path]:
+def _current_session_file(request: Request) -> Path | None:
     value = request.session.get("file")
     if not isinstance(value, str):
         return None
@@ -1267,7 +1265,7 @@ def _current_session_file(request: Request) -> Optional[Path]:
             os.close(descriptor)
 
 
-def _capture_call(function: Callable[..., object], *args, **kwargs) -> Tuple[object, str]:
+def _capture_call(function: Callable[..., object], *args, **kwargs) -> tuple[Any, str]:
     output = io.StringIO()
     errors = io.StringIO()
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
@@ -1277,7 +1275,7 @@ def _capture_call(function: Callable[..., object], *args, **kwargs) -> Tuple[obj
     return result, output.getvalue()
 
 
-def _recovery_context(raw: str) -> Optional[str]:
+def _recovery_context(raw: str) -> str | None:
     text = raw.strip()
     if not text:
         return None
@@ -1300,7 +1298,7 @@ def _recovery_context(raw: str) -> Optional[str]:
     return _bounded_context(text, "recovery", opening, closing)
 
 
-def _context_window(measure: object) -> Optional[int]:
+def _context_window(measure: Any) -> int | None:
     result, output = _capture_call(measure.detect_context_window)
     if output.strip() or not (
         isinstance(result, tuple)
@@ -1313,39 +1311,24 @@ def _context_window(measure: object) -> Optional[int]:
 
 def _bounded_guidance(
     value: str,
-    checkpoint_path: Optional[str],
-) -> Optional[Dict[str, object]]:
+    checkpoint_path: str | None,
+) -> dict[str, Any] | None:
     guidance = _bounded_text(value, MAX_CONTEXT_BYTES).strip()
-    data: Dict[str, object] = {"available": True}
+    data: dict[str, Any] = {"available": True}
     if checkpoint_path is not None:
         data["checkpointPath"] = checkpoint_path
 
     def fits(length: int) -> bool:
-        candidate = dict(data, guidance=guidance[:length])
-        payload = json.dumps(
-            _ok(candidate),
-            ensure_ascii=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
-        return _fits(payload + "\n", MAX_RESPONSE_BYTES)
+        return _response_fits(_ok(dict(data, guidance=guidance[:length])))
 
-    lower = 0
-    upper = len(guidance)
-    while lower < upper:
-        middle = (lower + upper + 1) // 2
-        if fits(middle):
-            lower = middle
-        else:
-            upper = middle - 1
-    bounded = guidance[:lower]
+    bounded = guidance[: _longest_prefix(len(guidance), fits)]
     if not bounded:
         return None
     data["guidance"] = bounded
     return data
 
 
-def _pre_compact(request: Request) -> Dict[str, object]:
+def _pre_compact(request: Request) -> dict[str, Any]:
     session_file = _current_session_file(request)
     if session_file is None:
         return _ok({"available": False})
@@ -1363,10 +1346,7 @@ def _pre_compact(request: Request) -> Dict[str, object]:
         ):
             raise ValueError("invalid checkpoint output")
         checkpoint_path = None
-        if isinstance(checkpoint, str) and _is_nonempty_string(
-            checkpoint,
-            MAX_DESCRIPTOR_STRING_BYTES,
-        ):
+        if isinstance(checkpoint, str) and _is_nonempty_string(checkpoint):
             checkpoint_path = _text_encoder_normalized(checkpoint)
 
         guidance_result, guidance_output = _capture_call(
@@ -1378,11 +1358,11 @@ def _pre_compact(request: Request) -> Dict[str, object]:
         data = _bounded_guidance(guidance_output, checkpoint_path)
         return _ok(data if data is not None else {"available": False})
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
         return _ok({"available": False})
 
 
-def _post_compact(request: Request) -> Dict[str, object]:
+def _post_compact(request: Request) -> dict[str, Any]:
     try:
         read_cache = _load_engine("read_cache")
         result, output = _capture_call(
@@ -1393,46 +1373,29 @@ def _post_compact(request: Request) -> Dict[str, object]:
         if result is not None or output.strip():
             raise ValueError("invalid compact clear output")
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
     return _ok()
 
 
-def _archive_root(data_root: Path) -> Optional[Path]:
+def _archive_root(data_root: Path) -> Path | None:
     archive_root = data_root / "tool-archive"
-    for path in (data_root, archive_root):
-        try:
-            info = path.lstat()
-            if (
-                path.is_symlink()
-                or not stat.S_ISDIR(info.st_mode)
-                or info.st_uid != os.geteuid()
-            ):
-                return None
-        except OSError:
-            return None
-    return archive_root
+    if _owned_dir(data_root) and _owned_dir(archive_root):
+        return archive_root
+    return None
 
 
 def _archive_response(
     archive_root: Path,
     session_id: str,
     archive_id: str,
-) -> Tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     if not _is_id(session_id):
         return "malformed", None
     session_dir = archive_root / session_id
     entry_path = session_dir / (archive_id + ".json")
-    try:
-        directory_info = session_dir.lstat()
-    except FileNotFoundError:
+    if _lstat_dir(session_dir) is None:
         return "missing", None
-    except OSError:
-        return "malformed", None
-    if (
-        session_dir.is_symlink()
-        or not stat.S_ISDIR(directory_info.st_mode)
-        or directory_info.st_uid != os.geteuid()
-    ):
+    if not _owned_dir(session_dir):
         return "malformed", None
     try:
         entry_path.lstat()
@@ -1456,11 +1419,9 @@ def _archive_response(
         not isinstance(entry, dict)
         or entry.get("tool_use_id") != archive_id
         or not _is_nonempty_string(entry.get("tool_name"))
-        or (
-            "tool_kind" in entry
-            and not _is_nonempty_string(entry.get("tool_kind"))
-        )
-        or entry.get("archived_from") not in {
+        or ("tool_kind" in entry and not _is_nonempty_string(entry.get("tool_kind")))
+        or entry.get("archived_from")
+        not in {
             "PostToolUse",
             "compress_with_preservation",
         }
@@ -1475,7 +1436,7 @@ def _find_archive_response(
     data_root: Path,
     session_id: str,
     archive_id: str,
-) -> Tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     archive_root = _archive_root(data_root)
     if archive_root is None:
         return None, None
@@ -1551,12 +1512,12 @@ def _expansion_slice(
     response: str,
     offset: int,
     limit: int,
-) -> Tuple[str, Optional[int]]:
+) -> tuple[str, int | None]:
     lines = _virtual_expansion_lines(response)
     selected = []
     size = 0
     consumed = 0
-    for line in lines[offset:offset + limit]:
+    for line in lines[offset : offset + limit]:
         separator = 2 if selected else 0
         encoded_size = _escaped_string_size(line)
         if size + separator + encoded_size <= MAX_EXPANSION_TEXT_BYTES:
@@ -1571,7 +1532,7 @@ def _expansion_slice(
     return "\n".join(selected), next_offset
 
 
-def _expand(request: Request, data_root: Path) -> Dict[str, object]:
+def _expand(request: Request, data_root: Path) -> dict[str, Any]:
     archive_id = str(request.args["archiveId"])
     session_id, response = _find_archive_response(
         data_root,
@@ -1590,7 +1551,7 @@ def _expand(request: Request, data_root: Path) -> Dict[str, object]:
         if output.strip() or not isinstance(safe_response, str):
             raise ValueError("invalid archive redaction output")
     except (Exception, SystemExit) as error:
-        _diagnose("archive failure (" + type(error).__name__ + ")")
+        _diagnose_failure("archive failure", error)
         return _error("archive_unavailable")
 
     try:
@@ -1604,12 +1565,12 @@ def _expand(request: Request, data_root: Path) -> Dict[str, object]:
         if output.strip():
             raise ValueError("invalid archive debit output")
     except (Exception, SystemExit) as error:
-        _diagnose("archive debit failure (" + type(error).__name__ + ")")
+        _diagnose_failure("archive debit failure", error)
 
     offset = int(request.args.get("offset", 0))
     limit = int(request.args.get("limit", MAX_EXPANSION_LINES))
     text, next_offset = _expansion_slice(safe_response, offset, limit)
-    data: Dict[str, object] = {
+    data: dict[str, Any] = {
         "archiveId": archive_id,
         "sessionId": session_id,
         "offset": offset,
@@ -1620,7 +1581,7 @@ def _expand(request: Request, data_root: Path) -> Dict[str, object]:
     return _ok(data)
 
 
-def _dashboard(pi_home: Path) -> Dict[str, object]:
+def _dashboard(pi_home: Path) -> dict[str, Any]:
     expected = pi_home / "token-optimizer" / "dashboard.html"
     try:
         for target in (expected, expected.with_suffix(".meta.json")):
@@ -1650,13 +1611,15 @@ def _dashboard(pi_home: Path) -> Dict[str, object]:
             or info.st_uid != os.geteuid()
         ):
             raise ValueError("invalid dashboard output")
-        return _ok({
-            "available": True,
-            "status": "ready",
-            "path": str(expected),
-        })
+        return _ok(
+            {
+                "available": True,
+                "status": "ready",
+                "path": str(expected),
+            }
+        )
     except (Exception, SystemExit) as error:
-        _diagnose("dashboard failure (" + type(error).__name__ + ")")
+        _diagnose_failure("dashboard failure", error)
         return _ok({"available": False, "status": "unavailable"})
 
 
@@ -1673,7 +1636,7 @@ def _reporting_db_deadline():
     class ReportingConnection(sqlite3.Connection):
         def execute(self, sql, parameters=()):
             if sql == "PRAGMA busy_timeout=5000":
-                sql = "PRAGMA busy_timeout=" + str(REPORTING_DB_BUSY_TIMEOUT_MS)
+                sql = REPORTING_DB_BUSY_TIMEOUT_PRAGMA
             return super().execute(sql, parameters)
 
     def connect(*args, **kwargs):
@@ -1704,7 +1667,7 @@ def _reporting_db_deadline():
                 )
 
 
-def _report_session(request: Request, incomplete: bool) -> Dict[str, object]:
+def _report_session(request: Request, incomplete: bool) -> dict[str, Any]:
     session_file = _current_session_file(request)
     if session_file is None:
         _diagnose("report unavailable (missing or unauthorized session)")
@@ -1728,9 +1691,7 @@ def _report_session(request: Request, incomplete: bool) -> Dict[str, object]:
             connection, output = _capture_call(measure._init_trends_db)
             if output.strip() or connection is None:
                 raise ValueError("invalid trends database output")
-            connection.execute(
-                "PRAGMA busy_timeout=" + str(REPORTING_DB_BUSY_TIMEOUT_MS)
-            )
+            connection.execute(REPORTING_DB_BUSY_TIMEOUT_PRAGMA)
             changed, output = _capture_call(
                 measure._insert_normalized_session,
                 connection,
@@ -1745,18 +1706,14 @@ def _report_session(request: Request, incomplete: bool) -> Dict[str, object]:
             connection.commit()
     except (Exception, SystemExit, _ReportingDeadlineExpired) as error:
         if connection is not None:
-            try:
+            with contextlib.suppress(Exception):
                 connection.rollback()
-            except Exception:
-                pass
-        _diagnose("report failure (" + type(error).__name__ + ")")
+        _diagnose_failure("report failure", error)
         return _ok({"available": False, "status": "unavailable"})
     finally:
         if connection is not None:
-            try:
+            with contextlib.suppress(Exception):
                 connection.close()
-            except Exception:
-                pass
 
     if not incomplete and changed:
         try:
@@ -1767,30 +1724,43 @@ def _report_session(request: Request, incomplete: bool) -> Dict[str, object]:
                 trigger="end",
                 cwd=request.session["cwd"],
             )
-            if (
-                output.strip()
-                or not _is_nonempty_string(
-                    checkpoint,
-                    MAX_DESCRIPTOR_STRING_BYTES,
-                )
+            if output.strip() or not _is_nonempty_string(
+                checkpoint,
+                MAX_DESCRIPTOR_STRING_BYTES,
             ):
                 raise ValueError("invalid end checkpoint output")
         except (Exception, SystemExit) as error:
-            _diagnose("report failure (" + type(error).__name__ + ")")
+            _diagnose_failure("report failure", error)
             return _ok({"available": False, "status": "unavailable"})
 
     status = "incomplete" if incomplete and changed else "complete"
     return _ok({"available": True, "status": status})
 
 
-def _claim_recovery(store: object, session_id: str) -> Optional[RecoveryClaim]:
-    now = datetime.now().timestamp()
-    token = os.urandom(16).hex()
-    marker = json.dumps({
-        "state": "pending",
-        "token": token,
-        "expiresAt": now + RECOVERY_PENDING_SECONDS,
-    }, separators=(",", ":"))
+def _pending_marker(token: str) -> str:
+    return json.dumps(
+        {
+            "state": "pending",
+            "token": token,
+            "expiresAt": datetime.now().timestamp() + RECOVERY_PENDING_SECONDS,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _pending_marker_value(raw: Any) -> dict[str, Any] | None:
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if isinstance(value, dict) and value.get("state") == "pending":
+        return value
+    return None
+
+
+@contextlib.contextmanager
+def _recovery_transaction(store: Any):
+    """Yield (connection, current marker value) inside BEGIN IMMEDIATE; commit or rollback."""
     connection = store._connect()
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -1798,118 +1768,74 @@ def _claim_recovery(store: object, session_id: str) -> Optional[RecoveryClaim]:
             "SELECT value FROM session_meta WHERE key = ?",
             (RECOVERY_MARKER,),
         ).fetchone()
-        if row is not None:
-            value = row[0]
-            try:
-                pending = json.loads(value)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pending = None
+        yield connection, None if row is None else row[0]
+        connection.commit()
+    except (Exception, SystemExit):
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+
+
+def _claim_recovery(store: Any, session_id: str) -> RecoveryClaim | None:
+    now = datetime.now().timestamp()
+    token = os.urandom(16).hex()
+    with _recovery_transaction(store) as (connection, current):
+        if current is not None:
+            pending = _pending_marker_value(current)
+            expires = None if pending is None else pending.get("expiresAt")
             if not (
-                isinstance(pending, dict)
-                and pending.get("state") == "pending"
-                and type(pending.get("expiresAt")) in {int, float}
-                and math.isfinite(pending["expiresAt"])
-                and pending["expiresAt"] <= now
+                isinstance(expires, (int, float))
+                and not isinstance(expires, bool)
+                and math.isfinite(expires)
+                and expires <= now
             ):
-                connection.commit()
                 return None
         connection.execute(
             "INSERT OR REPLACE INTO session_meta (key, value) VALUES (?, ?)",
-            (RECOVERY_MARKER, marker),
+            (RECOVERY_MARKER, _pending_marker(token)),
         )
-        connection.commit()
-        return RecoveryClaim(session_id, token)
-    except (Exception, SystemExit):
-        if connection.in_transaction:
-            connection.rollback()
-        raise
+    return RecoveryClaim(session_id, token)
 
 
-def _owned_pending(raw: object, claim: RecoveryClaim) -> bool:
-    try:
-        value = json.loads(raw)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return False
-    return (
-        isinstance(value, dict)
-        and value.get("state") == "pending"
-        and value.get("token") == claim.token
+def _transition_recovery_claim(
+    claim: RecoveryClaim,
+    new_value: str | None,
+    busy_timeout_ms: int | None = None,
+) -> bool:
+    """Replace the owned pending marker with new_value, or delete it when None."""
+    session_store = _load_engine("session_store")
+    store = session_store.SessionStore(
+        claim.session_id, busy_timeout_ms=busy_timeout_ms
     )
+    try:
+        with _recovery_transaction(store) as (connection, current):
+            pending = _pending_marker_value(current)
+            if pending is None or pending.get("token") != claim.token:
+                return False
+            if new_value is None:
+                cursor = connection.execute(
+                    "DELETE FROM session_meta WHERE key = ? AND value = ?",
+                    (RECOVERY_MARKER, current),
+                )
+            else:
+                cursor = connection.execute(
+                    "UPDATE session_meta SET value = ? WHERE key = ? AND value = ?",
+                    (new_value, RECOVERY_MARKER, current),
+                )
+            return cursor.rowcount == 1
+    finally:
+        store.close()
 
 
 def _renew_recovery_claim(claim: RecoveryClaim) -> bool:
-    session_store = _load_engine("session_store")
-    store = session_store.SessionStore(claim.session_id)
-    try:
-        connection = store._connect()
-        connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT value FROM session_meta WHERE key = ?",
-            (RECOVERY_MARKER,),
-        ).fetchone()
-        if row is None or not _owned_pending(row[0], claim):
-            connection.commit()
-            return False
-        marker = json.dumps({
-            "state": "pending",
-            "token": claim.token,
-            "expiresAt": datetime.now().timestamp() + RECOVERY_PENDING_SECONDS,
-        }, separators=(",", ":"))
-        changed = connection.execute(
-            "UPDATE session_meta SET value = ? WHERE key = ? AND value = ?",
-            (marker, RECOVERY_MARKER, row[0]),
-        ).rowcount
-        connection.commit()
-        return changed == 1
-    except (Exception, SystemExit):
-        if connection.in_transaction:
-            connection.rollback()
-        raise
-    finally:
-        store.close()
+    return _transition_recovery_claim(claim, _pending_marker(claim.token))
 
 
-def _settle_recovery_claim(
-    claim: RecoveryClaim,
-    delivered: bool,
-    busy_timeout_ms: Optional[int] = None,
-) -> bool:
-    session_store = _load_engine("session_store")
-    if busy_timeout_ms is None:
-        store = session_store.SessionStore(claim.session_id)
-    else:
-        store = session_store.SessionStore(
-            claim.session_id,
-            busy_timeout_ms=busy_timeout_ms,
-        )
+def _release_recovery_claim(claim: RecoveryClaim) -> None:
     try:
-        connection = store._connect()
-        connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT value FROM session_meta WHERE key = ?",
-            (RECOVERY_MARKER,),
-        ).fetchone()
-        if row is None or not _owned_pending(row[0], claim):
-            connection.commit()
-            return False
-        if delivered:
-            changed = connection.execute(
-                "UPDATE session_meta SET value = ? WHERE key = ? AND value = ?",
-                (RECOVERY_DELIVERED, RECOVERY_MARKER, row[0]),
-            ).rowcount
-        else:
-            changed = connection.execute(
-                "DELETE FROM session_meta WHERE key = ? AND value = ?",
-                (RECOVERY_MARKER, row[0]),
-            ).rowcount
-        connection.commit()
-        return changed == 1
-    except (Exception, SystemExit):
-        if connection.in_transaction:
-            connection.rollback()
-        raise
-    finally:
-        store.close()
+        _transition_recovery_claim(claim, None)
+    except (Exception, SystemExit) as error:
+        _diagnose_failure("recovery release failure", error)
 
 
 def _finalize_recovery_claim(claim: RecoveryClaim) -> None:
@@ -1921,13 +1847,10 @@ def _finalize_recovery_claim(claim: RecoveryClaim) -> None:
         if remaining_ms <= 0:
             break
         try:
-            _settle_recovery_claim(
+            _transition_recovery_claim(
                 claim,
-                delivered=True,
-                busy_timeout_ms=min(
-                    RECOVERY_FINALIZE_BUSY_TIMEOUT_MS,
-                    remaining_ms,
-                ),
+                RECOVERY_DELIVERED,
+                busy_timeout_ms=min(RECOVERY_FINALIZE_BUSY_TIMEOUT_MS, remaining_ms),
             )
             return
         except sqlite3.OperationalError as error:
@@ -1935,7 +1858,7 @@ def _finalize_recovery_claim(claim: RecoveryClaim) -> None:
                 raise
             last_error = error
     if last_error is not None:
-        _diagnose("recovery finalize deferred (" + type(last_error).__name__ + ")")
+        _diagnose_failure("recovery finalize deferred", last_error)
 
 
 def _same_identity(left: os.stat_result, right: os.stat_result) -> bool:
@@ -2131,7 +2054,7 @@ def _prune_trends(data_root: Path, retention_days: int) -> None:
         connection.close()
 
 
-def _best_effort_retention_cleanup(measure: object, data_root: Path) -> None:
+def _best_effort_retention_cleanup(measure: Any, data_root: Path) -> None:
     try:
         _pi_session_store_cleanup(data_root)
     except (Exception, SystemExit):
@@ -2145,7 +2068,7 @@ def _best_effort_retention_cleanup(measure: object, data_root: Path) -> None:
         _diagnose("retention cleanup failure")
 
 
-def _session_start(request: Request, data_root: Path) -> Dict[str, object]:
+def _session_start(request: Request, data_root: Path) -> dict[str, Any]:
     session_file = _current_session_file(request)
     if session_file is None:
         return _ok()
@@ -2183,7 +2106,7 @@ def _session_start(request: Request, data_root: Path) -> Dict[str, object]:
             raise ValueError("invalid recovery output")
         context = _recovery_context(raw)
         if context is None:
-            _settle_recovery_claim(claim, delivered=False)
+            _transition_recovery_claim(claim, None)
             claim = None
             return _ok()
         if not _renew_recovery_claim(claim):
@@ -2195,27 +2118,28 @@ def _session_start(request: Request, data_root: Path) -> Dict[str, object]:
         return RecoveryResponse(response, claim)
     except (Exception, SystemExit) as error:
         if claim is not None:
-            try:
-                _settle_recovery_claim(claim, delivered=False)
-            except (Exception, SystemExit) as release_error:
-                _diagnose("recovery release failure (" + type(release_error).__name__ + ")")
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+            _release_recovery_claim(claim)
+        _diagnose_failure("engine failure", error)
         return _ok()
 
 
-def _quality_context(raw: str) -> Optional[str]:
+def _quality_context(raw: str) -> str | None:
     if not raw.strip():
         return None
     try:
         value = _loads(raw)
     except (json.JSONDecodeError, RecursionError, ValueError) as error:
         raise ValueError("invalid quality output") from error
-    if set(value) != {"systemMessage"} or not isinstance(value["systemMessage"], str):
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"systemMessage"}
+        or not isinstance(value["systemMessage"], str)
+    ):
         raise ValueError("invalid quality output")
     return value["systemMessage"].strip() or None
 
 
-def _verbosity_context(raw: str) -> Optional[str]:
+def _verbosity_context(raw: str) -> str | None:
     if not raw.strip():
         return None
     try:
@@ -2236,7 +2160,7 @@ def _verbosity_context(raw: str) -> Optional[str]:
     return output["additionalContext"].strip() or None
 
 
-def _nudge_context(parts: Tuple[Optional[str], ...]) -> Optional[str]:
+def _nudge_context(parts: tuple[str | None, ...]) -> str | None:
     text = "\n\n".join(part for part in parts if part and part.strip()).strip()
     if not text:
         return None
@@ -2244,7 +2168,7 @@ def _nudge_context(parts: Tuple[Optional[str], ...]) -> Optional[str]:
     return _bounded_context(text, "nudge")
 
 
-def _before_prompt(request: Request) -> Dict[str, object]:
+def _before_prompt(request: Request) -> dict[str, Any]:
     session_file = _current_session_file(request)
     if session_file is None:
         return _ok()
@@ -2285,67 +2209,60 @@ def _before_prompt(request: Request) -> Dict[str, object]:
         )
         if verbosity_output.strip() or not isinstance(verbosity_result, str):
             raise ValueError("invalid verbosity output")
-        context = _nudge_context((
-            quality_text,
-            continuity_result,
-            _verbosity_context(verbosity_result),
-        ))
+        context = _nudge_context(
+            (
+                quality_text,
+                continuity_result,
+                _verbosity_context(verbosity_result),
+            )
+        )
         if context is None:
             return _ok()
         response = _ok()
         response["contexts"] = [{"scope": "nudge", "text": context}]
         return response
     except (Exception, SystemExit) as error:
-        _diagnose("engine failure (" + type(error).__name__ + ")")
+        _diagnose_failure("engine failure", error)
         return _ok()
 
 
-def dispatch(request: Request) -> Dict[str, object]:
+def _inactive_reason(config: dict[str, Any]) -> str | None:
+    if config["state"] == "missing":
+        return "consent_required"
+    if config["state"] != "valid":
+        return "config_invalid"
+    if config["enabled"] is not True:
+        return "disabled"
+    if config["consentGranted"] is not True:
+        return "consent_required"
+    return None
+
+
+def dispatch(request: Request) -> dict[str, Any]:
     pi_home, data_root = _configure_environment(request)
     if request.action in {"status", "doctor"}:
         return _ok(_status_data(request, pi_home, data_root))
 
     config = _config_result(pi_home)
-    if config["state"] != "valid":
-        reason = (
-            "consent_required"
-            if config["state"] == "missing"
-            else "config_invalid"
-        )
-    elif config["enabled"] is not True:
-        reason = "disabled"
-    elif config["consentGranted"] is not True:
-        reason = "consent_required"
-    elif request.action == "pre_tool":
-        return _pre_tool(request)
-    elif request.action == "post_tool":
-        return _post_tool(request, data_root)
-    elif request.action == "session_start":
-        return _session_start(request, data_root)
-    elif request.action == "before_prompt":
-        return _before_prompt(request)
-    elif request.action == "pre_compact":
-        return _pre_compact(request)
-    elif request.action == "post_compact":
-        return _post_compact(request)
-    elif request.action == "rollup":
-        return _report_session(request, incomplete=True)
-    elif request.action == "finalize":
-        return _report_session(request, incomplete=False)
-    elif request.action == "dashboard":
-        return _dashboard(pi_home)
-    elif request.action == "expand":
-        return _expand(request, data_root)
-    else:
-        return _error("not_implemented")
-    return _ok({
-        "active": False,
-        "reason": reason,
-        "configState": config["state"],
-    })
+    reason = _inactive_reason(config)
+    if reason is not None:
+        return _ok({"active": False, "reason": reason, "configState": config["state"]})
+    handlers: dict[str, Callable[[], dict[str, Any]]] = {
+        "pre_tool": lambda: _pre_tool(request),
+        "post_tool": lambda: _post_tool(request, data_root),
+        "session_start": lambda: _session_start(request, data_root),
+        "before_prompt": lambda: _before_prompt(request),
+        "pre_compact": lambda: _pre_compact(request),
+        "post_compact": lambda: _post_compact(request),
+        "rollup": lambda: _report_session(request, incomplete=True),
+        "finalize": lambda: _report_session(request, incomplete=False),
+        "dashboard": lambda: _dashboard(pi_home),
+        "expand": lambda: _expand(request, data_root),
+    }
+    return handlers[request.action]()
 
 
-def _emit(response: Dict[str, object], stream: TextIO) -> None:
+def _emit(response: dict[str, Any], stream: TextIO) -> None:
     payload = json.dumps(
         response,
         ensure_ascii=True,
@@ -2359,13 +2276,13 @@ def _emit(response: Dict[str, object], stream: TextIO) -> None:
 
 
 def main(
-    input_stream: Optional[TextIO] = None,
-    output_stream: Optional[TextIO] = None,
-    error_stream: Optional[TextIO] = None,
+    input_stream: TextIO | None = None,
+    output_stream: TextIO | None = None,
+    error_stream: TextIO | None = None,
 ) -> int:
-    input_stream = input_stream if input_stream is not None else sys.stdin
-    output_stream = output_stream if output_stream is not None else sys.stdout
-    error_stream = error_stream if error_stream is not None else sys.stderr
+    input_stream = input_stream or sys.stdin
+    output_stream = output_stream or sys.stdout
+    error_stream = error_stream or sys.stderr
     try:
         request = parse_request(_read_request(input_stream))
         with contextlib.redirect_stderr(error_stream):
@@ -2373,7 +2290,7 @@ def main(
     except ProtocolError as error:
         print(str(error), file=error_stream)
         response = _error(error.code)
-    except EnvironmentError as error:
+    except BridgeEnvironmentError as error:
         print(str(error), file=error_stream)
         response = _error("invalid_environment")
     except Exception as error:
@@ -2381,38 +2298,29 @@ def main(
         response = _error("internal_error")
 
     claim = response.claim if isinstance(response, RecoveryResponse) else None
-    if claim is not None:
-        with contextlib.redirect_stderr(error_stream):
+    with contextlib.redirect_stderr(error_stream):
+        if claim is not None:
             try:
                 owned = _renew_recovery_claim(claim)
             except (Exception, SystemExit) as error:
-                try:
-                    _settle_recovery_claim(claim, delivered=False)
-                except (Exception, SystemExit) as release_error:
-                    _diagnose("recovery release failure (" + type(release_error).__name__ + ")")
-                _diagnose("recovery revalidation failure (" + type(error).__name__ + ")")
+                _release_recovery_claim(claim)
+                _diagnose_failure("recovery revalidation failure", error)
                 owned = False
             if not owned:
                 response = _ok()
                 claim = None
-    try:
-        _emit(response, output_stream)
-    except (Exception, SystemExit) as error:
-        with contextlib.redirect_stderr(error_stream):
+        try:
+            _emit(response, output_stream)
+        except (Exception, SystemExit) as error:
             if claim is not None:
-                try:
-                    _settle_recovery_claim(claim, delivered=False)
-                except (Exception, SystemExit) as release_error:
-                    _diagnose("recovery release failure (" + type(release_error).__name__ + ")")
-            _diagnose("response emission failure (" + type(error).__name__ + ")")
-        return 0
-
-    if claim is not None:
-        with contextlib.redirect_stderr(error_stream):
+                _release_recovery_claim(claim)
+            _diagnose_failure("response emission failure", error)
+            return 0
+        if claim is not None:
             try:
                 _finalize_recovery_claim(claim)
             except (Exception, SystemExit) as error:
-                _diagnose("recovery finalize failure (" + type(error).__name__ + ")")
+                _diagnose_failure("recovery finalize failure", error)
     return 0
 
 

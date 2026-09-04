@@ -20,7 +20,7 @@ jobs:
           - macos-latest
           - ubuntu-latest
         python:
-          - "3.9"
+          - "3.12"
           - "3.14.7"
 
     env:

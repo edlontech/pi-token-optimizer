@@ -9,10 +9,11 @@ import json
 import math
 import os
 import re
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime, timezone
+from itertools import pairwise
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, TypeGuard
 
 MAX_PARSE_FILE_BYTES = 64 * 1024 * 1024
 MAX_JSONL_LINE_CHARS = 8 * 1024 * 1024
@@ -66,7 +67,29 @@ def _is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def _read_header(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
+def _nonempty(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _positive_int(value: Any) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _session_header(line: str) -> dict[str, Any] | None:
+    """Parse a JSONL first line and return it only when it is a v3 session header."""
+    if len(line) > MAX_JSONL_LINE_CHARS:
+        return None
+    header = _loads_json(line)
+    if (
+        not isinstance(header, dict)
+        or header.get("type") != "session"
+        or header.get("version") != 3
+    ):
+        return None
+    return header
+
+
+def _read_header(filepath: str | Path) -> dict[str, Any] | None:
     path = Path(filepath).expanduser()
     try:
         if path.suffix != ".jsonl" or path.is_symlink() or not path.is_file():
@@ -74,18 +97,12 @@ def _read_header(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
         if path.stat().st_size > MAX_PARSE_FILE_BYTES:
             return None
         with path.open("r", encoding="utf-8", errors="replace") as handle:
-            first = handle.readline(MAX_JSONL_LINE_CHARS + 1)
-        if len(first) > MAX_JSONL_LINE_CHARS:
-            return None
-        header = _loads_json(first)
+            return _session_header(handle.readline(MAX_JSONL_LINE_CHARS + 1))
     except (OSError, json.JSONDecodeError, ValueError):
         return None
-    if not isinstance(header, dict) or header.get("type") != "session" or header.get("version") != 3:
-        return None
-    return header
 
 
-def is_pi_session_path(path: Union[str, Path]) -> bool:
+def is_pi_session_path(path: str | Path) -> bool:
     candidate = Path(path).expanduser()
     try:
         resolved = candidate.resolve(strict=True)
@@ -110,7 +127,7 @@ def is_pi_session_path(path: Union[str, Path]) -> bool:
     return False
 
 
-def find_current_session_jsonl() -> Optional[Path]:
+def find_current_session_jsonl() -> Path | None:
     value = os.environ.get("PI_SESSION_FILE")
     if not value:
         return None
@@ -125,7 +142,7 @@ def _project_name(header: dict[str, Any], path: Path) -> str:
     return path.parent.name
 
 
-def _iter_valid_session_files(cutoff: Optional[float] = None):
+def _iter_valid_session_files(cutoff: float | None = None):
     seen: set[Path] = set()
     for root in _session_roots():
         try:
@@ -164,9 +181,7 @@ def find_all_jsonl_files(
     days: int = 30,
     max_files: int = MAX_DISCOVERY_FILES,
 ) -> list[tuple[Path, float, str]]:
-    if not isinstance(days, int) or isinstance(days, bool) or days < 0:
-        return []
-    if not isinstance(max_files, int) or isinstance(max_files, bool) or max_files <= 0:
+    if not (_positive_int(days) or days == 0) or not _positive_int(max_files):
         return []
     cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
     newest = heapq.nlargest(
@@ -180,7 +195,7 @@ def find_all_jsonl_files(
     ]
 
 
-def find_session_jsonl_by_id(session_id: str) -> Optional[Path]:
+def find_session_jsonl_by_id(session_id: str) -> Path | None:
     if not isinstance(session_id, str) or not _SESSION_ID_RE.fullmatch(session_id):
         return None
 
@@ -200,7 +215,9 @@ def find_session_jsonl_by_id(session_id: str) -> Optional[Path]:
     return next(iter(matches.values())) if len(matches) == 1 else None
 
 
-def _read_session(filepath: Union[str, Path]) -> Optional[tuple[dict[str, Any], list[dict[str, Any]]]]:
+def _read_session(
+    filepath: str | Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
     path = Path(filepath).expanduser()
     if not is_pi_session_path(path):
         return None
@@ -208,11 +225,8 @@ def _read_session(filepath: Union[str, Path]) -> Optional[tuple[dict[str, Any], 
         if path.stat().st_size > MAX_PARSE_FILE_BYTES:
             return None
         with path.open("r", encoding="utf-8", errors="replace") as handle:
-            first = handle.readline(MAX_JSONL_LINE_CHARS + 1)
-            if len(first) > MAX_JSONL_LINE_CHARS:
-                return None
-            header = _loads_json(first)
-            if not isinstance(header, dict) or header.get("type") != "session" or header.get("version") != 3:
+            header = _session_header(handle.readline(MAX_JSONL_LINE_CHARS + 1))
+            if header is None:
                 return None
 
             records: list[dict[str, Any]] = []
@@ -278,7 +292,7 @@ def _active_branch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return branch
 
 
-def active_entries(filepath: Union[str, Path]) -> list[dict[str, Any]]:
+def active_entries(filepath: str | Path) -> list[dict[str, Any]]:
     """Return the current Pi branch in chronological order, or [] if corrupt."""
     session = _read_session(filepath)
     return _active_branch(session[1]) if session is not None else []
@@ -345,19 +359,19 @@ def _text(content: Any) -> str:
     )
 
 
-def _topic(text: str) -> Optional[str]:
+def _topic(text: str) -> str | None:
     clean = " ".join(text.split())
     lower = clean.lower()
     for prefix in _TOPIC_PREFIXES:
         if lower.startswith(prefix):
-            clean = clean[len(prefix):].strip()
+            clean = clean[len(prefix) :].strip()
             break
     if not clean:
         return None
     return clean[:117] + "..." if len(clean) > 120 else clean
 
 
-def _parse_timestamp(value: Any) -> Optional[datetime]:
+def _parse_timestamp(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
@@ -367,26 +381,36 @@ def _parse_timestamp(value: Any) -> Optional[datetime]:
     return timestamp if timestamp.utcoffset() is not None else None
 
 
-def _usage(value: Any) -> Optional[dict[str, Any]]:
+_USAGE_TOKEN_KEYS = (
+    "fresh_input",
+    "cache_read",
+    "cache_create",
+    "cache_create_1h",
+    "cache_create_5m",
+    "output",
+)
+
+
+def _usage(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     cost = value.get("cost")
     cost_total = _safe_float(cost.get("total")) if isinstance(cost, dict) else 0.0
-    cache_write = _safe_int(value.get("cacheWrite"))
-    cache_write_1h = min(cache_write, _safe_int(value.get("cacheWrite1h")))
+    cache_create = _safe_int(value.get("cacheWrite"))
+    cache_create_1h = min(cache_create, _safe_int(value.get("cacheWrite1h")))
     return {
-        "input": _safe_int(value.get("input")),
+        "fresh_input": _safe_int(value.get("input")),
         "output": _safe_int(value.get("output")),
         "cache_read": _safe_int(value.get("cacheRead")),
-        "cache_write": cache_write,
-        "cache_write_1h": cache_write_1h,
-        "cache_write_5m": cache_write - cache_write_1h,
+        "cache_create": cache_create,
+        "cache_create_1h": cache_create_1h,
+        "cache_create_5m": cache_create - cache_create_1h,
         "cost": cost_total,
     }
 
 
 def _tool_name(value: Any) -> str:
-    name = value if isinstance(value, str) and value else "unknown"
+    name = _nonempty(value) or "unknown"
     return _TOOL_ALIASES.get(name, name)
 
 
@@ -397,6 +421,15 @@ def _tool_calls(message: dict[str, Any]):
     for block in content:
         if isinstance(block, dict) and block.get("type") == "toolCall":
             yield block
+
+
+def _call_arguments(call: dict[str, Any]) -> dict[str, Any]:
+    arguments = call.get("arguments")
+    return arguments if isinstance(arguments, dict) else {}
+
+
+def _call_path(arguments: dict[str, Any]) -> str | None:
+    return _nonempty(arguments.get("file_path") or arguments.get("path"))
 
 
 def _retained_tail(entry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -410,15 +443,17 @@ def _message_timestamp(message: dict[str, Any], fallback: Any) -> str:
     value = message.get("timestamp")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         try:
-            return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat().replace(
-                "+00:00", "Z"
+            return (
+                datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
             )
         except (OSError, OverflowError, ValueError):
             pass
     return fallback if isinstance(fallback, str) else ""
 
 
-def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
+def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
     session = _read_session(filepath)
     if session is None:
         return None
@@ -427,24 +462,17 @@ def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
     if not branch:
         return None
 
-    total_input = 0
-    total_output = 0
-    total_cache_read = 0
-    total_cache_create = 0
-    total_cache_create_1h = 0
-    total_cache_create_5m = 0
     total_cost = 0.0
     message_count = 0
     api_calls = 0
-    model_usage: dict[str, int] = {}
     model_usage_breakdown: dict[str, dict[str, int]] = {}
-    tool_counts: dict[str, int] = {}
-    skills_used: dict[str, int] = {}
-    subagents_used: dict[str, int] = {}
-    effort_counts: dict[str, int] = {}
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    topic: Optional[str] = None
+    tool_counts: Counter[str] = Counter()
+    skills_used: Counter[str] = Counter()
+    subagents_used: Counter[str] = Counter()
+    effort_counts: Counter[str] = Counter()
+    provider: str | None = None
+    model: str | None = None
+    topic: str | None = None
     first_ts = _parse_timestamp(header.get("timestamp"))
     last_ts = first_ts
     api_timestamps: list[datetime] = []
@@ -457,14 +485,12 @@ def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
 
         entry_type = entry.get("type")
         if entry_type == "model_change":
-            if isinstance(entry.get("provider"), str) and entry["provider"]:
-                provider = entry["provider"]
-            if isinstance(entry.get("modelId"), str) and entry["modelId"]:
-                model = entry["modelId"]
+            provider = _nonempty(entry.get("provider")) or provider
+            model = _nonempty(entry.get("modelId")) or model
         elif entry_type == "thinking_level_change":
-            level = entry.get("thinkingLevel")
-            if isinstance(level, str) and level:
-                effort_counts[level] = effort_counts.get(level, 0) + 1
+            level = _nonempty(entry.get("thinkingLevel"))
+            if level:
+                effort_counts[level] += 1
 
         message = entry.get("message")
         if isinstance(message, dict):
@@ -474,74 +500,51 @@ def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
                 topic = topic or _topic(_text(message.get("content")))
             elif role == "assistant":
                 message_count += 1
-                if isinstance(message.get("provider"), str) and message["provider"]:
-                    provider = message["provider"]
-                if isinstance(message.get("model"), str) and message["model"]:
-                    model = message["model"]
+                provider = _nonempty(message.get("provider")) or provider
+                model = _nonempty(message.get("model")) or model
                 for call in _tool_calls(message):
                     name = _tool_name(call.get("name"))
-                    tool_counts[name] = tool_counts.get(name, 0) + 1
-                    arguments = call.get("arguments")
-                    if not isinstance(arguments, dict):
-                        arguments = {}
+                    tool_counts[name] += 1
+                    arguments = _call_arguments(call)
                     if name == "Skill":
-                        skill = str(arguments.get("skill") or "unknown")
-                        skills_used[skill] = skills_used.get(skill, 0) + 1
+                        skills_used[str(arguments.get("skill") or "unknown")] += 1
                     elif name in {"Task", "Agent"}:
                         agent = str(arguments.get("subagent_type") or "unknown")
-                        subagents_used[agent] = subagents_used.get(agent, 0) + 1
+                        subagents_used[agent] += 1
 
-        usage = _usage(message.get("usage") if isinstance(message, dict) else entry.get("usage"))
+        usage = _usage(
+            message.get("usage") if isinstance(message, dict) else entry.get("usage")
+        )
         if usage is None:
             continue
         api_calls += 1
-        total_input += usage["input"] + usage["cache_read"] + usage["cache_write"]
-        total_output += usage["output"]
-        total_cache_read += usage["cache_read"]
-        total_cache_create += usage["cache_write"]
-        total_cache_create_1h += usage["cache_write_1h"]
-        total_cache_create_5m += usage["cache_write_5m"]
         total_cost += usage["cost"]
-        if not math.isfinite(total_cost):
-            return None
         if timestamp is not None:
             api_timestamps.append(timestamp)
-        model_key = model or "pi"
-        model_usage[model_key] = (
-            model_usage.get(model_key, 0)
-            + usage["input"]
-            + usage["cache_write"]
-            + usage["output"]
-        )
         breakdown = model_usage_breakdown.setdefault(
-            model_key,
-            {
-                "fresh_input": 0,
-                "cache_read": 0,
-                "cache_create": 0,
-                "cache_create_1h": 0,
-                "cache_create_5m": 0,
-                "output": 0,
-            },
+            model or "pi", dict.fromkeys(_USAGE_TOKEN_KEYS, 0)
         )
-        breakdown["fresh_input"] += usage["input"]
-        breakdown["cache_read"] += usage["cache_read"]
-        breakdown["cache_create"] += usage["cache_write"]
-        breakdown["cache_create_1h"] += usage["cache_write_1h"]
-        breakdown["cache_create_5m"] += usage["cache_write_5m"]
-        breakdown["output"] += usage["output"]
+        for key in _USAGE_TOKEN_KEYS:
+            breakdown[key] += usage[key]
 
-    if message_count == 0 and api_calls == 0:
+    if (message_count == 0 and api_calls == 0) or not math.isfinite(total_cost):
         return None
 
+    def total(key: str) -> int:
+        return sum(parts[key] for parts in model_usage_breakdown.values())
+
+    total_cache_read = total("cache_read")
+    total_cache_create = total("cache_create")
+    total_input = total("fresh_input") + total_cache_read + total_cache_create
+    total_output = total("output")
     gaps = [
         max(0.0, (later - earlier).total_seconds())
-        for earlier, later in zip(api_timestamps, api_timestamps[1:])
+        for earlier, later in pairwise(api_timestamps)
     ]
     duration = 0.0
     if first_ts is not None and last_ts is not None:
         duration = max(0.0, (last_ts - first_ts).total_seconds() / 60.0)
-    dominant_effort = max(effort_counts, key=effort_counts.get) if effort_counts else None
+    dominant_effort = effort_counts.most_common(1)[0][0] if effort_counts else None
 
     return {
         "version": header.get("version"),
@@ -552,8 +555,8 @@ def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
         "total_output_tokens": total_output,
         "total_cache_read": total_cache_read,
         "total_cache_create": total_cache_create,
-        "total_cache_create_1h": total_cache_create_1h,
-        "total_cache_create_5m": total_cache_create_5m,
+        "total_cache_create_1h": total("cache_create_1h"),
+        "total_cache_create_5m": total("cache_create_5m"),
         "model_context_window": None,
         "cache_hit_rate": total_cache_read / total_input if total_input else 0.0,
         "avg_call_gap_seconds": sum(gaps) / len(gaps) if gaps else None,
@@ -563,17 +566,20 @@ def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
         "cost_source": "pi_usage",
         "provider": provider,
         "model": model,
-        "model_usage": model_usage,
+        "model_usage": {
+            model_key: parts["fresh_input"] + parts["cache_create"] + parts["output"]
+            for model_key, parts in model_usage_breakdown.items()
+        },
         "model_usage_breakdown": model_usage_breakdown,
-        "reported_input_tokens": sum(parts["fresh_input"] for parts in model_usage_breakdown.values()),
+        "reported_input_tokens": total("fresh_input"),
         "reported_output_tokens": total_output,
         "reported_model_usage": {
             model_key: parts["fresh_input"] + parts["output"]
             for model_key, parts in model_usage_breakdown.items()
         },
-        "skills_used": skills_used,
-        "subagents_used": subagents_used,
-        "tool_calls": tool_counts,
+        "skills_used": dict(skills_used),
+        "subagents_used": dict(subagents_used),
+        "tool_calls": dict(tool_counts),
         "message_count": message_count,
         "api_calls": api_calls,
         "first_ts": first_ts.isoformat() if first_ts else None,
@@ -584,28 +590,24 @@ def parse_session_jsonl(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
         "token_source": "pi_usage",
         "rate_limits": None,
         "effort": dominant_effort,
-        "effort_breakdown": effort_counts,
+        "effort_breakdown": dict(effort_counts),
         "tool_duration_p90_ms": None,
         "task_duration_ms_max": None,
         "ttft_ms_avg": None,
     }
 
 
-def parse_session_turns(filepath: Union[str, Path]) -> list[dict[str, Any]]:
+def parse_session_turns(filepath: str | Path) -> list[dict[str, Any]]:
     branch = active_entries(filepath)
     turns: list[dict[str, Any]] = []
-    current_model: Optional[str] = None
-    current_provider: Optional[str] = None
-    previous_timestamp: Optional[datetime] = None
+    current_model: str | None = None
+    current_provider: str | None = None
+    previous_timestamp: datetime | None = None
 
     for entry in branch:
         if entry.get("type") == "model_change":
-            provider = entry.get("provider")
-            model = entry.get("modelId")
-            if isinstance(provider, str) and provider:
-                current_provider = provider
-            if isinstance(model, str) and model:
-                current_model = model
+            current_provider = _nonempty(entry.get("provider")) or current_provider
+            current_model = _nonempty(entry.get("modelId")) or current_model
             continue
 
         message = entry.get("message")
@@ -615,46 +617,43 @@ def parse_session_turns(filepath: Union[str, Path]) -> list[dict[str, Any]]:
         if usage is None:
             continue
 
-        provider = message.get("provider")
-        model = message.get("model")
-        if isinstance(provider, str) and provider:
-            current_provider = provider
-        if isinstance(model, str) and model:
-            current_model = model
+        current_provider = _nonempty(message.get("provider")) or current_provider
+        current_model = _nonempty(message.get("model")) or current_model
         timestamp_value = entry.get("timestamp")
         timestamp = _parse_timestamp(timestamp_value)
         gap = None
         if timestamp is not None:
             if previous_timestamp is not None:
-                gap = int(round(max(0.0, (timestamp - previous_timestamp).total_seconds())))
+                gap = round(max(0.0, (timestamp - previous_timestamp).total_seconds()))
             previous_timestamp = timestamp
 
-        turns.append({
-            "turn_index": len(turns),
-            "role": "assistant",
-            "input_tokens": usage["input"] + usage["cache_read"],
-            "output_tokens": usage["output"],
-            "cache_read": usage["cache_read"],
-            "cache_creation": usage["cache_write"],
-            "cache_creation_1h": usage["cache_write_1h"],
-            "cache_creation_5m": usage["cache_write_5m"],
-            "model": current_model or "pi",
-            "provider": current_provider,
-            "timestamp": timestamp_value if timestamp is not None else None,
-            "gap_since_prev_seconds": gap,
-            "tools_used": [
-                _tool_name(call.get("name"))
-                for call in _tool_calls(message)
-            ],
-            "cost_usd": round(usage["cost"], 6),
-            "cost_source": "pi_usage",
-            "estimated": False,
-        })
+        turns.append(
+            {
+                "turn_index": len(turns),
+                "role": "assistant",
+                "input_tokens": usage["fresh_input"] + usage["cache_read"],
+                "output_tokens": usage["output"],
+                "cache_read": usage["cache_read"],
+                "cache_creation": usage["cache_create"],
+                "cache_creation_1h": usage["cache_create_1h"],
+                "cache_creation_5m": usage["cache_create_5m"],
+                "model": current_model or "pi",
+                "provider": current_provider,
+                "timestamp": timestamp_value if timestamp is not None else None,
+                "gap_since_prev_seconds": gap,
+                "tools_used": [
+                    _tool_name(call.get("name")) for call in _tool_calls(message)
+                ],
+                "cost_usd": round(usage["cost"], 6),
+                "cost_source": "pi_usage",
+                "estimated": False,
+            }
+        )
 
     return turns
 
 
-def parse_jsonl_for_quality(filepath: Union[str, Path]) -> Optional[dict[str, Any]]:
+def parse_jsonl_for_quality(filepath: str | Path) -> dict[str, Any] | None:
     branch = active_entries(filepath)
     if not branch:
         return None
@@ -669,92 +668,43 @@ def parse_jsonl_for_quality(filepath: Union[str, Path]) -> Optional[dict[str, An
     decisions: list[tuple[int, str]] = []
     compaction_ratios: list[dict[str, Any]] = []
     tool_name_by_id: dict[str, str] = {}
-    topic: Optional[str] = None
-    current_model: Optional[str] = None
-    context_tokens: Optional[int] = None
+    topic: str | None = None
+    context_tokens: int | None = None
     compactions = 0
     tool_call_count = 0
-    idx = 0
-
-    def process_message(message: dict[str, Any], timestamp: str) -> None:
-        nonlocal topic, current_model, context_tokens, tool_call_count, idx
-        role = message.get("role")
-        text = _text(message.get("content"))
-        if role == "user":
-            topic = topic or _topic(text)
-            messages.append((idx, "user", len(text), len(text.split()) > 10))
-        elif role == "assistant":
-            model = message.get("model")
-            if isinstance(model, str) and model:
-                current_model = model
-            usage = _usage(message.get("usage"))
-            if usage is not None:
-                context_tokens = usage["input"] + usage["cache_read"] + usage["cache_write"]
-
-            substantive = len(text.split()) > 20
-            if _DECISION_RE.search(text):
-                decisions.append((idx, text[:200].strip()))
-            for call in _tool_calls(message):
-                substantive = True
-                tool_call_count += 1
-                call_id = call.get("id")
-                name = _tool_name(call.get("name"))
-                if isinstance(call_id, str) and call_id:
-                    tool_name_by_id[call_id] = name
-                arguments = call.get("arguments")
-                if not isinstance(arguments, dict):
-                    arguments = {}
-                path = arguments.get("file_path") or arguments.get("path")
-                if name == "Read" and isinstance(path, str) and path:
-                    reads.append((idx, path, timestamp))
-                elif name in {"Edit", "Write"} and isinstance(path, str) and path:
-                    writes.append((idx, path, timestamp))
-                elif name in {"Task", "Agent"}:
-                    prompt = arguments.get("prompt") or arguments.get("message") or ""
-                    agent_dispatches.append((idx, len(prompt) if isinstance(prompt, str) else 0, 0))
-            messages.append((idx, "assistant", len(text), substantive))
-        elif role == "toolResult":
-            output = _text(message.get("content"))
-            call_id = message.get("toolCallId")
-            call_id = call_id if isinstance(call_id, str) and call_id else str(idx)
-            failed = bool(message.get("isError")) or bool(_ERROR_RE.search(output))
-            tool_results.append((idx, call_id, len(output), False))
-            tool_result_meta.append({
-                "index": idx,
-                "tool_id": call_id,
-                "tool_name": tool_name_by_id.get(
-                    call_id, _tool_name(message.get("toolName"))
-                ),
-                "size": len(output),
-                "is_failure": failed,
-            })
-            if agent_dispatches and agent_dispatches[-1][2] == 0:
-                dispatch = agent_dispatches[-1]
-                agent_dispatches[-1] = (dispatch[0], dispatch[1], len(output))
-        idx += 1
 
     latest_compaction = max(
-        (index for index, entry in enumerate(branch) if entry.get("type") == "compaction"),
+        (
+            index
+            for index, entry in enumerate(branch)
+            if entry.get("type") == "compaction"
+        ),
         default=-1,
     )
-    persisted_model: Optional[str] = None
-    post_compaction_model: Optional[str] = None
+    persisted_model: str | None = None
+    post_compaction_model: str | None = None
     for branch_index, entry in enumerate(branch):
         entry_type = entry.get("type")
         if entry_type == "compaction":
             compactions += 1
             retained = _retained_tail(entry)
-            after_chars = sum(len(_text(message.get("content"))) for message in retained)
+            after_chars = sum(
+                len(_text(message.get("content"))) for message in retained
+            )
             after_tokens = after_chars // 4 if after_chars else None
             before_tokens = _safe_int(entry.get("tokensBefore")) or None
-            compaction_ratios.append({
-                "before_context_tokens": before_tokens,
-                "after_context_tokens": after_tokens,
-                "replacement_msgs": len(retained) if isinstance(entry.get("retainedTail"), list) else None,
-                "ratio": round(after_tokens / before_tokens, 3)
-                if after_tokens and before_tokens
-                else None,
-            })
+            compaction_ratios.append(
+                {
+                    "before_context_tokens": before_tokens,
+                    "after_context_tokens": after_tokens,
+                    "replacement_msgs": len(retained)
+                    if isinstance(entry.get("retainedTail"), list)
+                    else None,
+                    "ratio": round(after_tokens / before_tokens, 3)
+                    if after_tokens and before_tokens
+                    else None,
+                }
+            )
         elif entry_type == "custom_message" and branch_index > latest_compaction:
             content = _text(entry.get("content"))
             if "system-reminder" in content:
@@ -765,13 +715,68 @@ def parse_jsonl_for_quality(filepath: Union[str, Path]) -> Optional[dict[str, An
         message = entry.get("message")
         if isinstance(message, dict) and message.get("role") == "assistant":
             model = message.get("model")
-        if isinstance(model, str) and model:
+        model = _nonempty(model)
+        if model:
             persisted_model = model
             if branch_index > latest_compaction:
                 post_compaction_model = model
 
-    for message, timestamp in _materialized_messages(branch):
-        process_message(message, timestamp)
+    materialized = _materialized_messages(branch)
+    current_model: str | None = None
+    for idx, (message, timestamp) in enumerate(materialized):
+        role = message.get("role")
+        text = _text(message.get("content"))
+        if role == "user":
+            topic = topic or _topic(text)
+            messages.append((idx, "user", len(text), len(text.split()) > 10))
+        elif role == "assistant":
+            current_model = _nonempty(message.get("model")) or current_model
+            usage = _usage(message.get("usage"))
+            if usage is not None:
+                context_tokens = (
+                    usage["fresh_input"] + usage["cache_read"] + usage["cache_create"]
+                )
+
+            substantive = len(text.split()) > 20
+            if _DECISION_RE.search(text):
+                decisions.append((idx, text[:200].strip()))
+            for call in _tool_calls(message):
+                substantive = True
+                tool_call_count += 1
+                call_id = _nonempty(call.get("id"))
+                name = _tool_name(call.get("name"))
+                if call_id:
+                    tool_name_by_id[call_id] = name
+                arguments = _call_arguments(call)
+                path = _call_path(arguments)
+                if name == "Read" and path:
+                    reads.append((idx, path, timestamp))
+                elif name in {"Edit", "Write"} and path:
+                    writes.append((idx, path, timestamp))
+                elif name in {"Task", "Agent"}:
+                    prompt = arguments.get("prompt") or arguments.get("message") or ""
+                    agent_dispatches.append(
+                        (idx, len(prompt) if isinstance(prompt, str) else 0, 0)
+                    )
+            messages.append((idx, "assistant", len(text), substantive))
+        elif role == "toolResult":
+            call_id = _nonempty(message.get("toolCallId")) or str(idx)
+            failed = bool(message.get("isError")) or bool(_ERROR_RE.search(text))
+            tool_results.append((idx, call_id, len(text), False))
+            tool_result_meta.append(
+                {
+                    "index": idx,
+                    "tool_id": call_id,
+                    "tool_name": tool_name_by_id.get(
+                        call_id, _tool_name(message.get("toolName"))
+                    ),
+                    "size": len(text),
+                    "is_failure": failed,
+                }
+            )
+            if agent_dispatches and agent_dispatches[-1][2] == 0:
+                dispatch = agent_dispatches[-1]
+                agent_dispatches[-1] = (dispatch[0], dispatch[1], len(text))
     current_model = post_compaction_model or current_model or persisted_model
 
     if not messages:
@@ -788,7 +793,7 @@ def parse_jsonl_for_quality(filepath: Union[str, Path]) -> Optional[dict[str, An
         "agent_dispatches": agent_dispatches,
         "decisions": decisions,
         "compaction_ratios": compaction_ratios,
-        "total_entries": idx,
+        "total_entries": len(materialized),
         "estimated": False,
         "context_tokens": context_tokens,
         "model_context_window": None,
@@ -807,8 +812,7 @@ def _materialized_messages(
         if isinstance(entry.get("id"), str)
     }
     for index, entry in enumerate(branch):
-        timestamp = entry.get("timestamp")
-        timestamp = timestamp if isinstance(timestamp, str) else ""
+        timestamp = _nonempty(entry.get("timestamp")) or ""
         if entry.get("type") == "compaction":
             if "retainedTail" in entry:
                 materialized = [
@@ -817,17 +821,16 @@ def _materialized_messages(
                 ]
             else:
                 first_kept = entry.get("firstKeptEntryId")
-                start = positions.get(first_kept) if isinstance(first_kept, str) else None
+                start = (
+                    positions.get(first_kept) if isinstance(first_kept, str) else None
+                )
                 materialized = []
                 if start is not None and start < index:
-                    for kept in branch[start:index]:
-                        message = kept.get("message")
-                        kept_timestamp = kept.get("timestamp")
-                        if isinstance(message, dict):
-                            materialized.append((
-                                message,
-                                kept_timestamp if isinstance(kept_timestamp, str) else "",
-                            ))
+                    materialized = [
+                        (kept["message"], _nonempty(kept.get("timestamp")) or "")
+                        for kept in branch[start:index]
+                        if isinstance(kept.get("message"), dict)
+                    ]
             continue
         message = entry.get("message")
         if isinstance(message, dict):
@@ -844,21 +847,17 @@ def _append_state_file(
     seen_files: set[str],
     max_files: int,
 ) -> None:
-    if not path:
-        return
-    if path in seen_files:
-        if action == "modified" and all(item[0] != path for item in active_files):
-            if len(active_files) < max_files:
-                active_files.append((path, action, line_range))
-            if path in recent_reads:
-                recent_reads.remove(path)
-        return
+    first_seen = path not in seen_files
     seen_files.add(path)
-    if action == "modified":
+    if action != "modified":
+        if first_seen:
+            recent_reads.append(path)
+        return
+    if all(item[0] != path for item in active_files):
         if len(active_files) < max_files:
             active_files.append((path, action, line_range))
-    else:
-        recent_reads.append(path)
+        if path in recent_reads:
+            recent_reads.remove(path)
 
 
 def _state_snippets(text: str, pattern: re.Pattern[str]) -> list[str]:
@@ -871,18 +870,11 @@ def _state_snippets(text: str, pattern: re.Pattern[str]) -> list[str]:
 
 
 def extract_session_state(
-    filepath: Union[str, Path],
+    filepath: str | Path,
     tail_lines: int = 500,
     max_files: int = 20,
-) -> Optional[dict[str, Any]]:
-    if (
-        not isinstance(tail_lines, int)
-        or isinstance(tail_lines, bool)
-        or tail_lines <= 0
-        or not isinstance(max_files, int)
-        or isinstance(max_files, bool)
-        or max_files <= 0
-    ):
+) -> dict[str, Any] | None:
+    if not _positive_int(tail_lines) or not _positive_int(max_files):
         return None
     messages = _materialized_messages(active_entries(filepath))[-tail_lines:]
     if not messages:
@@ -895,7 +887,7 @@ def extract_session_state(
     agent_state: list[tuple[str, str]] = []
     error_context: list[tuple[str, str]] = []
     todos: list[tuple[str, str]] = []
-    active_plan: Optional[str] = None
+    active_plan: str | None = None
     last_user = ""
     last_assistant = ""
     seen_files: set[str] = set()
@@ -939,18 +931,16 @@ def extract_session_state(
 
         for call in _tool_calls(message):
             name = _tool_name(call.get("name"))
-            arguments = call.get("arguments")
-            if not isinstance(arguments, dict):
-                arguments = {}
-            path = arguments.get("file_path") or arguments.get("path")
-            if name in {"Read", "Edit", "Write"} and isinstance(path, str) and path:
+            arguments = _call_arguments(call)
+            path = _call_path(arguments)
+            if name in {"Read", "Edit", "Write"} and path:
                 action = "read" if name == "Read" else "modified"
                 line_range = ""
                 offset = arguments.get("offset")
                 limit = arguments.get("limit")
-                if isinstance(offset, int) and not isinstance(offset, bool) and offset > 0:
+                if _positive_int(offset):
                     line_range = f"line {offset}"
-                    if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
+                    if _positive_int(limit):
                         line_range += f"-{offset + limit}"
                 _append_state_file(
                     path,
@@ -964,12 +954,18 @@ def extract_session_state(
                 if "/docs/plans/" in f"/{path}" and path.endswith(".md"):
                     active_plan = path
             elif name in {"Task", "Agent"}:
-                agent_type = arguments.get("subagent_type") or arguments.get("description")
-                description = arguments.get("description") or arguments.get("prompt") or ""
-                agent_state.append((
-                    agent_type if isinstance(agent_type, str) and agent_type else "unknown",
-                    description[:100] if isinstance(description, str) else "",
-                ))
+                agent_type = arguments.get("subagent_type") or arguments.get(
+                    "description"
+                )
+                description = (
+                    arguments.get("description") or arguments.get("prompt") or ""
+                )
+                agent_state.append(
+                    (
+                        _nonempty(agent_type) or "unknown",
+                        description[:100] if isinstance(description, str) else "",
+                    )
+                )
             elif name == "TodoWrite":
                 value = arguments.get("todos")
                 if isinstance(value, list):
@@ -979,7 +975,8 @@ def extract_session_state(
                             str(item.get("status") or ""),
                         )
                         for item in value
-                        if isinstance(item, dict) and (item.get("content") or item.get("step"))
+                        if isinstance(item, dict)
+                        and (item.get("content") or item.get("step"))
                     ]
 
     return {
@@ -999,18 +996,13 @@ def extract_session_state(
 
 
 def iter_tool_outputs(
-    filepath: Union[str, Path],
+    filepath: str | Path,
     *,
     min_chars: int = 4096,
     max_outputs: int = 20,
 ) -> list[dict[str, Any]]:
-    if (
-        not isinstance(min_chars, int)
-        or isinstance(min_chars, bool)
-        or min_chars < 0
-        or not isinstance(max_outputs, int)
-        or isinstance(max_outputs, bool)
-        or max_outputs <= 0
+    if not (_positive_int(min_chars) or min_chars == 0) or not _positive_int(
+        max_outputs
     ):
         return []
 
@@ -1021,22 +1013,16 @@ def iter_tool_outputs(
     ):
         if message.get("role") == "assistant":
             for call in _tool_calls(message):
-                call_id = call.get("id")
-                if not isinstance(call_id, str) or not call_id:
-                    call_id = str(index)
-                raw_name = call.get("name")
-                raw_name = raw_name if isinstance(raw_name, str) and raw_name else "unknown"
+                call_id = _nonempty(call.get("id")) or str(index)
+                raw_name = _nonempty(call.get("name")) or "unknown"
                 name = _tool_name(raw_name)
-                arguments = call.get("arguments")
-                if not isinstance(arguments, dict):
-                    arguments = {}
+                arguments = _call_arguments(call)
                 command_or_path = ""
                 if name == "Bash":
                     value = arguments.get("command") or arguments.get("cmd")
                     command_or_path = value if isinstance(value, str) else ""
                 elif name in {"Read", "Edit", "Write"}:
-                    value = arguments.get("file_path") or arguments.get("path")
-                    command_or_path = value if isinstance(value, str) else ""
+                    command_or_path = _call_path(arguments) or ""
                 call_meta[call_id] = {
                     "tool_name": name,
                     "tool_type": raw_name,
@@ -1046,21 +1032,23 @@ def iter_tool_outputs(
         if message.get("role") != "toolResult":
             continue
         output = _text(message.get("content"))
-        call_id = message.get("toolCallId")
-        call_id = call_id if isinstance(call_id, str) and call_id else str(index)
-        if len(output) < min_chars and not message.get("isError") and not _ERROR_RE.search(output):
+        call_id = _nonempty(message.get("toolCallId")) or str(index)
+        if (
+            len(output) < min_chars
+            and not message.get("isError")
+            and not _ERROR_RE.search(output)
+        ):
             continue
         meta = call_meta.get(call_id, {})
         raw_tool = message.get("toolName")
-        outputs.append({
-            "tool_use_id": call_id,
-            "tool_name": meta.get("tool_name", _tool_name(raw_tool)),
-            "tool_type": meta.get(
-                "tool_type",
-                raw_tool if isinstance(raw_tool, str) and raw_tool else "toolResult",
-            ),
-            "command_or_path": meta.get("command_or_path", ""),
-            "output": output,
-            "timestamp": timestamp or None,
-        })
+        outputs.append(
+            {
+                "tool_use_id": call_id,
+                "tool_name": meta.get("tool_name", _tool_name(raw_tool)),
+                "tool_type": meta.get("tool_type", _nonempty(raw_tool) or "toolResult"),
+                "command_or_path": meta.get("command_or_path", ""),
+                "output": output,
+                "timestamp": timestamp or None,
+            }
+        )
     return list(outputs)
