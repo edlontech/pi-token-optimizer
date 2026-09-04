@@ -4,15 +4,19 @@
   "description": "Local Token Optimizer integration for Pi",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
-  "keywords": ["pi-package", "pi", "token-optimizer"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "token-optimizer"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ygorcastor/pi-token-optimizer.git"
+    "url": "git+https://github.com/edlontech/pi-token-optimizer.git"
   },
   "bugs": {
-    "url": "https://github.com/ygorcastor/pi-token-optimizer/issues"
+    "url": "https://github.com/edlontech/pi-token-optimizer/issues"
   },
-  "homepage": "https://github.com/ygorcastor/pi-token-optimizer#readme",
+  "homepage": "https://github.com/edlontech/pi-token-optimizer#readme",
   "engines": {
     "node": ">=22.19.0"
   },
@@ -38,9 +42,12 @@
     "vendor/token-optimizer/skills/token-optimizer/scripts/*.js"
   ],
   "pi": {
-    "extensions": ["./extensions/index.ts"]
+    "extensions": [
+      "./extensions/index.ts"
+    ]
   },
   "scripts": {
+    "lint": "oxlint --deny-warnings extensions src tests",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:integration": "tsx --test tests/integration/*.test.ts",
@@ -49,7 +56,7 @@
     "vendor:check": "node scripts/check-vendor.mjs",
     "vendor:sync": "node scripts/sync-upstream.mjs",
     "package:check": "tsx --test --test-name-pattern='package tarball|capability rows' tests/vendor.test.ts",
-    "check": "npm run typecheck && npm test && npm run test:python && npm run test:integration && npm run vendor:check"
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:python && npm run test:integration && npm run vendor:check"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",
@@ -61,6 +68,7 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.4",
     "@types/node": "26.4.1",
+    "oxlint": "1.81.0",
     "tsx": "4.23.13",
     "typescript": "5.9.3"
   }

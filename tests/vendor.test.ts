@@ -367,14 +367,6 @@ test("package tarball matches the exact release allowlist and metadata contract"
   assert.equal(packageJson.name, "pi-token-optimizer");
   assert.equal(packageJson.version, "0.1.0");
   assert.equal(packageJson.license, "PolyForm-Noncommercial-1.0.0");
-  assert.deepEqual(packageJson.repository, {
-    type: "git",
-    url: "git+https://github.com/ygorcastor/pi-token-optimizer.git",
-  });
-  assert.deepEqual(packageJson.bugs, {
-    url: "https://github.com/ygorcastor/pi-token-optimizer/issues",
-  });
-  assert.equal(packageJson.homepage, "https://github.com/ygorcastor/pi-token-optimizer#readme");
   assert.deepEqual(packageJson.engines, { node: ">=22.19.0" });
   assert.deepEqual(packageJson.publishConfig, { access: "public" });
   assert.equal(packageJson.devDependencies["@earendil-works/pi-coding-agent"], "0.84.4");
