@@ -28,10 +28,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "test:python": "python3 -c 'import sys, unittest; result = unittest.TextTestRunner().run(unittest.defaultTestLoader.discover(\"tests/python\")); sys.exit(not result.wasSuccessful())'",
+    "test:integration": "tsx --test tests/integration/*.test.ts",
+    "test:python": "PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys, unittest; result = unittest.TextTestRunner().run(unittest.defaultTestLoader.discover(\"tests/python\")); sys.exit(not result.wasSuccessful())'",
+    "benchmark": "node --import tsx scripts/benchmark.mjs",
     "vendor:check": "node scripts/check-vendor.mjs",
     "vendor:sync": "node scripts/sync-upstream.mjs",
-    "check": "npm run typecheck && npm test && npm run test:python && npm run vendor:check"
+    "check": "npm run typecheck && npm test && npm run test:python && npm run test:integration && npm run vendor:check"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",

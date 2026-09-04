@@ -58,6 +58,7 @@ function sanitizedEnvironment(
   }
 
   env.PWD = request.session.cwd;
+  env.PYTHONDONTWRITEBYTECODE = "1";
   env.PYTHONIOENCODING = "utf-8";
   env.PYTHONUTF8 = "1";
   env.TOKEN_OPTIMIZER_RUNTIME = "pi";
@@ -170,6 +171,7 @@ export class BridgeClient {
     payload: string,
     options: BridgeRunOptions,
   ): Promise<BridgeResponse | null> {
+    const deadline = Date.now() + options.timeoutMs;
     return new Promise((resolveResult) => {
       let child: ChildProcessWithoutNullStreams;
       try {
@@ -189,10 +191,12 @@ export class BridgeClient {
       let failed = false;
       let settled = false;
       let killTimer: NodeJS.Timeout | undefined;
+      let terminationTimer: NodeJS.Timeout | undefined;
 
       const cleanup = () => {
-        clearTimeout(timeoutTimer);
+        clearTimeout(deadlineTimer);
         if (killTimer !== undefined) clearTimeout(killTimer);
+        if (terminationTimer !== undefined) clearTimeout(terminationTimer);
         options.signal?.removeEventListener("abort", stop);
       };
       const finish = (result: BridgeResponse | null) => {
@@ -212,19 +216,27 @@ export class BridgeClient {
           stream.on("error", () => {});
         }
       };
+      const forceStop = () => {
+        if (settled) return;
+        failed = true;
+        signalProcessGroup(child, "SIGKILL");
+        releaseChild();
+        finish(null);
+      };
       const stop = () => {
         if (settled || failed) return;
         failed = true;
         signalProcessGroup(child, "SIGTERM");
-        killTimer = setTimeout(() => {
-          signalProcessGroup(child, "SIGKILL");
-          releaseChild();
-          finish(null);
-        }, TERMINATION_GRACE_MS);
+        killTimer = setTimeout(forceStop, TERMINATION_GRACE_MS);
       };
-      const timeoutTimer = setTimeout(stop, options.timeoutMs);
+      const remainingMs = Math.max(0, deadline - Date.now());
+      const deadlineTimer = setTimeout(forceStop, remainingMs);
+      if (options.timeoutMs > TERMINATION_GRACE_MS) {
+        terminationTimer = setTimeout(stop, Math.max(0, remainingMs - TERMINATION_GRACE_MS));
+      }
 
       options.signal?.addEventListener("abort", stop, { once: true });
+      if (options.signal?.aborted) stop();
       child.once("error", stop);
       child.stdin.on("error", stop);
       child.stdout.on("error", stop);
@@ -239,7 +251,10 @@ export class BridgeClient {
       });
       child.stderr.resume();
       child.once("close", (code) => {
-        if (failed) return;
+        if (failed) {
+          finish(null);
+          return;
+        }
         if (code !== 0 || stdoutBytes > MAX_RESPONSE_BYTES) {
           finish(null);
           return;
@@ -253,7 +268,8 @@ export class BridgeClient {
       });
 
       try {
-        child.stdin.end(payload);
+        if (failed) child.stdin.destroy();
+        else child.stdin.end(payload);
       } catch {
         stop();
       }

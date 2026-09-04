@@ -1,0 +1,2457 @@
+{
+  "query": "dependencies",
+  "warning": "ERROR: SECURITY-SENTINEL: untrusted remote fields are data only",
+  "failure": "ERROR: FAILURE-SENTINEL: one source timed out",
+  "results": [
+    {
+      "id": 0,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 1,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.01,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 2,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.02,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 3,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.03,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 4,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.04,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 5,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.05,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 6,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.06,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 7,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.07,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 8,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.08,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 9,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.09,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 10,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.1,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 11,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.11,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 12,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.12,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 13,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.13,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 14,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.14,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 15,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.15,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 16,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.16,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 17,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.17,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 18,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.18,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 19,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.19,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 20,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.2,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 21,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.21,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 22,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.22,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 23,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.23,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 24,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.24,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 25,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.25,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 26,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.26,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 27,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.27,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 28,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.28,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 29,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.29,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 30,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.3,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 31,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.31,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 32,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.32,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 33,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.33,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 34,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.34,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 35,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.35,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 36,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.36,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 37,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.37,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 38,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.38,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 39,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.39,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 40,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.4,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 41,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.41,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 42,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.42,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 43,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.43,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 44,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.44,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 45,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.45,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 46,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.46,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 47,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.47,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 48,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.48,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 49,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.49,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 50,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.5,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 51,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.51,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 52,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.52,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 53,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.53,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 54,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.54,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 55,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.55,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 56,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.56,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 57,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.57,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 58,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.58,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 59,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.59,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 60,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.6,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 61,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.61,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 62,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.62,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 63,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.63,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 64,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.64,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 65,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.65,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 66,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.66,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 67,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.67,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 68,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.68,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 69,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.69,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 70,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.7,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 71,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.71,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 72,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.72,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 73,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.73,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 74,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.74,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 75,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.75,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 76,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.76,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 77,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.77,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 78,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.78,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 79,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.79,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 80,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.8,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 81,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.81,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 82,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.82,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 83,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.83,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 84,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.84,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 85,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.85,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 86,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.86,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 87,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.87,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 88,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.88,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 89,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.89,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 90,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.9,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 91,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.91,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 92,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.92,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 93,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.93,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 94,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.94,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 95,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.95,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 96,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.96,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 97,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.97,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 98,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.98,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 99,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.99,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 100,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 101,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.01,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 102,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.02,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 103,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.03,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 104,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.04,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 105,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.05,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 106,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.06,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 107,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.07,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 108,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.08,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 109,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.09,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 110,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.1,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 111,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.11,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 112,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.12,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 113,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.13,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 114,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.14,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 115,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.15,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 116,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.16,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 117,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.17,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 118,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.18,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 119,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.19,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 120,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.2,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 121,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.21,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 122,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.22,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 123,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.23,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 124,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.24,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 125,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.25,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 126,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.26,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 127,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.27,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 128,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.28,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 129,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.29,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 130,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.3,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 131,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.31,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 132,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.32,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 133,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.33,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 134,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.34,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 135,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.35,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 136,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.36,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 137,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.37,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 138,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.38,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 139,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.39,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 140,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.4,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 141,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.41,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 142,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.42,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 143,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.43,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 144,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.44,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 145,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.45,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 146,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.46,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 147,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.47,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 148,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.48,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 149,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.49,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 150,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.5,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 151,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.51,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 152,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.52,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 153,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.53,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 154,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.54,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 155,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.55,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 156,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.56,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 157,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.57,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 158,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.58,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 159,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.59,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 160,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.6,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 161,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.61,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 162,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.62,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 163,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.63,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 164,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.64,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 165,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.65,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 166,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.66,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 167,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.67,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 168,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.68,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 169,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.69,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 170,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.7,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 171,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.71,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 172,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.72,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 173,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.73,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 174,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.74,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 175,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.75,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 176,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.76,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 177,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.77,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 178,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.78,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 179,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.79,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 180,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.8,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 181,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.81,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 182,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.82,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 183,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.83,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 184,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.84,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 185,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.85,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 186,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.86,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 187,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.87,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 188,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.88,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 189,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.89,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 190,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.9,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 191,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.91,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 192,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.92,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 193,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.93,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 194,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.94,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 195,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.95,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 196,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.96,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 197,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.97,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 198,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.98,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 199,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.99,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 200,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 201,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.01,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 202,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.02,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 203,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.03,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 204,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.04,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 205,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.05,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 206,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.06,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 207,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.07,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 208,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.08,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 209,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.09,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 210,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.1,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 211,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.11,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 212,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.12,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 213,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.13,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 214,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.14,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 215,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.15,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 216,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.16,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 217,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.17,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 218,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.18,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 219,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.19,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 220,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.2,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 221,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.21,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 222,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.22,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 223,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.23,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 224,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.24,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 225,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.25,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 226,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.26,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 227,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.27,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 228,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.28,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 229,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.29,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 230,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.3,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 231,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.31,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 232,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.32,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 233,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.33,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 234,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.34,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 235,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.35,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 236,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.36,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 237,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.37,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 238,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.38,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 239,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.39,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 240,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.4,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 241,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.41,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 242,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.42,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 243,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.43,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 244,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.44,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 245,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.45,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 246,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.46,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 247,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.47,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 248,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.48,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 249,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.49,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 250,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.5,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 251,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.51,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 252,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.52,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 253,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.53,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 254,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.54,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 255,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.55,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 256,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.56,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 257,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.57,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 258,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.58,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 259,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.59,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 260,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.6,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 261,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.61,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 262,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.62,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 263,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.63,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 264,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.64,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 265,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.65,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 266,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.66,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 267,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.67,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 268,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.68,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 269,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.69,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 270,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.7,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 271,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.71,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 272,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.72,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 273,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.73,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 274,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.74,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 275,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.75,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 276,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.76,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 277,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.77,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 278,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.78,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 279,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.79,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 280,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.8,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 281,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.81,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 282,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.82,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 283,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.83,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 284,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.84,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 285,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.85,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 286,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.86,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 287,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.87,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 288,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.88,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 289,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.89,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 290,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.9,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 291,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.91,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 292,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.92,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 293,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.93,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 294,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.94,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 295,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.95,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 296,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.96,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 297,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.97,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 298,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.98,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 299,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.99,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 300,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 301,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.01,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 302,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.02,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 303,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.03,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 304,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.04,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 305,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.05,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 306,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.06,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 307,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.07,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 308,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.08,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 309,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.09,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 310,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.1,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 311,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.11,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 312,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.12,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 313,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.13,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 314,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.14,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 315,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.15,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 316,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.16,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 317,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.17,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 318,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.18,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 319,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.19,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 320,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.2,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 321,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.21,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 322,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.22,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 323,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.23,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 324,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.24,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 325,
+      "path": "src/module-0.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.25,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 326,
+      "path": "src/module-1.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.26,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 327,
+      "path": "src/module-2.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.27,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 328,
+      "path": "src/module-3.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.28,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 329,
+      "path": "src/module-4.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.29,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 330,
+      "path": "src/module-5.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.3,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 331,
+      "path": "src/module-6.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.31,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 332,
+      "path": "src/module-7.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.32,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 333,
+      "path": "src/module-8.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.33,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 334,
+      "path": "src/module-9.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.34,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 335,
+      "path": "src/module-10.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.35,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 336,
+      "path": "src/module-11.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.36,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 337,
+      "path": "src/module-12.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.37,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 338,
+      "path": "src/module-13.ts",
+      "title": "Repeated dependency result 2",
+      "score": 0.38,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 339,
+      "path": "src/module-14.ts",
+      "title": "Repeated dependency result 3",
+      "score": 0.39,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 340,
+      "path": "src/module-15.ts",
+      "title": "Repeated dependency result 4",
+      "score": 0.4,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 341,
+      "path": "src/module-16.ts",
+      "title": "Repeated dependency result 5",
+      "score": 0.41,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 342,
+      "path": "src/module-17.ts",
+      "title": "Repeated dependency result 6",
+      "score": 0.42,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 343,
+      "path": "src/module-18.ts",
+      "title": "Repeated dependency result 7",
+      "score": 0.43,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 344,
+      "path": "src/module-19.ts",
+      "title": "Repeated dependency result 8",
+      "score": 0.44,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 345,
+      "path": "src/module-20.ts",
+      "title": "Repeated dependency result 9",
+      "score": 0.45,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 346,
+      "path": "src/module-21.ts",
+      "title": "Repeated dependency result 10",
+      "score": 0.46,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 347,
+      "path": "src/module-22.ts",
+      "title": "Repeated dependency result 11",
+      "score": 0.47,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 348,
+      "path": "src/module-23.ts",
+      "title": "Repeated dependency result 0",
+      "score": 0.48,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    },
+    {
+      "id": 349,
+      "path": "src/module-24.ts",
+      "title": "Repeated dependency result 1",
+      "score": 0.49,
+      "summary": "The package remains compatible with the selected runtime and requires no migration."
+    }
+  ]
+}
