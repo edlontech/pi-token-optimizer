@@ -364,7 +364,7 @@ test("package tarball matches the exact release allowlist and metadata contract"
   assert.equal(paths.some((path) => /^vendor\/token-optimizer\/(demos?|tests?|benchmarks?|\.claude-plugin)\//.test(path)), false);
 
   const packageJson = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
-  assert.equal(packageJson.name, "pi-token-optimizer");
+  assert.equal(packageJson.name, "@edlontech/pi-token-optimizer");
   assert.equal(packageJson.version, "0.1.0");
   assert.equal(packageJson.license, "PolyForm-Noncommercial-1.0.0");
   assert.deepEqual(packageJson.engines, { node: ">=22.19.0" });

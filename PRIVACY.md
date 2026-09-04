@@ -69,4 +69,4 @@ Dashboard generation reads local optimizer metrics and writes the static dashboa
 
 ## License and contact
 
-Pi Token Optimizer is source-available under [PolyForm Noncommercial 1.0.0](LICENSE). Noncommercial use is subject to that license. Commercial use requires a separate upstream license from Alex Greenshpun; this adaptation cannot grant commercial rights. Upstream attribution and contact links are recorded in [NOTICE](NOTICE) and the vendored legal files. Project-specific issues can be reported at <https://github.com/ygorcastor/pi-token-optimizer/issues>.
+Pi Token Optimizer is source-available under [PolyForm Noncommercial 1.0.0](LICENSE). Noncommercial use is subject to that license. Commercial use requires a separate upstream license from Alex Greenshpun; this adaptation cannot grant commercial rights. Upstream attribution and contact links are recorded in [NOTICE](NOTICE) and the vendored legal files. Project-specific issues can be reported at <https://github.com/edlontech/pi-token-optimizer/issues>.

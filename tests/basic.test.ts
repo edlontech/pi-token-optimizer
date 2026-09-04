@@ -4,7 +4,7 @@ import test from "node:test";
 test("package declares the Pi extension entrypoint", async () => {
   const packageJson = await import("../package.json", { with: { type: "json" } });
 
-  assert.equal(packageJson.default.name, "pi-token-optimizer");
+  assert.equal(packageJson.default.name, "@edlontech/pi-token-optimizer");
   assert.deepEqual(packageJson.default.pi.extensions, ["./extensions/index.ts"]);
   assert.equal(packageJson.default.files.includes("src/*.ts"), true);
 });

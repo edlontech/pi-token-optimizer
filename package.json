@@ -1,5 +1,5 @@
 {
-  "name": "pi-token-optimizer",
+  "name": "@edlontech/pi-token-optimizer",
   "version": "0.1.0",
   "description": "Local Token Optimizer integration for Pi",
   "license": "PolyForm-Noncommercial-1.0.0",

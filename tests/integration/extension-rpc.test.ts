@@ -181,7 +181,7 @@ test("Pi 0.84.4 loads the npm-packed extension in isolated RPC and runs status, 
     installDir,
     tarball,
   ], { cwd: project, env });
-  const installed = join(installDir, "node_modules", "pi-token-optimizer");
+  const installed = join(installDir, "node_modules", "@edlontech", "pi-token-optimizer");
   const installedPackage = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
   assert.deepEqual(installedPackage.pi.extensions, ["./extensions/index.ts"]);
 

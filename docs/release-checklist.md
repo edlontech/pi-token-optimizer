@@ -1,8 +1,8 @@
 # Release Checklist for 0.1.0
 
-This checklist prepares and verifies a release candidate. It stops before publication. Do not run `npm publish`, create a registry release, or add a publishing action to CI.
+This checklist prepares, verifies, and publishes a release through `.github/workflows/release.yml`. The initial 0.1.0 package must be published manually because npm cannot configure trusted publishing before the package exists. Release Please creates the GitHub release, and later versions are published through npm trusted publishing with provenance.
 
-Record the release commit, operator, date, operating system, Python version, and command output outside this repository for each run.
+Record the release commit, operator, date, operating system, Python version, workflow run, and command output outside this repository for each run.
 
 ## Source and vendor provenance
 
@@ -92,7 +92,9 @@ tar -tzf "$tarball" | LC_ALL=C sort
 - [ ] **PACKAGE-02 — The real tarball contains only package-prefixed allowlisted paths.** Inspect `tar -tzf`, verify `package/vendor/token-optimizer/hooks/python-launcher.sh` is executable, and record filename, byte size, unpacked size, SHA-512 integrity, and SHA-1 shasum from `pack.json`.
 - [ ] **PACKAGE-03 — The locally packed package passes isolated Pi 0.84.4 RPC smoke.** Run `npx tsx --test --test-name-pattern='Pi 0.84.4 loads the npm-packed extension' tests/integration/extension-rpc.test.ts`; require strict JSONL, status, consent, and doctor responses with no model call.
 
-## Read-only registry check and stop point
+## Registry and publication
 
-- [ ] **REGISTRY-01 — Package-name availability is checked read-only immediately before release.** Run exactly `npm view pi-token-optimizer name version --json`, record the timestamp, registry URL, exit status, stdout, and stderr in the external release record, and have the release owner interpret that point-in-time result. This check does not reserve the name and this repository must not claim permanent availability.
-- [ ] **STOP-01 — Verification stops without publication.** Confirm no `npm publish` command ran, no npm release was created, no registry token was provided to CI, and no workflow has publication permissions or actions.
+- [ ] **REGISTRY-01 — Package-name availability is checked read-only immediately before the first release.** Run exactly `npm view @edlontech/pi-token-optimizer name version --json`, record the timestamp, registry URL, exit status, stdout, and stderr in the external release record, and have the release owner interpret that point-in-time result. This check does not reserve the name and this repository must not claim permanent availability.
+- [ ] **BOOTSTRAP-01 — The initial package is published manually.** From the clean, fully verified 0.1.0 release worktree, an `@edlontech` npm owner runs `npm publish --access public` and records the result. This one-time publish establishes the package without trusted-publisher provenance.
+- [ ] **TRUST-01 — npm trusts the exact GitHub Actions publisher.** After 0.1.0 exists on npm and before merging the first release pull request, an npm package owner runs `npm trust github @edlontech/pi-token-optimizer --file release.yml --repo edlontech/pi-token-optimizer --allow-publish` and verifies that npm reports the expected repository, workflow filename, and `createPackage` permission. No long-lived npm token is added to GitHub.
+- [ ] **PUBLISH-01 — The automated release completes.** Merge the Release Please pull request and require the `Release` workflow to pass. For 0.1.0, the publish job verifies the package and recognizes that the version already exists; for later versions it publishes through trusted OIDC with provenance. Record the GitHub release and npm package version, then confirm they match the Git tag and both `package.json` and `package-lock.json`.

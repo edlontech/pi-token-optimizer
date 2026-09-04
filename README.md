@@ -15,13 +15,13 @@ Pi's own current Node requirement applies; this package declares Node 22.19.0 or
 Pinned npm release:
 
 ```sh
-pi install npm:pi-token-optimizer@0.1.0
+pi install npm:@edlontech/pi-token-optimizer@0.1.0
 ```
 
 Pinned Git tag after that tag exists:
 
 ```sh
-pi install git:github.com/ygorcastor/pi-token-optimizer@v0.1.0
+pi install git:github.com/edlontech/pi-token-optimizer@v0.1.0
 ```
 
 Local checkout, loaded in place rather than copied:
@@ -30,7 +30,7 @@ Local checkout, loaded in place rather than copied:
 pi install /absolute/path/to/pi-token-optimizer
 ```
 
-Pi also accepts `https://github.com/ygorcastor/pi-token-optimizer@v0.1.0`. Versioned npm and Git sources are pinned and skipped by normal package updates; install the desired newer version or ref explicitly to move them. Use `-l` with `pi install` for a project-local setting instead of the default user setting.
+Pi also accepts `https://github.com/edlontech/pi-token-optimizer@v0.1.0`. Versioned npm and Git sources are pinned and skipped by normal package updates; install the desired newer version or ref explicitly to move them. Use `-l` with `pi install` for a project-local setting instead of the default user setting.
 
 ## Activation and consent
 
