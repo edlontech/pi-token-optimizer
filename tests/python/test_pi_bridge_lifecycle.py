@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest import mock
@@ -741,6 +742,153 @@ class PiBridgeLifecycleTests(unittest.TestCase):
                 (pi_bridge.RECOVERY_MARKER,),
             ).fetchone()[0]
         self.assertEqual(marker, pi_bridge.RECOVERY_DELIVERED)
+
+    def test_consented_session_start_removes_a_real_expired_session_store(self):
+        source = self.root / "expired.py"
+        source.write_text("print('expired')\n", encoding="utf-8")
+        old_session_id = "22222222-2222-4222-8222-222222222222"
+        read_request = self.request("pre_tool")
+        read_request["session"]["id"] = old_session_id
+        read_request["tool"] = {
+            "id": "expired-read",
+            "name": "read",
+            "kind": "builtin",
+            "input": {"path": str(source)},
+        }
+        self.invoke(read_request)
+        store_root = self.data_root / "session-store"
+        database = store_root / f"{old_session_id}.db"
+        self.assertTrue(database.is_file())
+        wal = store_root / f"{old_session_id}.db-wal"
+        shm = store_root / f"{old_session_id}.db-shm"
+        wal.write_bytes(b"expired wal")
+        external_sidecar = self.root / "hardlinked-external.db-shm"
+        external_sidecar.write_bytes(b"external sidecar")
+        os.link(external_sidecar, shm)
+        recent = store_root / "recent.db"
+        recent.write_bytes(b"recent")
+        external = self.root / "hardlinked-external.db"
+        external.write_bytes(b"external")
+        hardlink = store_root / "hardlinked.db"
+        os.link(external, hardlink)
+        expired = time.time() - (49 * 60 * 60)
+        os.utime(database, (expired, expired))
+        os.utime(external, (expired, expired))
+
+        response, stderr = self.invoke(self.request("session_start"))
+
+        self.assertTrue(response["ok"])
+        self.assertFalse(database.exists())
+        self.assertFalse(wal.exists())
+        self.assertEqual(shm.read_bytes(), b"external sidecar")
+        self.assertEqual(external_sidecar.read_bytes(), b"external sidecar")
+        self.assertEqual(recent.read_bytes(), b"recent")
+        self.assertEqual(hardlink.read_bytes(), b"external")
+        self.assertEqual(external.read_bytes(), b"external")
+        self.assertEqual(stderr, "")
+
+    def test_consented_session_start_prunes_only_expired_real_trends_rows(self):
+        self.invoke(self.request("rollup"))
+        database = self.data_root / "trends.db"
+        today = __import__("datetime").date.today().isoformat()
+        with contextlib.closing(sqlite3.connect(str(database))) as connection:
+            connection.execute("DELETE FROM session_log")
+            connection.executemany(
+                "INSERT INTO session_log (jsonl_path, date) VALUES (?, ?)",
+                (
+                    ("pi:expired", "2000-01-01"),
+                    ("pi:current", today),
+                    ("pi:future", "2999-01-01"),
+                ),
+            )
+            connection.commit()
+
+        self.environment["TOKEN_OPTIMIZER_TRENDS_RETENTION_DAYS"] = "30"
+        response, stderr = self.invoke(self.request("session_start"))
+
+        with contextlib.closing(sqlite3.connect(str(database))) as connection:
+            rows = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT jsonl_path FROM session_log"
+                ).fetchall()
+            }
+        self.assertTrue(response["ok"])
+        self.assertEqual(rows, {"pi:current", "pi:future"})
+        self.assertEqual(stderr, "")
+
+    def test_retention_symlinks_preserve_external_data_and_recover_without_upstream_cleanup(self):
+        SQLiteSessionStore.database_path = str(self.root / "cleanup-failure.db")
+        outside_store = self.root / "outside-session-store"
+        outside_store.mkdir()
+        external_database = outside_store / "expired.db"
+        external_database.write_bytes(b"external session bytes")
+        expired = time.time() - (49 * 60 * 60)
+        os.utime(external_database, (expired, expired))
+        (self.data_root / "session-store").symlink_to(outside_store, target_is_directory=True)
+        cleanup = mock.Mock(side_effect=external_database.unlink)
+
+        target = self.root / "outside-trends.db"
+        with contextlib.closing(sqlite3.connect(str(target))) as connection:
+            connection.execute(
+                "CREATE TABLE session_log (jsonl_path TEXT, date TEXT NOT NULL)"
+            )
+            connection.execute(
+                "INSERT INTO session_log (jsonl_path, date) VALUES (?, ?)",
+                ("pi:expired", "2000-01-01"),
+            )
+            connection.commit()
+        (self.data_root / "trends.db").symlink_to(target)
+
+        def restore(**_kwargs):
+            print("recovered context")
+
+        response, stderr = self.invoke_direct(
+            self.request("session_start"),
+            {
+                "measure": types.SimpleNamespace(
+                    _TRENDS_RETENTION_DAYS=30,
+                    detect_context_window=lambda: (None, "unavailable"),
+                    compact_restore=restore,
+                ),
+                "session_store": types.SimpleNamespace(
+                    SessionStore=SQLiteSessionStore,
+                    cleanup_old_stores=cleanup,
+                ),
+            },
+        )
+
+        with contextlib.closing(sqlite3.connect(str(target))) as connection:
+            rows = connection.execute("SELECT jsonl_path FROM session_log").fetchall()
+        self.assertIn("contexts", response)
+        self.assertEqual(external_database.read_bytes(), b"external session bytes")
+        self.assertEqual(rows, [("pi:expired",)])
+        cleanup.assert_not_called()
+        self.assertEqual(stderr.count("retention cleanup failure"), 2)
+        self.assertNotIn("RuntimeError", stderr)
+        self.assertNotIn("Traceback", stderr)
+
+    def test_session_start_without_current_consent_does_not_clean(self):
+        store_root = self.data_root / "session-store"
+        store_root.mkdir()
+        database = store_root / "expired.db"
+        database.write_bytes(b"expired")
+        expired = time.time() - (49 * 60 * 60)
+        os.utime(database, (expired, expired))
+        (self.pi_home / "token-optimizer" / "config.json").write_text(
+            json.dumps({
+                "schemaVersion": 1,
+                "enabled": True,
+                "consent": {"granted": False, "noticeVersion": 1},
+            }),
+            encoding="utf-8",
+        )
+
+        response, stderr = self.invoke(self.request("session_start"))
+
+        self.assertEqual(response["data"]["reason"], "consent_required")
+        self.assertTrue(database.is_file())
+        self.assertEqual(stderr, "")
 
     def test_session_start_emits_one_fenced_recovery_once_across_process_reload(self):
         self.write_prior_checkpoint()

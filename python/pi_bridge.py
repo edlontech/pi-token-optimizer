@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import json
 import math
@@ -95,6 +95,7 @@ RECOVERY_PENDING_SECONDS = 120.0
 RECOVERY_FINALIZE_ATTEMPTS = 3
 RECOVERY_FINALIZE_BUSY_TIMEOUT_MS = 25
 RECOVERY_FINALIZE_BUDGET_SECONDS = 0.2
+SESSION_STORE_RETENTION_SECONDS = 48 * 60 * 60
 REPORTING_DB_DEADLINE_SECONDS = 0.5
 REPORTING_DB_BUSY_TIMEOUT_MS = 250
 ARCHIVE_POINTER_RE = re.compile(
@@ -1937,13 +1938,222 @@ def _finalize_recovery_claim(claim: RecoveryClaim) -> None:
         _diagnose("recovery finalize deferred (" + type(last_error).__name__ + ")")
 
 
-def _session_start(request: Request) -> Dict[str, object]:
+def _same_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+
+
+def _validate_session_store_root(
+    data_root: Path,
+    data_descriptor: int,
+    store_descriptor: int,
+) -> None:
+    store_root = data_root / "session-store"
+    data_info = os.fstat(data_descriptor)
+    store_info = os.fstat(store_descriptor)
+    data_path_info = os.stat(data_root, follow_symlinks=False)
+    store_relative_info = os.stat(
+        "session-store",
+        dir_fd=data_descriptor,
+        follow_symlinks=False,
+    )
+    store_path_info = os.stat(store_root, follow_symlinks=False)
+    if (
+        not stat.S_ISDIR(data_info.st_mode)
+        or not stat.S_ISDIR(store_info.st_mode)
+        or not stat.S_ISDIR(data_path_info.st_mode)
+        or not stat.S_ISDIR(store_relative_info.st_mode)
+        or not stat.S_ISDIR(store_path_info.st_mode)
+        or not _same_identity(data_info, data_path_info)
+        or not _same_identity(store_info, store_relative_info)
+        or not _same_identity(store_info, store_path_info)
+        or data_root.resolve(strict=True) != data_root
+        or store_root.resolve(strict=True) != store_root
+    ):
+        raise ValueError("unsafe session-store path")
+
+
+def _pi_session_store_cleanup(data_root: Path) -> None:
+    """Remove only Pi session databases older than the fixed 48-hour limit."""
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    data_descriptor = -1
+    store_descriptor = -1
+    try:
+        try:
+            data_descriptor = os.open(str(data_root), directory_flags)
+        except FileNotFoundError:
+            return
+        try:
+            store_info = os.stat(
+                "session-store",
+                dir_fd=data_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        if not stat.S_ISDIR(store_info.st_mode):
+            raise ValueError("unsafe session-store path")
+        store_descriptor = os.open(
+            "session-store",
+            directory_flags,
+            dir_fd=data_descriptor,
+        )
+        if not _same_identity(store_info, os.fstat(store_descriptor)):
+            raise ValueError("replaced session-store path")
+        _validate_session_store_root(data_root, data_descriptor, store_descriptor)
+
+        cutoff = time.time() - SESSION_STORE_RETENTION_SECONDS
+        file_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        for name in os.listdir(store_descriptor):
+            if not name.endswith(".db"):
+                continue
+            info = os.stat(
+                name,
+                dir_fd=store_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_mtime >= cutoff
+            ):
+                continue
+            file_descriptor = os.open(
+                name,
+                file_flags,
+                dir_fd=store_descriptor,
+            )
+            try:
+                opened_info = os.fstat(file_descriptor)
+                current_info = os.stat(
+                    name,
+                    dir_fd=store_descriptor,
+                    follow_symlinks=False,
+                )
+                _validate_session_store_root(
+                    data_root,
+                    data_descriptor,
+                    store_descriptor,
+                )
+                if (
+                    not stat.S_ISREG(opened_info.st_mode)
+                    or opened_info.st_nlink != 1
+                    or current_info.st_nlink != 1
+                    or current_info.st_mtime >= cutoff
+                    or not _same_identity(info, opened_info)
+                    or not _same_identity(opened_info, current_info)
+                ):
+                    raise ValueError("replaced session database")
+                os.unlink(name, dir_fd=store_descriptor)
+            finally:
+                os.close(file_descriptor)
+
+            for suffix in ("-wal", "-shm"):
+                sidecar = name + suffix
+                try:
+                    sidecar_info = os.stat(
+                        sidecar,
+                        dir_fd=store_descriptor,
+                        follow_symlinks=False,
+                    )
+                    _validate_session_store_root(
+                        data_root,
+                        data_descriptor,
+                        store_descriptor,
+                    )
+                    current_sidecar = os.stat(
+                        sidecar,
+                        dir_fd=store_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if (
+                        not stat.S_ISREG(sidecar_info.st_mode)
+                        or sidecar_info.st_nlink != 1
+                        or current_sidecar.st_nlink != 1
+                        or not _same_identity(sidecar_info, current_sidecar)
+                    ):
+                        continue
+                    os.unlink(sidecar, dir_fd=store_descriptor)
+                except FileNotFoundError:
+                    pass
+    finally:
+        if store_descriptor >= 0:
+            os.close(store_descriptor)
+        if data_descriptor >= 0:
+            os.close(data_descriptor)
+
+
+def _prune_trends(data_root: Path, retention_days: int) -> None:
+    database = data_root / "trends.db"
+    if data_root.is_symlink() or database.is_symlink():
+        raise ValueError("unsafe trends path")
+    if not data_root.exists() or not database.exists():
+        return
+    info = os.lstat(database)
+    if (
+        not data_root.is_dir()
+        or data_root.resolve(strict=True) != data_root
+        or not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or database.resolve(strict=True) != database
+        or database.parent != data_root
+    ):
+        raise ValueError("unsafe trends path")
+
+    cutoff = (datetime.now().date() - timedelta(days=retention_days)).isoformat()
+    connection = sqlite3.connect(str(database), timeout=0.05)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        current = os.lstat(database)
+        if (
+            database.is_symlink()
+            or database.resolve(strict=True) != database
+            or (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino)
+            or current.st_nlink != 1
+        ):
+            raise ValueError("unsafe trends path")
+        connection.execute("DELETE FROM session_log WHERE date < ?", (cutoff,))
+        connection.commit()
+    except (Exception, SystemExit):
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _best_effort_retention_cleanup(measure: object, data_root: Path) -> None:
+    try:
+        _pi_session_store_cleanup(data_root)
+    except (Exception, SystemExit):
+        _diagnose("retention cleanup failure")
+
+    try:
+        retention_days = getattr(measure, "_TRENDS_RETENTION_DAYS", 0)
+        if type(retention_days) is int and retention_days > 0:
+            _prune_trends(data_root, retention_days)
+    except (Exception, SystemExit):
+        _diagnose("retention cleanup failure")
+
+
+def _session_start(request: Request, data_root: Path) -> Dict[str, object]:
     session_file = _current_session_file(request)
     if session_file is None:
         return _ok()
     claim = None
     try:
         measure = _load_engine("measure")
+        session_store = _load_engine("session_store")
+        _best_effort_retention_cleanup(measure, data_root)
         if _context_window(measure) is not None:
             quality_result, _quality_output = _capture_call(
                 measure.quality_cache,
@@ -1955,7 +2165,6 @@ def _session_start(request: Request) -> Dict[str, object]:
             if quality_result is not None and type(quality_result) not in {int, float}:
                 raise ValueError("invalid quality output")
 
-        session_store = _load_engine("session_store")
         store = session_store.SessionStore(str(request.session["id"]))
         try:
             claim = _claim_recovery(store, str(request.session["id"]))
@@ -2112,7 +2321,7 @@ def dispatch(request: Request) -> Dict[str, object]:
     elif request.action == "post_tool":
         return _post_tool(request, data_root)
     elif request.action == "session_start":
-        return _session_start(request)
+        return _session_start(request, data_root)
     elif request.action == "before_prompt":
         return _before_prompt(request)
     elif request.action == "pre_compact":

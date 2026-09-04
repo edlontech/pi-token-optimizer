@@ -1,10 +1,24 @@
 {
   "name": "pi-token-optimizer",
   "version": "0.1.0",
-  "description": "Pi extension for local Token Optimizer integration",
+  "description": "Local Token Optimizer integration for Pi",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": ["pi-package", "pi", "token-optimizer"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ygorcastor/pi-token-optimizer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ygorcastor/pi-token-optimizer/issues"
+  },
+  "homepage": "https://github.com/ygorcastor/pi-token-optimizer#readme",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "extensions/*.ts",
     "src/*.ts",
@@ -12,6 +26,7 @@
     "LICENSE",
     "NOTICE",
     "PRIVACY.md",
+    "docs/*.md",
     "python/*.py",
     "patches/*.patch",
     "vendor/manifest.json",
@@ -33,6 +48,7 @@
     "benchmark": "node --import tsx scripts/benchmark.mjs",
     "vendor:check": "node scripts/check-vendor.mjs",
     "vendor:sync": "node scripts/sync-upstream.mjs",
+    "package:check": "tsx --test --test-name-pattern='package tarball|capability rows' tests/vendor.test.ts",
     "check": "npm run typecheck && npm test && npm run test:python && npm run test:integration && npm run vendor:check"
   },
   "peerDependencies": {
@@ -43,6 +59,7 @@
     "typebox": "*"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.4",
     "@types/node": "26.4.1",
     "tsx": "4.23.13",
     "typescript": "5.9.3"

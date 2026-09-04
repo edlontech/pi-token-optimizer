@@ -1,0 +1,64 @@
+---
+name: CI
+
+"on":
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+        python:
+          - "3.9"
+          - "3.14.7"
+
+    env:
+      PYTHON: python
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 26.8.1
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26.8.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: TypeScript tests (includes package contract)
+        run: npm test
+
+      - name: Python tests
+        run: npm run test:python
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Vendor check
+        run: npm run vendor:check
