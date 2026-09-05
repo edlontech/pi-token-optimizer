@@ -348,6 +348,7 @@ def main():
             "TOKEN_OPTIMIZER_PI_HOME": str(pi_home),
             "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(snapshot_path),
             "PI_SESSION_ID": _sid,
+            "CLAUDE_SESSION_ID": _sid,
             "PYTHONPATH": pythonpath,
         }
         _sid_export = "export " + " ".join(

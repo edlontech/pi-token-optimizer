@@ -7,7 +7,7 @@
   },
   "patch": {
     "path": "patches/pi-runtime.patch",
-    "sha256": "e450a35680992d4dc28d77a6c6ad9fd104066533710a845f8a20a94c0a694295",
+    "sha256": "61b4ae2c5f70b4690fde263fa80bb4bc9f43c67f0e85ac46c676ef6871370196",
     "changedFiles": [
       "skills/token-optimizer/scripts/archive_result.py",
       "skills/token-optimizer/scripts/bash_hook.py",
@@ -106,7 +106,7 @@
     },
     "skills/token-optimizer/scripts/bash_hook.py": {
       "upstreamSha256": "3bb5e3132d60e0864553cd7f481b79e6b2ec7d14943592b8b08eea1f06a9ca9e",
-      "patchedSha256": "4b6dac803355ae791c813ecc46abc78a190e6700f6aaed8d9e12ad47dfc24c74",
+      "patchedSha256": "109096b40a33fa18eeee11a0b42526580ac1d10f5951d874438d6b99a80d481e",
       "mode": "100644"
     },
     "skills/token-optimizer/scripts/benchmark.py": {

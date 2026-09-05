@@ -267,7 +267,12 @@ class PiBridgeToolTests(unittest.TestCase):
 
         self.assertEqual(blocked["decision"], "block")
         self.assertIn("archived-1", blocked["data"]["reason"])
-        self.assertIn("measure.py expand archived-1", blocked["data"]["reason"])
+        self.assertIn(
+            'token_optimizer_expand with {"archiveId": "archived-1"}',
+            blocked["data"]["reason"],
+        )
+        self.assertNotIn("measure.py", blocked["data"]["reason"])
+        self.assertNotIn("running this in Bash", blocked["data"]["reason"])
         self.assertEqual(stderr, "")
         expected = {"protocolVersion": 1, "ok": True, "decision": "allow"}
         self.assertEqual(novel, expected)
@@ -472,7 +477,12 @@ class PiBridgeToolTests(unittest.TestCase):
 
         self.assertEqual(response["archiveId"], "external-1")
         self.assertIn("Full result archived", response["replacementText"])
-        self.assertIn("measure.py expand external-1", response["replacementText"])
+        self.assertIn(
+            'token_optimizer_expand with {"archiveId": "external-1"}',
+            response["replacementText"],
+        )
+        self.assertNotIn("measure.py", response["replacementText"])
+        self.assertNotIn("running this in Bash", response["replacementText"])
         self.assertLess(len(response["replacementText"]), len(text))
         archive = self.data_root / "tool-archive" / "session-1"
         entry = json.loads((archive / "external-1.json").read_text(encoding="utf-8"))
@@ -646,12 +656,60 @@ class PiBridgeToolTests(unittest.TestCase):
         self.assertIn("Full result archived", response["replacementText"])
         archive_id = response["archiveId"]
         self.assertRegex(archive_id, r"^[a-f0-9]{16}$")
-        self.assertIn("measure.py expand " + archive_id, response["replacementText"])
+        self.assertIn(
+            f'token_optimizer_expand with {{"archiveId": "{archive_id}"}}',
+            response["replacementText"],
+        )
+        self.assertNotIn("measure.py", response["replacementText"])
+        self.assertNotIn("running this in Bash", response["replacementText"])
         archive = self.data_root / "tool-archive" / "session-1"
         self.assertTrue((archive / f"{archive_id}.json").is_file())
         self.assertIn(
             archive_id, (archive / "manifest.jsonl").read_text(encoding="utf-8")
         )
+        self.assertEqual(stderr, "")
+
+    def test_rewritten_bash_output_points_to_working_pi_expansion(self):
+        original = "test_example PASSED\n" * 300 + "300 passed in 1.00s\n"
+        executable = self.root / "pytest"
+        executable.write_text("#!/bin/sh\nprintf '%s' '" + original + "'\n")
+        executable.chmod(0o700)
+        self.environment["PATH"] = str(self.root) + os.pathsep + self.environment["PATH"]
+        tool_input = {"command": "pytest tests/"}
+        rewritten, stderr = self.invoke(self.request("bash", "builtin", tool_input))
+        self.assertEqual(stderr, "")
+        completed = subprocess.run(
+            rewritten["updatedInput"]["command"],
+            shell=True,
+            cwd=self.root,
+            env=self.environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("Full result archived", completed.stdout)
+
+        response, stderr = self.invoke(
+            self.post_request("bash", "builtin", tool_input, completed.stdout)
+        )
+        archive_id = response["archiveId"]
+        self.assertIn(
+            f'token_optimizer_expand with {{"archiveId": "{archive_id}"}}',
+            response["replacementText"],
+        )
+        self.assertNotIn("measure.py", response["replacementText"])
+        self.assertEqual(stderr, "")
+        expanded, stderr = self.invoke(
+            {
+                "protocolVersion": 1,
+                "action": "expand",
+                "session": {"id": "session-1", "cwd": str(self.root)},
+                "args": {"archiveId": archive_id},
+            }
+        )
+        self.assertTrue(expanded["ok"])
+        self.assertEqual(expanded["data"]["archiveId"], archive_id)
+        self.assertEqual(expanded["data"]["text"], original.rstrip("\n"))
         self.assertEqual(stderr, "")
 
     def test_bash_uses_safe_full_output_file_and_ignores_unsafe_path(self):
@@ -868,7 +926,11 @@ class PiBridgeToolTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(response["archiveId"], "contended-1")
-        self.assertIn("measure.py expand contended-1", response["replacementText"])
+        self.assertIn(
+            'token_optimizer_expand with {"archiveId": "contended-1"}',
+            response["replacementText"],
+        )
+        self.assertNotIn("measure.py", response["replacementText"])
         self.assertLessEqual(len(stderr), 600)
 
     def test_unsupported_post_tool_returns_allow_without_replacement(self):

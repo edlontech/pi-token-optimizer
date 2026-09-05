@@ -182,10 +182,10 @@ index 1ceab68..77d608a 100644
  
  if __name__ == "__main__":
 diff --git a/skills/token-optimizer/scripts/bash_hook.py b/skills/token-optimizer/scripts/bash_hook.py
-index 805a24d..b4c5397 100644
+index 805a24d..716659b 100644
 --- a/skills/token-optimizer/scripts/bash_hook.py
 +++ b/skills/token-optimizer/scripts/bash_hook.py
-@@ -318,7 +318,42 @@ def main():
+@@ -318,7 +318,43 @@ def main():
      # the chain is byte-identical to before for a missing/odd id.
      _sid = str(payload.get("session_id", "") or "")
      _sid_export = ""
@@ -220,6 +220,7 @@ index 805a24d..b4c5397 100644
 +            "TOKEN_OPTIMIZER_PI_HOME": str(pi_home),
 +            "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(snapshot_path),
 +            "PI_SESSION_ID": _sid,
++            "CLAUDE_SESSION_ID": _sid,
 +            "PYTHONPATH": pythonpath,
 +        }
 +        _sid_export = "export " + " ".join(

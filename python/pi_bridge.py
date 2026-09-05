@@ -785,8 +785,8 @@ def _external_pre_tool(request: Request, payload: dict[str, Any]) -> dict[str, A
             + " call already ran and its full result is archived on disk (id "
             + archived_id
             + ") — re-fetching would re-inflate context with data you already have. "
-            "Do NOT call it again. Read the saved result by running this in Bash:\n    "
-            + guard.expand_command(archived_id)
+            "Do NOT call it again. Read the saved result by calling "
+            f'token_optimizer_expand with {{"archiveId": "{archived_id}"}}.'
         )
         response = _allow()
         response["decision"] = "block"
@@ -1084,8 +1084,15 @@ def _invalidate_read_cache(payload: dict[str, Any]) -> None:
 
 
 def _archive_response_payload(replacement: str, archive_id: str) -> dict[str, Any]:
+    """Translate a verified upstream archive footer to Pi's expansion tool."""
+    instruction = f"running this in Bash:\n    python3 {MEASURE_PATH} expand {archive_id}]"
+    if not replacement.endswith(instruction):
+        return _allow()
     response = _allow()
-    response["replacementText"] = replacement
+    response["replacementText"] = (
+        replacement.removesuffix(instruction)
+        + f'calling token_optimizer_expand with {{"archiveId": "{archive_id}"}}.]'
+    )
     response["archiveId"] = archive_id
     return response if _response_fits(response) else _allow()
 
@@ -1150,6 +1157,13 @@ def _bash_post_tool(
     text: str,
 ) -> dict[str, Any]:
     try:
+        archive_id = _archive_id_from_pointer(text)
+        if archive_id is not None:
+            if _verified_archive(
+                data_root, str(request.session["id"]), archive_id, "Bash"
+            ):
+                return _archive_response_payload(text, archive_id)
+            return _allow()
         hook_payload = dict(payload)
         hook_payload["tool_response"] = {
             "stdout": text,
