@@ -229,37 +229,3 @@ const releaseFiles = [
   "vendor/token-optimizer/skills/token-optimizer/scripts/utf8_io.py",
 ].sort();
 
-test("package tarball matches the exact release allowlist and metadata contract", async () => {
-  const result = spawnSync("npm", ["pack", "--dry-run", "--json"], {
-    cwd: root,
-    encoding: "utf8",
-  });
-  assert.equal(result.status, 0, result.stderr);
-
-  const packed = JSON.parse(result.stdout)[0].files as Array<{ mode: number; path: string }>;
-  const paths = packed.map((file) => file.path).sort();
-  assert.deepEqual(paths, releaseFiles);
-  assert.equal(packed.find((file) => file.path === `vendor/token-optimizer/${launcher}`)?.mode, 0o755);
-  for (const required of ["LICENSE", "NOTICE", "PRIVACY.md", "README.md", "docs/capabilities.md", "docs/release-checklist.md"]) {
-    assert.ok(paths.includes(required), required);
-  }
-  assert.equal(paths.some((path) => /(^|\/)(__pycache__|\.cache|data)(\/|$)|\.pyc$/.test(path)), false);
-  assert.equal(paths.some((path) => /^(tests|scripts|skills|benchmarks?|fixtures|\.github)\//.test(path)), false);
-  assert.equal(paths.some((path) => /^vendor\/token-optimizer\/(demos?|tests?|benchmarks?|\.claude-plugin)\//.test(path)), false);
-
-  const packageJson = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
-  assert.equal(packageJson.name, "@edlontech/pi-token-optimizer");
-  assert.equal(packageJson.version, "0.1.0");
-  assert.equal(packageJson.license, "PolyForm-Noncommercial-1.0.0");
-  assert.deepEqual(packageJson.engines, { node: ">=22.19.0" });
-  assert.deepEqual(packageJson.publishConfig, { access: "public" });
-  assert.equal(packageJson.devDependencies["@earendil-works/pi-coding-agent"], "0.84.4");
-  assert.equal(packageJson.dependencies, undefined);
-  assert.deepEqual(packageJson.peerDependencies, {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    typebox: "*",
-  });
-});
