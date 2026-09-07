@@ -31,6 +31,9 @@ MAX_REQUEST_BYTES = int(5.5 * 1024 * 1024)
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_EXPANSION_TEXT_BYTES = 50 * 1024
 MAX_EXPANSION_LINES = 2_000
+MAX_ROLLING_RESULTS = 32
+MAX_ROLLING_TEXT_BYTES = 2 * 1024 * 1024
+MIN_ROLLING_TEXT_BYTES = 8 * 1024
 MAX_CONFIG_BYTES = 64 * 1024
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_JSON_NUMBER_LENGTH = 128
@@ -51,12 +54,14 @@ ACTIONS = frozenset(
         "finalize",
         "dashboard",
         "expand",
+        "compress_context",
     }
 )
 REQUEST_KEYS = frozenset({"protocolVersion", "action", "session", "tool", "args"})
 SESSION_KEYS = frozenset({"id", "cwd", "file", "provider", "model", "reasoningLevel"})
 TOOL_KEYS = frozenset({"id", "name", "kind", "input"})
 ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+ROLLING_ID_RE = re.compile(r"rolling_[a-f0-9]{64}")
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -252,6 +257,31 @@ def _is_tool(value: object) -> bool:
     )
 
 
+def _is_rolling_results(value: object) -> bool:
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_ROLLING_RESULTS:
+        return False
+    ids = set()
+    size = 0
+    for item in value:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"id", "name", "text"}
+            or not isinstance(item["id"], str)
+            or ROLLING_ID_RE.fullmatch(item["id"]) is None
+            or item["id"] in ids
+            or not _is_nonempty_string(item["name"])
+            or not isinstance(item["text"], str)
+            or "\x00" in item["text"]
+        ):
+            return False
+        ids.add(item["id"])
+        item_size = len(_text_encoder_normalized(item["text"]).encode("utf-8"))
+        size += item_size
+        if item_size <= MIN_ROLLING_TEXT_BYTES or size > MAX_ROLLING_TEXT_BYTES:
+            return False
+    return True
+
+
 def _has_required_fields(request: Request) -> bool:
     action = request.action
     args = request.args
@@ -273,6 +303,8 @@ def _has_required_fields(request: Request) -> bool:
             and request.tool.get("name") in {"bash", "Bash"}
             and _is_nonempty_string(full_output)
         )
+    if action == "compress_context":
+        return _is_rolling_results(args.get("results"))
     if action == "before_prompt":
         return _is_nonempty_string(args.get("prompt"), MAX_TEXT_BYTES)
     if action in {"rollup", "finalize"}:
@@ -1342,6 +1374,62 @@ def _bounded_guidance(
     return data
 
 
+def _compress_context(request: Request, data_root: Path) -> dict[str, Any]:
+    """Archive a bounded batch before shortening outgoing historical tool results."""
+    response = _ok({"replacements": []})
+    session_id = request.session["id"]
+    if not _archive_destination_safe(data_root, session_id):
+        return response
+    try:
+        archive = _load_engine("archive_result")
+        prepared = []
+        for item in request.args["results"]:
+            name, key, text = item["name"], item["id"], item["text"]
+            if (
+                name.lower() in {"agent", "task", "token_optimizer_expand"}
+                or archive._is_archive_exempt(name)
+                or "token_optimizer_expand" in text
+            ):
+                continue
+            safe_text = archive._redact_credentials(text)
+            archive_root = _archive_root(data_root)
+            existing = (
+                _archive_response(archive_root, session_id, key)[1]
+                if archive_root is not None
+                else None
+            )
+            if existing != safe_text:
+                saved, output = _capture_call(
+                    archive.archive_original, text, session_id, key, name, quiet=True
+                )
+                if saved != key or output.strip():
+                    continue
+            prepared.append((key, name, safe_text))
+
+        _capture_call(archive.cleanup_old_archives, skip_session_id=session_id)
+        for key, name, safe_text in prepared:
+            if not _verified_archive(data_root, session_id, key, name):
+                continue
+            archive_root = _archive_root(data_root)
+            if archive_root is None or _archive_response(archive_root, session_id, key)[1] != safe_text:
+                continue
+            preview = _bounded_text(safe_text, 768)
+            replacement = (
+                preview
+                + '\n[Older tool result shortened. Retrieve the credential-redacted original with '
+                + 'token_optimizer_expand {"archiveId": "' + key + '"}.]'
+            )
+            if len(replacement.encode("utf-8")) >= len(safe_text.encode("utf-8")):
+                continue
+            response["data"]["replacements"].append({"id": key, "text": replacement})
+            if not _response_fits(response):
+                response["data"]["replacements"].pop()
+    except (Exception, SystemExit) as error:
+        _diagnose_failure("rolling compression failure", error)
+        return _ok({"replacements": []})
+    return response
+
+
 def _pre_compact(request: Request) -> dict[str, Any]:
     session_file = _current_session_file(request)
     if session_file is None:
@@ -1568,18 +1656,20 @@ def _expand(request: Request, data_root: Path) -> dict[str, Any]:
         _diagnose_failure("archive failure", error)
         return _error("archive_unavailable")
 
-    try:
-        measure = _load_engine("measure")
-        _, output = _capture_call(
-            measure._log_reexpand_debit,
-            session_id,
-            archive_id,
-            safe_response,
-        )
-        if output.strip():
-            raise ValueError("invalid archive debit output")
-    except (Exception, SystemExit) as error:
-        _diagnose_failure("archive debit failure", error)
+    # Rolling substitutions have no arrival-compression credit to reverse.
+    if ROLLING_ID_RE.fullmatch(archive_id) is None:
+        try:
+            measure = _load_engine("measure")
+            _, output = _capture_call(
+                measure._log_reexpand_debit,
+                session_id,
+                archive_id,
+                safe_response,
+            )
+            if output.strip():
+                raise ValueError("invalid archive debit output")
+        except (Exception, SystemExit) as error:
+            _diagnose_failure("archive debit failure", error)
 
     offset = int(request.args.get("offset", 0))
     limit = int(request.args.get("limit", MAX_EXPANSION_LINES))
@@ -2264,6 +2354,7 @@ def dispatch(request: Request) -> dict[str, Any]:
     handlers: dict[str, Callable[[], dict[str, Any]]] = {
         "pre_tool": lambda: _pre_tool(request),
         "post_tool": lambda: _post_tool(request, data_root),
+        "compress_context": lambda: _compress_context(request, data_root),
         "session_start": lambda: _session_start(request, data_root),
         "before_prompt": lambda: _before_prompt(request),
         "pre_compact": lambda: _pre_compact(request),

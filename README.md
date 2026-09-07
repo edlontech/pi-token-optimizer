@@ -55,7 +55,18 @@ While enabled with current consent, the extension:
 - may block a redundant Read or exact external refetch, rewrite an eligible Bash command, or replace a successful text-only tool result with a shorter result that points to a local archive;
 - leaves unknown tools, errors, images, malformed responses, timeouts, and bridge failures on Pi's original path;
 - injects bounded local quality and continuity context and records session rollups/checkpoints;
+- shortens older large tool results in outgoing context when context usage reaches 60%, preserving recent turns and archived originals;
 - customizes manual or automatic Pi compaction only when usable optimizer guidance is available, otherwise preserving Pi's default compaction behavior.
+
+### Rolling context compression
+
+At 60% of the model's context window, the optimizer can replace older successful, text-only tool results larger than 8 KiB with a preview and a `token_optimizer_expand` reference. The latest four model turns (each assistant response and its tool results) remain intact, as do user/assistant messages, errors, images, expansion results, existing optimizer archive references, Agent/Task results, and tools matching the archive-exemption settings.
+
+This changes only the outgoing model context, not Pi's stored conversation or transcript display. Originals are credential-redacted and verified in the existing archive before substitution. Prior substitutions remain stable below the pressure threshold, are revalidated on later requests, and are dropped when their source changes or leaves the eligible history. Missing archives can be rebuilt from the original context; failed writes, retention pruning, bridge failures, cancellation, and unavailable expansion leave the original result in context. Session startup/reload resets the in-memory selection.
+
+Each pass uses at most one bounded Python request and shortens at most 32 results totaling 2 MiB of source text, prioritizing existing substitutions. No additional model calls are made. Changing old context can invalidate a provider's cached prompt prefix, so fewer context tokens do not necessarily mean lower billed cost. Rolling reductions are not added to the dashboard's arrival-compression savings ledger. Pi's normal compaction remains available and may still be necessary.
+
+Rolling compression follows the existing enable/disable and consent controls; there is no separate toggle in this version.
 
 ### Command
 

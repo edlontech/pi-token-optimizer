@@ -130,9 +130,9 @@ export function registerTokenOptimizer(
       return;
     }
   });
-  pi.on("context", (event) => {
+  pi.on("context", async (event, ctx) => {
     try {
-      return adapter.filterContext(event);
+      return await adapter.compressContext(event, ctx);
     } catch {
       return;
     }

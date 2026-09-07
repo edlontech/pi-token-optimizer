@@ -48,6 +48,10 @@ const validRequestByAction = {
   rollup: { protocolVersion: 1, action: "rollup", session },
   finalize: { protocolVersion: 1, action: "finalize", session },
   dashboard: { protocolVersion: 1, action: "dashboard", session },
+  compress_context: {
+    protocolVersion: 1, action: "compress_context", session,
+    args: { results: [{ id: `rolling_${"a".repeat(64)}`, name: "read", text: "x".repeat(9_000) }] },
+  },
   expand: {
     protocolVersion: 1,
     action: "expand",
@@ -70,6 +74,7 @@ test("accepts every version 1 action-specific request", () => {
     "finalize",
     "dashboard",
     "expand",
+    "compress_context",
   ]);
 
   for (const request of Object.values(validRequestByAction)) {

@@ -1,6 +1,6 @@
 # Pi Capability Matrix
 
-Version 0.1.0 adapts a bounded subset of Token Optimizer 5.13.8 for Pi. Status means:
+This package adapts a bounded subset of Token Optimizer 5.13.8 for Pi. Status means:
 
 - **Supported:** a user-facing Pi package behavior is shipped.
 - **Adapted:** an upstream engine behavior is shipped through Pi-specific event, session, or safety translation.
@@ -32,6 +32,8 @@ Each row names one exact automated test or manual release checklist item. Passin
 | Bash text-result compression | Adapted | Automated test: `real bundled engine compresses representative outputs and every advertised archive reconstructs` |
 | External text-result compression | Adapted | Automated test: `real bundled engine compresses representative outputs and every advertised archive reconstructs` |
 | Local archive reconstruction | Adapted | Automated test: `real bundled engine compresses representative outputs and every advertised archive reconstructs` |
+| Pressure-triggered rolling context compression with archive recovery | Supported | Automated test: `rolling context compresses old tool results through the real extension and archives the original` |
+| Stable rolling references below the pressure threshold | Supported | Automated test: `rolling context reuses stable references below the pressure threshold and never overwrites source history` |
 | Local quality nudges | Adapted | Python unittest: `test_before_prompt_combines_only_normalized_safe_function_output` |
 | One-time continuity recovery | Adapted | Automated test: `real lifecycle recovers once, returns filterable nudges, and rollup is idempotent` |
 | Normal custom compaction | Adapted | Automated test: `real extension flow retains read state on failed compaction, clears on success, and handles normal and split-turn fake model calls` |

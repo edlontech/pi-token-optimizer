@@ -23,7 +23,12 @@ import {
 } from "./config.ts";
 import {
   MAX_ID_LENGTH,
+  MAX_ROLLING_RESULTS,
+  MAX_ROLLING_TEXT_BYTES,
+  MIN_ROLLING_TEXT_BYTES,
   PROTOCOL_VERSION,
+  isRollingReplacements,
+  type RollingResult,
   isBridgeResponse,
   isHealthyStatus,
   type BridgeAction,
@@ -58,7 +63,8 @@ const FAILURE_MESSAGES = {
 
 type FailureClass = keyof typeof FAILURE_MESSAGES;
 
-type PiAPI = Pick<ExtensionAPI, "getAllTools" | "sendMessage">;
+type PiAPI = Pick<ExtensionAPI, "getAllTools" | "sendMessage"> &
+  Partial<Pick<ExtensionAPI, "getActiveTools">>;
 type BridgeRunner = Pick<BridgeClient, "run" | "runTracked" | "drainOrKill">;
 type ConfigLoader = Pick<ConfigStore, "load">;
 
@@ -91,6 +97,7 @@ export class PiAdapter {
   private retired = false;
   private shutdownPromise?: Promise<void>;
   private readonly warned = new Set<FailureClass>();
+  private rollingIds = new Set<string>();
 
   constructor(
     private readonly pi: PiAPI,
@@ -132,6 +139,7 @@ export class PiAdapter {
 
   async refresh(ctx: ExtensionContext): Promise<boolean> {
     const generation = ++this.generation;
+    this.rollingIds.clear();
     this.compatible = false;
     this.activeState = false;
     this.finalizable = false;
@@ -260,6 +268,82 @@ export class PiAdapter {
         (message, index) => !isNudge(message) || index === newest,
       ),
     };
+  }
+
+  /** Shorten archived older results only in the outgoing context, never in session history. */
+  async compressContext(
+    event: ContextEvent,
+    ctx: ExtensionContext,
+  ): Promise<{ messages: ContextEvent["messages"] } | void> {
+    const filtered = this.filterContext(event);
+    if (!this.activeState || ctx.signal?.aborted ||
+      !this.pi.getActiveTools?.().includes("token_optimizer_expand")) return filtered;
+    const messages = filtered?.messages ?? event.messages;
+    const generation = this.generation;
+    const session = sessionDescriptor(ctx);
+    const usage = ctx.getContextUsage();
+    const underPressure = usage !== undefined && usage.tokens !== null &&
+      Number.isFinite(usage.tokens) && Number.isFinite(usage.contextWindow) &&
+      usage.contextWindow > 0 && usage.tokens >= usage.contextWindow * 0.6;
+    let cutoff = 0;
+    let turns = 0;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === "assistant" && ++turns === 4) {
+        cutoff = index;
+        break;
+      }
+    }
+    const candidates: Array<RollingResult & { index: number }> = [];
+    for (let index = 0; index < cutoff; index += 1) {
+      const message = messages[index];
+      if (message.role !== "toolResult" || message.isError ||
+        message.toolName === "token_optimizer_expand" ||
+        !message.content.every((block) => block.type === "text")) continue;
+      const text = message.content.map((block) => block.type === "text" ? block.text : "").join("\n");
+      const size = Buffer.byteLength(text, "utf8");
+      if (size <= MIN_ROLLING_TEXT_BYTES || size > MAX_ROLLING_TEXT_BYTES ||
+        text.includes("\u0000") || text.includes("token_optimizer_expand")) continue;
+      const id = `rolling_${createHash("sha256")
+        .update(JSON.stringify([session.id, message.toolCallId, message.toolName, text])).digest("hex")}`;
+      if (underPressure || this.rollingIds.has(id))
+        candidates.push({ id, name: message.toolName, text, index });
+    }
+    // Preserve existing substitutions before admitting another bounded pressure batch.
+    candidates.sort((a, b) => Number(this.rollingIds.has(b.id)) - Number(this.rollingIds.has(a.id)));
+    const selected: typeof candidates = [];
+    let bytes = 0;
+    const ids = new Set<string>();
+    for (const candidate of candidates) {
+      const size = Buffer.byteLength(candidate.text, "utf8");
+      if (selected.length >= MAX_ROLLING_RESULTS) break;
+      if (ids.has(candidate.id) || bytes + size > MAX_ROLLING_TEXT_BYTES) continue;
+      ids.add(candidate.id);
+      bytes += size;
+      selected.push(candidate);
+    }
+    if (selected.length === 0) {
+      this.rollingIds.clear();
+      return filtered;
+    }
+    const response = await this.request(ctx, "compress_context", {
+      args: { results: selected.map(({ id, name, text }) => ({ id, name, text })) },
+    });
+    if (generation !== this.generation || ctx.signal?.aborted ||
+      !this.pi.getActiveTools?.().includes("token_optimizer_expand") ||
+      !isRollingReplacements(response?.data?.replacements)) return filtered;
+    const replacements = new Map(response.data.replacements.map((item) => [item.id, item.text]));
+    const next = [...messages];
+    const applied = new Set<string>();
+    for (const candidate of selected) {
+      const text = replacements.get(candidate.id);
+      if (text === undefined || Buffer.byteLength(text, "utf8") >= Buffer.byteLength(candidate.text, "utf8")) continue;
+      const message = messages[candidate.index];
+      if (message.role !== "toolResult") continue;
+      next[candidate.index] = { ...message, content: [{ type: "text", text }] };
+      applied.add(candidate.id);
+    }
+    this.rollingIds = applied;
+    return applied.size > 0 ? { messages: next } : filtered;
   }
 
   settled(ctx: ExtensionContext): void {

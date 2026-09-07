@@ -121,6 +121,10 @@ function requestFor(action: typeof BRIDGE_ACTIONS[number], state: State, source:
       args: { text: "short result", isError: false, hasImages: false },
     };
   }
+  if (action === "compress_context") return {
+    ...base,
+    args: { results: [{ id: `rolling_${"b".repeat(64)}`, name: "read", text: "safe source\n".repeat(1_000) }] },
+  };
   if (action === "before_prompt") return { ...base, args: { prompt: "continue" } };
   if (action === "session_start") return { ...base, args: { reason: "startup" } };
   if (action === "expand") return { ...base, args: { archiveId: "missing-archive", offset: 0, limit: 10 } };
@@ -132,7 +136,7 @@ test("every supported real bridge action leaves all foreign-agent sentinel bytes
   t.after(() => rm(state.root, { recursive: true, force: true }));
   const source = join(state.project, "source.ts");
   await writeFile(source, "export const value = 1;\n");
-  assert.equal(BRIDGE_ACTIONS.length, 12);
+  assert.equal(BRIDGE_ACTIONS.length, 13);
 
   for (const action of BRIDGE_ACTIONS) {
     const before = await fingerprint(state);

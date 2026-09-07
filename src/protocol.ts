@@ -6,6 +6,20 @@ export const MAX_REQUEST_BYTES = 5.5 * 1024 * 1024;
 export const MAX_RESPONSE_BYTES = 64 * 1024;
 export const MAX_EXPANSION_TEXT_BYTES = 50 * 1024;
 export const MAX_EXPANSION_LINES = 2_000;
+export const MAX_ROLLING_RESULTS = 32;
+export const MAX_ROLLING_TEXT_BYTES = 2 * 1024 * 1024;
+export const MIN_ROLLING_TEXT_BYTES = 8 * 1024;
+
+export interface RollingResult {
+  id: string;
+  name: string;
+  text: string;
+}
+
+export interface RollingReplacement {
+  id: string;
+  text: string;
+}
 
 export function isOffset(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
@@ -32,6 +46,7 @@ export const BRIDGE_ACTIONS = [
   "finalize",
   "dashboard",
   "expand",
+  "compress_context",
 ] as const;
 
 export type BridgeAction = (typeof BRIDGE_ACTIONS)[number];
@@ -236,6 +251,8 @@ function hasRequiredRequestFields(request: BridgeRequest): boolean {
             (request.tool.name === "bash" || request.tool.name === "Bash") &&
             isNonemptyString(request.args.fullOutputPath)))
       );
+    case "compress_context":
+      return isRollingResults(request.args?.results);
     case "before_prompt":
       return (
         request.args !== undefined &&
@@ -254,6 +271,37 @@ function hasRequiredRequestFields(request: BridgeRequest): boolean {
     default:
       return true;
   }
+}
+
+function isRollingId(value: unknown): value is string {
+  return typeof value === "string" && /^rolling_[a-f0-9]{64}$/.test(value);
+}
+
+function isRollingResults(value: unknown): value is RollingResult[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_ROLLING_RESULTS)
+    return false;
+  let bytes = 0;
+  const ids = new Set<string>();
+  return value.every((item) => {
+    if (!isRecord(item) || !hasOnlyKeys(item, new Set(["id", "name", "text"])) ||
+      !isRollingId(item.id) || ids.has(item.id) || !isNonemptyString(item.name) ||
+      typeof item.text !== "string" || item.text.includes("\u0000")) return false;
+    ids.add(item.id);
+    const size = Buffer.byteLength(item.text, "utf8");
+    bytes += size;
+    return size > MIN_ROLLING_TEXT_BYTES && bytes <= MAX_ROLLING_TEXT_BYTES;
+  });
+}
+
+export function isRollingReplacements(value: unknown): value is RollingReplacement[] {
+  if (!Array.isArray(value) || value.length > MAX_ROLLING_RESULTS) return false;
+  const ids = new Set<string>();
+  return value.every((item) => {
+    if (!isRecord(item) || !hasOnlyKeys(item, new Set(["id", "text"])) ||
+      !isRollingId(item.id) || ids.has(item.id) || !isNonemptyString(item.text, 2_000)) return false;
+    ids.add(item.id);
+    return true;
+  });
 }
 
 export function isBridgeRequest(value: unknown): value is BridgeRequest {
@@ -334,6 +382,9 @@ function responseFieldsFitAction(
     (response.replacementText === undefined) !==
       (response.archiveId === undefined)
   )
+    return false;
+  if (action === "compress_context" && response.ok &&
+    response.data?.active !== false && !isRollingReplacements(response.data?.replacements))
     return false;
   if (action === "expand" && response.ok) {
     const text = response.data?.text;

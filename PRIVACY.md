@@ -1,6 +1,6 @@
 # Pi Token Optimizer Privacy Policy
 
-Pi Token Optimizer 0.1.0 adapts Token Optimizer 5.13.8 to Pi. This document describes the shipped Pi package, not every capability present in the vendored upstream source.
+Pi Token Optimizer adapts Token Optimizer 5.13.8 to Pi. This document describes the shipped Pi package, not every capability present in the vendored upstream source.
 
 ## Consent
 
@@ -10,7 +10,7 @@ The notice covers credential-redacted read-cache excerpts, credential-redacted t
 
 ## Local reads and isolation
 
-The extension receives the current Pi session ID, working directory, optional Pi session file, selected provider/model, and tool events from Pi. The session adapter accepts Pi v3 JSONL files only when they are the current session or are under Pi's configured session roots.
+The extension receives the current Pi session ID, working directory, optional Pi session file, selected provider/model, tool events, and outgoing context messages from Pi. The session adapter accepts Pi v3 JSONL files only when they are the current session or are under Pi's configured session roots.
 
 The runtime is pinned to Pi and its data roots are pinned beneath the Pi agent directory. It does not scan or use Claude Code, Codex, OpenCode, Hermes, Copilot, Cursor, or other agent settings, sessions, credentials, or data directories. It does not rewrite project source or Pi settings during normal operation. The vendored upstream installer, marketplace, daemon, and foreign-runtime entrypoints are not exposed by the Pi extension.
 
@@ -40,6 +40,8 @@ Retention controls are local environment variables:
 - `TOKEN_OPTIMIZER_CHECKPOINT_EVENT_MAX` (1,000).
 
 The 48-hour session-store limit is fixed in the shipped engine. Its cleanup and configured nonzero trends cleanup run best effort on consented `session_start` when Pi supplies a real current session file; neither has a background retention service. Files created by the integration use restrictive local permissions where the platform supports them, but host filesystem policy and backups remain the user's responsibility.
+
+Rolling context compression uses the same tool-archive category and retention controls. When context usage reaches 60%, selected older successful text results may be archived and replaced with a short preview and retrieval reference in outgoing model context. This does not rewrite Pi session files or their transcript display. Archives are checked before each substitution; missing archives can be rebuilt from the original context, and archive failures leave the original result unchanged. Rolling compression makes no additional model calls, but its previews and retrieved archive pages can reach the selected provider as ordinary context.
 
 ## Redaction limits
 
