@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 # Windows: spawning a console exe (git, where, tasklist, ...) from a console-less
-# hook flashes a cmd window on every Bash call (#107). CREATE_NO_WINDOW suppresses
+# hook flashes a cmd window on every Bash call. CREATE_NO_WINDOW suppresses
 # it. getattr-guarded so it is 0 -- a no-op -- on POSIX and on builds without it.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -1821,6 +1821,31 @@ def compress(command_str, raw_output, returncode=0, stderr=""):
     return compressed
 
 
+def _run_original(command_args):
+    """Execute the command uncompressed and relay its output and exit code."""
+    try:
+        result = subprocess.run(
+            command_args,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            creationflags=_NO_WINDOW,
+        )
+    except subprocess.TimeoutExpired:
+        sys.exit(124)
+    except OSError as exc:
+        print(f"bash_compress.py: {exc}", file=sys.stderr)
+        sys.exit(127)
+    sys.stdout.write(result.stdout or "")
+    sys.stdout.flush()
+    sys.stderr.write(result.stderr or "")
+    sys.stderr.flush()
+    sys.exit(result.returncode)
+
+
 def main():
     """Run a command through compression wrapper."""
     if len(sys.argv) < 2:
@@ -1829,6 +1854,29 @@ def main():
 
     command_args = sys.argv[1:]
     command_str = shlex.join(command_args)
+
+    # R13a: independently re-validate the argv before running anything, so a
+    # cached "always allow" on this wrapper's command prefix can never turn
+    # bash_compress.py into an unguarded command runner. Exact same whitelist +
+    # dangerous-character gate the Antigravity / Copilot / Claude bridges apply
+    # before rewriting. A direct `bash_compress.py <anything-not-whitelisted>`
+    # (or a hostile `rm -rf /`, `curl | sh`, etc.) is refused and spawns
+    # nothing.
+    #
+    # The gate module is dependency-free, but if it cannot be imported (stale
+    # or partial payload copy) the wrapper must fail OPEN: the command runs
+    # uncompressed exactly as the user typed it. Refusing here would silently
+    # drop whitelisted commands on every platform that shares this wrapper.
+    try:
+        import bash_whitelist as _self_check
+    except Exception:
+        _self_check = None
+    if _self_check is None:
+        _run_original(command_args)
+        sys.exit(0)
+    if _self_check.has_dangerous_chars(command_str) or not _self_check.is_whitelisted(command_str):
+        print("bash_compress.py: command is not eligible for compression", file=sys.stderr)
+        sys.exit(1)
 
     try:
         result = subprocess.run(
@@ -1907,12 +1955,22 @@ def main():
                 if _feature:
                     sys.path.insert(0, str(Path(__file__).resolve().parent))
                     from measure import _log_compression_event
+                    # C-2: command_pattern is persisted to trends.db's
+                    # compression_events table. Redact BEFORE truncating so an
+                    # inline secret (Bearer token, mysql -pPASSWORD,
+                    # PGPASSWORD=... psql) never reaches disk in cleartext.
+                    # Mirrors the fix in bash_compress_hook._log_event.
+                    try:
+                        from credential_patterns import redact_credentials as _redact
+                        _safe_pattern = _redact(command_str)[:100]
+                    except ImportError:
+                        _safe_pattern = command_str[:100]
                     _log_compression_event(
                         feature=_feature,
                         original_text=raw_output,
                         compressed_text=compressed,
                         session_id=os.environ.get("CLAUDE_SESSION_ID", ""),
-                        command_pattern=command_str[:100],
+                        command_pattern=_safe_pattern,
                         quality_preserved=True,
                         verified=True,
                         tier="measured",

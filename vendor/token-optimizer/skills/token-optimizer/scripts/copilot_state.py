@@ -95,8 +95,8 @@ _KNOWN_EVENT_TYPES = frozenset(
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
-        return int(value) if value is not None else default
-    except (TypeError, ValueError):
+        return int(float(value)) if value is not None else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 

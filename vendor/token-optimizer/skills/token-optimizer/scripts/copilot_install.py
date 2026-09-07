@@ -8,7 +8,7 @@ Wires Token Optimizer into a Copilot CLI setup:
 2. Writes the hooks config to <copilot_home>/hooks/token-optimizer.json
    (USER-LEVEL ONLY — never .github/hooks/, which would silently affect a
    whole team's repo without consent; user-level hooks load in all modes
-   including non-interactive `copilot -p`, per github/copilot-cli#3345).
+   including non-interactive `copilot -p`, per the Copilot CLI project).
 3. Seeds capabilities.json for the installed CLI version.
 
 Idempotent: re-running refreshes the payload and rewrites OUR hook file only.
@@ -33,6 +33,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
+from py_trust import py_path_is_trusted, py_trust_reason  # noqa: E402
 from runtime_env import copilot_home  # noqa: E402
 
 HOOK_FILE_NAME = "token-optimizer.json"
@@ -47,6 +48,8 @@ _PAYLOAD_MODULES = (
     "copilot_vscode.py",
     "bash_hook.py",
     "bash_compress.py",
+    # Dependency-free whitelist gate shared by bash_hook + bash_compress.
+    "bash_whitelist.py",
     "hook_io.py",
     "plugin_env.py",
     "runtime_env.py",
@@ -67,41 +70,19 @@ def _hooks_dir(root: Path) -> Path:
     return root / "hooks"
 
 
-# System install dirs: root-owned and not user-writable, so trusted by prefix --
-# exactly the launcher's _SAFE_PREFIXES. Without this, a root-owned
-# /usr/bin/python3 (or a CI hostedtoolcache Python) would fail the owned-by-euid
-# check below, which is wrong -- those are legitimate, non-hijackable installs.
-_TRUSTED_PY_PREFIXES = (
-    "/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/opt/homebrew/opt/",
-    "/home/linuxbrew/.linuxbrew/bin/", "/opt/hostedtoolcache/",
-)
+def _py_trust_reason(p: str) -> str | None:
+    """None when trusted, else a short human-readable rejection reason."""
+    return py_trust_reason(p)
 
 
 def _py_path_is_trusted(p: str) -> bool:
-    """Trusted iff the resolved interpreter is under a system prefix, OR it and
-    its dir are owned by us and not group/other-writable -- the launcher's hybrid
-    allowlist+ownership boundary (ssh/sudo/git), in Python. Pure stat, never runs
-    the target. On Windows, stat ownership is unreliable under Git-Bash, so
-    require only that the path is a real file (the launcher leans on hardcoded
-    allowlists there too)."""
-    try:
-        real = os.path.realpath(p)
-        if not os.path.isfile(real):
-            return False
-        if os.name == "nt" or not hasattr(os, "geteuid"):
-            return True
-        if real.startswith(_TRUSTED_PY_PREFIXES):
-            return True
-        euid = os.geteuid()
-        for target in (real, os.path.dirname(real)):
-            st = os.stat(target)
-            if st.st_uid != euid:
-                return False
-            if st.st_mode & (_stat.S_IWGRP | _stat.S_IWOTH):
-                return False
-        return True
-    except OSError:
-        return False
+    """Trusted iff the interpreter's bytes are admin-owned (euid or root) and
+    not group/other-writable, and its dir is not world-writable and not
+    group-writable by a third party -- the launcher's ownership boundary
+    (ssh/sudo/git), in Python. Pure stat, never runs the target. On Windows,
+    stat ownership is unreliable under Git-Bash, so require only that the path
+    is a real file (the launcher leans on hardcoded allowlists there too)."""
+    return py_path_is_trusted(p)
 
 
 def _resolve_safe_python() -> str:
@@ -114,24 +95,38 @@ def _resolve_safe_python() -> str:
       1. TOKEN_OPTIMIZER_PYTHON, if it names a trusted file (user escape hatch,
          same env the launcher honours);
       2. sys.executable -- the interpreter already running this installer, an
-         absolute path baked in ONCE here so the hook never does a PATH lookup;
+         absolute path baked in ONCE here so the hook never does a PATH lookup,
+         but only through the same ownership gate (a writable venv interpreter
+         must never be persisted);
       3. a $PATH search, but only accepting a candidate that passes the ownership
          gate above.
     Raises RuntimeError rather than persist an unsafe command -- recoverable by
     setting TOKEN_OPTIMIZER_PYTHON.
     """
     override = os.environ.get("TOKEN_OPTIMIZER_PYTHON", "").strip()
-    if override and _py_path_is_trusted(override):
-        return os.path.abspath(override)
-    if sys.executable and os.path.isfile(sys.executable):
-        return os.path.abspath(sys.executable)
+    candidates = []
+    if override:
+        candidates.append(("TOKEN_OPTIMIZER_PYTHON", override))
+    if sys.executable:
+        candidates.append(("sys.executable", sys.executable))
     for name in ("python3", "python"):
         cand = shutil.which(name)
-        if cand and _py_path_is_trusted(cand):
-            return os.path.abspath(cand)
+        if cand:
+            candidates.append((name, cand))
+    for _label, cand in candidates:
+        if _py_path_is_trusted(cand):
+            # Persist the RESOLVED realpath, not abspath: the gate validated
+            # realpath(cand) (the symlink target + its parent dir), so persisting
+            # the original symlink path would leave a swap window between install
+            # and hook fire (an attacker with write access to the symlink's parent
+            # dir could redirect the symlink to a malicious interpreter).
+            return os.path.realpath(cand)
+    reasons = [f"{label}={cand}: {_py_trust_reason(cand)}"
+               for label, cand in candidates]
     raise RuntimeError(
         "no trusted python interpreter found for the Copilot hook; "
-        "set TOKEN_OPTIMIZER_PYTHON to an absolute python3 path and re-run install"
+        "set TOKEN_OPTIMIZER_PYTHON to an absolute python3 path and re-run install. "
+        "Candidates: " + "; ".join(reasons)
     )
 
 

@@ -6,7 +6,7 @@ Copies the ``hermes/`` payload directory from the Token Optimizer repo into
 AND the runtime modules the plugin imports at load time (the hermes_*.py shims
 that live next to this installer in scripts/).
 
-v5.X.Y (#58): the payload alone (plugin.yaml + __init__.py + README) is not a
+v5.X.Y: the payload alone (plugin.yaml + __init__.py + README) is not a
 working plugin — __init__.py imports hermes_hook_bridge / hermes_state /
 hermes_session from its own directory. Earlier installs copied only the payload,
 leaving those imports broken (dead /token-optimizer command, dashboard launcher,
@@ -56,7 +56,7 @@ _RUNTIME_MODULES = (
     "hermes_session.py",
     "runtime_env.py",
     # hermes_hook_bridge imports `from spawn_utils import spawn_detached` at load
-    # time. Omitting it made the plugin dir import-fail at runtime (#148) even
+    # time. Omitting it made the plugin dir import-fail at runtime even
     # though hermes-doctor's bridge smoke test caught it as ModuleNotFoundError.
     "spawn_utils.py",
 )
@@ -129,7 +129,7 @@ def _config_path(hermes_root: Path) -> Path:
 
 
 def _timestamp() -> str:
-    # v5.11.1 (#58): include microseconds so two backups within the same second
+    # v5.11.1: include microseconds so two backups within the same second
     # (e.g. a retried install) don't collide on the same filename.
     return _dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
 
@@ -146,7 +146,7 @@ def _enabled_in_text(text: str) -> bool:
     and the inline form ``enabled: [token-optimizer, ...]``. Does not attempt a
     full YAML parse (PyYAML may be absent and would lose comments on dump).
     """
-    # v5.11.1 (#58): bail on pathologically large config text rather than scan
+    # v5.11.1: bail on pathologically large config text rather than scan
     # line-by-line (a malformed/huge file is the user's to fix, not ours to chew).
     if len(text) > 1_000_000:
         return False
@@ -164,7 +164,7 @@ def _enabled_in_text(text: str) -> bool:
         if in_plugins and indent <= plugins_indent and not raw.lstrip().startswith("plugins:"):
             in_plugins = False
             in_enabled = False
-        # v5.11.1 (#58): only a TOP-LEVEL plugins: key (indent == 0) is the
+        # v5.11.1: only a TOP-LEVEL plugins: key (indent == 0) is the
         # Hermes plugin allow-list. A nested "plugins:" (e.g. outer.plugins) is
         # an unrelated mapping and must not be matched.
         if stripped.startswith("plugins:") and indent == 0:
@@ -201,14 +201,14 @@ def _patch_config_text(text: str) -> tuple[str | None, str]:
 
     Preserves comments and surrounding formatting (no yaml load/dump rewrite).
     """
-    # v5.11.1 (#58): refuse pathologically large configs (caller treats this as
+    # v5.11.1: refuse pathologically large configs (caller treats this as
     # manual-required and won't write).
     if len(text) > 1_000_000:
         return None, "manual-required"
     if _enabled_in_text(text):
         return None, "already-enabled"
 
-    # v5.11.1 (#58): detect the file's line ending once and reuse it for every
+    # v5.11.1: detect the file's line ending once and reuse it for every
     # line we synthesize, so a CRLF config stays uniformly CRLF after patching.
     eol = "\r\n" if "\r\n" in text else "\n"
 
@@ -226,7 +226,7 @@ def _patch_config_text(text: str) -> tuple[str | None, str]:
         indent = len(lead)
         if in_plugins and indent <= plugins_indent and not body.lstrip().startswith("plugins:"):
             in_plugins = False
-        # v5.11.1 (#58): only a TOP-LEVEL plugins: key (indent == 0) is the
+        # v5.11.1: only a TOP-LEVEL plugins: key (indent == 0) is the
         # Hermes plugin allow-list; nested plugins: mappings are unrelated.
         if stripped.startswith("plugins:") and indent == 0:
             in_plugins = True
@@ -236,7 +236,7 @@ def _patch_config_text(text: str) -> tuple[str | None, str]:
         if in_plugins and stripped.startswith("enabled:"):
             enabled_lead = lead
             rest = stripped[len("enabled:"):].strip()
-            # v5.11.1 (#58): strip a trailing comment so `enabled:  # note` is
+            # v5.11.1: strip a trailing comment so `enabled:  # note` is
             # treated as an empty block-list, not a scalar.
             rest = rest.split("#", 1)[0].strip()
             if rest.startswith("[") and rest.endswith("]"):
@@ -252,7 +252,7 @@ def _patch_config_text(text: str) -> tuple[str | None, str]:
                 # enabled: <scalar> — not a list we can safely extend.
                 return None, "manual-required"
             # Block-list form: insert a "- token-optimizer" item.
-            # v5.11.1 (#58): derive the inserted line's leading whitespace from
+            # v5.11.1: derive the inserted line's leading whitespace from
             # an EXISTING item line's literal prefix (the actual chars before
             # "-"), preserving tabs. If there is no existing item line and the
             # surrounding indentation uses tabs, bail manual-required rather than
@@ -308,11 +308,11 @@ def enable_in_config(hermes_root: Path, *, dry_run: bool = False) -> dict:
 
     if not cfg.exists():
         if dry_run:
-            # v5.11.1 (#58): dry-run must not claim "enabled" when nothing was
+            # v5.11.1: dry-run must not claim "enabled" when nothing was
             # written. Report the action we WOULD take ("would-enable").
             result["status"] = "would-enable"
             result["note"] = "config does not exist; would create minimal plugins.enabled"
-            # v5.11.1 (#58): pre-flight writability of the nearest existing
+            # v5.11.1: pre-flight writability of the nearest existing
             # ancestor so the dry-run preview is honest about a likely failure.
             check_dir = cfg.parent if cfg.parent.exists() else None
             if check_dir is not None and not os.access(check_dir, os.W_OK):
@@ -322,7 +322,7 @@ def enable_in_config(hermes_root: Path, *, dry_run: bool = False) -> dict:
                     "create plugins.enabled manually"
                 )
             return result
-        # v5.11.1 (#58): wrap the new-config write — set status only AFTER the
+        # v5.11.1: wrap the new-config write — set status only AFTER the
         # write succeeds so a failure doesn't claim success.
         try:
             cfg.parent.mkdir(parents=True, exist_ok=True)
@@ -337,7 +337,7 @@ def enable_in_config(hermes_root: Path, *, dry_run: bool = False) -> dict:
         return result
 
     try:
-        # v5.11.1 (#58): newline="" disables universal-newline translation so a
+        # v5.11.1: newline="" disables universal-newline translation so a
         # CRLF config arrives with its \r\n intact, letting _patch_config_text
         # detect and preserve the line ending.
         with open(cfg, "r", encoding="utf-8", newline="") as _f:
@@ -361,16 +361,16 @@ def enable_in_config(hermes_root: Path, *, dry_run: bool = False) -> dict:
     backup = cfg.with_name(f"{cfg.name}.bak-{_timestamp()}")
     result["backup"] = str(backup)
     if dry_run:
-        # v5.11.1 (#58): nothing written under dry-run -> "would-enable".
+        # v5.11.1: nothing written under dry-run -> "would-enable".
         result["status"] = "would-enable"
         return result
-    # v5.11.1 (#58): new_text is guaranteed non-None when status == "enabled".
+    # v5.11.1: new_text is guaranteed non-None when status == "enabled".
     assert new_text is not None
-    # v5.11.1 (#58): wrap backup + write so a disk/permission failure surfaces
+    # v5.11.1: wrap backup + write so a disk/permission failure surfaces
     # as a clean actionable error naming the backup, not a raw traceback.
     try:
         shutil.copy2(cfg, backup)
-        # v5.11.1 (#58): newline="" so the \r\n we preserved in new_text is
+        # v5.11.1: newline="" so the \r\n we preserved in new_text is
         # written verbatim (no platform os.linesep re-translation).
         with open(cfg, "w", encoding="utf-8", newline="") as _f:
             _f.write(new_text)
@@ -427,7 +427,7 @@ def install(
     # Verify the install_dir is inside the hermes root (not a symlink escape).
     _assert_no_symlink_escape(install_dir, hermes_root)
 
-    # v5.11.1 (#58): never ship compiled bytecode — exclude __pycache__ dirs and
+    # v5.11.1: never ship compiled bytecode — exclude __pycache__ dirs and
     # any .pyc so the plugin dir contains only source.
     payload_files = [
         f for f in sorted(payload.rglob("*"))
@@ -458,7 +458,7 @@ def install(
         if enable:
             details["activation_result"] = enable_in_config(hermes_root, dry_run=True)
         else:
-            # v5.11.1 (#58): keep the JSON schema stable -- activation_result is
+            # v5.11.1: keep the JSON schema stable -- activation_result is
             # always present, even on a plain --dry-run with no --enable.
             details["activation_result"] = {
                 "status": "manual-required",
@@ -466,7 +466,7 @@ def install(
             }
         return install_dir, "would-install", details
 
-    # v5.11.1 (#58): wrap every user-state write so a disk/permission failure
+    # v5.11.1: wrap every user-state write so a disk/permission failure
     # surfaces as a clean actionable error naming the failing path, not a raw
     # traceback. main() turns ValueError into a clean message + exit 1.
     try:
@@ -581,7 +581,7 @@ def uninstall(*, dry_run: bool = False) -> tuple[Path, str, dict]:
         return install_dir, "not-found", details
 
     if not dry_run:
-        # v5.11.1 (#58): a running Hermes can hold file locks (notably on
+        # v5.11.1: a running Hermes can hold file locks (notably on
         # Windows). Surface a clean, actionable error naming the dir instead of
         # a raw PermissionError traceback.
         try:
@@ -655,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[Token Optimizer] {prefix} {install_dir} ({action}; {n_files} files)")
         if "activation" in details:
             print(f"[Token Optimizer] {details['activation']}")
-        # v5.11.1 (#58): print the activation note on ALL uninstall outcomes,
+        # v5.11.1: print the activation note on ALL uninstall outcomes,
         # including "not-found" -- the user may still have a stale plugins.enabled
         # entry to clean up.
         if action in ("removed", "would-remove", "not-found") and "activation_note" in details:

@@ -415,7 +415,7 @@ class PiRuntimeTests(unittest.TestCase):
                 finally:
                     conn.close()
 
-                trends = measure._collect_trends_data(days=1)
+                trends = measure._collect_trends_data(days=30)
                 self.assertIsNotNone(trends)
                 conn = measure._init_trends_db()
                 try:

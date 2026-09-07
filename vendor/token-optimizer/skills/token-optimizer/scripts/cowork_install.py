@@ -94,7 +94,7 @@ def _repo_root() -> Path:
     (plugins/token-optimizer/skills/token-optimizer/scripts/) parents[3] is
     plugins/token-optimizer, which has no .claude-plugin/ -- so the old hardcoded
     index made _plugin_version() traceback with FileNotFoundError even on
-    --dry-run for any Codex-marketplace user (finding 7). Walking up for the
+    --dry-run for any Codex-marketplace user. Walking up for the
     marker resolves to the real repo root in both trees, and falls back to the
     legacy parents[3] (bounded) if no marker is found so a stripped/relocated
     checkout degrades instead of crashing.
@@ -108,7 +108,7 @@ def _repo_root() -> Path:
 
 
 def _plugin_version(root: Path) -> str:
-    # Guarded read (finding 7): a missing/unreadable manifest must degrade to a
+    # Guarded read: a missing/unreadable manifest must degrade to a
     # placeholder version, never a raw traceback -- _repo_root() may fall back to
     # a tree without .claude-plugin/plugin.json.
     try:
@@ -238,8 +238,8 @@ def _finalize_committed_manifest(manifest_path: Path, version: str) -> None:
 
 
 def _add_hooks_pointer(manifest_path: Path) -> None:
-    """Point the manifest at hooks/hooks.json explicitly. Per issue #16288,
-    some Cowork builds only load plugin hooks when the manifest declares
+    """Point the manifest at hooks/hooks.json explicitly. In some Cowork builds,
+    plugin hooks only load when the manifest declares
     them; Claude Code defaults to the same path, so the field is harmless
     everywhere else."""
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

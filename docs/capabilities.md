@@ -1,6 +1,6 @@
 # Pi Capability Matrix
 
-Version 0.1.0 adapts a bounded subset of Token Optimizer 5.13.4 for Pi. Status means:
+Version 0.1.0 adapts a bounded subset of Token Optimizer 5.13.8 for Pi. Status means:
 
 - **Supported:** a user-facing Pi package behavior is shipped.
 - **Adapted:** an upstream engine behavior is shipped through Pi-specific event, session, or safety translation.

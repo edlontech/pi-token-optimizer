@@ -229,11 +229,11 @@ class ReplaySummary:
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
     try:
-        if value is None:
-            return default
-        return int(value)
-    except (TypeError, ValueError):
+        return int(float(value))
+    except (TypeError, ValueError, OverflowError):
         return default
 
 

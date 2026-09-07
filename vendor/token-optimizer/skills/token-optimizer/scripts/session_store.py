@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS command_outputs (
     timestamp REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS command_run_streaks (
+    command_hash TEXT PRIMARY KEY,
+    command_text TEXT NOT NULL,
+    output_hash TEXT NOT NULL,
+    streak INTEGER NOT NULL,
+    nudged_streak INTEGER,
+    last_ts REAL NOT NULL,
+    fail_streak INTEGER NOT NULL DEFAULT 0,
+    fail_nudged_streak INTEGER,
+    inline_run_count INTEGER NOT NULL DEFAULT 0,
+    inline_nudged_count INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS cached_content (
     file_path TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -164,7 +177,7 @@ class SessionStore:
         # hook process). The compaction clear (read_cache.handle_clear_compacted)
         # opts into a higher value so it waits out a sibling write lock on the
         # same per-session db instead of dying at 50ms and silently no-op'ing
-        # (#101 follow-up).
+        # (contention-safe follow-up).
         self._busy_timeout_ms = (
             50 if busy_timeout_ms is None else max(0, int(busy_timeout_ms))
         )
@@ -218,6 +231,8 @@ class SessionStore:
         self._ensure_tool_output_columns(conn)
         # F1b: add last_tool_use_id to file_reads for double-fire idempotency.
         self._ensure_file_reads_columns(conn)
+        # Burn nudge: add fail_streak / fail_nudged_streak to command_run_streaks.
+        self._ensure_command_streaks_columns(conn)
         # U6/fix-1: probe + setup the external-content FTS5 mirror (LIKE
         # fallback). Backfills legacy rows once, gated on prior_version < 2.
         self._ensure_fts5_index(conn, prior_version)
@@ -281,6 +296,31 @@ class SessionStore:
                 conn.execute("ALTER TABLE file_reads ADD COLUMN last_tool_use_id TEXT DEFAULT ''")
             except sqlite3.OperationalError:
                 pass
+
+    def _ensure_command_streaks_columns(self, conn: sqlite3.Connection) -> None:
+        """Add fail_streak and fail_nudged_streak to command_run_streaks if
+        absent (burn nudge). Idempotent ALTER TABLE, same pattern as the
+        tool_outputs and file_reads migrations. Never raises.
+        """
+        try:
+            cols = {r[1] for r in conn.execute(
+                "PRAGMA table_info(command_run_streaks)"
+            ).fetchall()}
+        except sqlite3.DatabaseError:
+            return
+        for col, decl in (
+            ("fail_streak", "INTEGER NOT NULL DEFAULT 0"),
+            ("fail_nudged_streak", "INTEGER"),
+            ("inline_run_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("inline_nudged_count", "INTEGER"),
+        ):
+            if col not in cols:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE command_run_streaks ADD COLUMN {col} {decl}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
 
     # U6/fix-1: external-content FTS5 mirror over the archive.
     _fts5_available: Optional[bool] = None
@@ -679,6 +719,58 @@ class SessionStore:
             (
                 command_hash, command_text, output_hash, output_chars,
                 compressed_output, time.time(),
+            ),
+        )
+        conn.commit()
+
+    # ----- command_run_streaks (thrash guard) -----
+
+    def get_command_streak(self, command_hash: str) -> Optional[dict[str, Any]]:
+        conn = self._connect()
+        row = conn.execute(
+            "SELECT * FROM command_run_streaks WHERE command_hash = ?", (command_hash,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def upsert_command_streak(
+        self,
+        command_hash: str,
+        command_text: str,
+        output_hash: str,
+        streak: int,
+        nudged_streak: Optional[int],
+        last_ts: float,
+        fail_streak: int = 0,
+        fail_nudged_streak: Optional[int] = None,
+        inline_run_count: int = 0,
+        inline_nudged_count: Optional[int] = None,
+    ) -> None:
+        if self._is_over_size_cap():
+            # Cap hit: delete the stale row so the thrash guard fails open to
+            # "no streak" (streak=1, no nudge) rather than re-reading a frozen
+            # row that breaks the cooldown invariant.
+            try:
+                conn = self._connect()
+                conn.execute(
+                    "DELETE FROM command_run_streaks WHERE command_hash = ?",
+                    (command_hash,),
+                )
+                conn.commit()
+            except Exception:
+                pass
+            return
+        conn = self._connect()
+        conn.execute(
+            """INSERT OR REPLACE INTO command_run_streaks
+               (command_hash, command_text, output_hash, streak,
+                nudged_streak, last_ts, fail_streak, fail_nudged_streak,
+                inline_run_count, inline_nudged_count)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                command_hash, command_text[:500], output_hash, streak,
+                nudged_streak, last_ts, fail_streak, fail_nudged_streak,
+                inline_run_count, inline_nudged_count,
             ),
         )
         conn.commit()

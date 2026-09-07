@@ -630,7 +630,7 @@ FIXTURES = [
         "must_not_contain": ["13 error/warning", "14 error/warning", "15 error/warning", "16 error/warning"],
         "min_compression": 0.0,
     },
-    # --- R3 adversarial: git status porcelain v2 must route to raw ---
+    # --- adversarial: git status porcelain v2 must route to raw ---
     {
         "name": "git_status_porcelain_v2_routes_to_raw",
         "category": "git",
@@ -650,7 +650,7 @@ FIXTURES = [
         "must_not_contain": ["branch: ?"],
         "min_compression": 0.0,
     },
-    # --- R3 adversarial: git status -s must route to raw ---
+    # --- adversarial: git status -s must route to raw ---
     {
         "name": "git_status_short_routes_to_raw",
         "category": "git",
@@ -666,7 +666,7 @@ FIXTURES = [
         "must_not_contain": ["branch: ?"],
         "min_compression": 0.0,
     },
-    # --- R3 adversarial: preserved line substring of compressed line still surfaces ---
+    # --- adversarial: preserved line substring of compressed line still surfaces ---
     {
         "name": "lint_preserved_line_inside_longer_compressed_line",
         "category": "lint",
@@ -692,7 +692,7 @@ FIXTURES = [
         "must_preserve": ["fatal: disk full"],
         "min_compression": 0.0,
     },
-    # --- R3 adversarial: "no errors" substring in a real error line ---
+    # --- adversarial: "no errors" substring in a real error line ---
     {
         "name": "build_no_errors_phrase_in_real_error_line",
         "category": "build",
@@ -738,7 +738,7 @@ FIXTURES = [
         "must_preserve": ["TS2322", "10 errors found"],
         "min_compression": 0.0,
     },
-    # --- R3 adversarial: FOUT web-perf text must not false-trigger preservation ---
+    # --- adversarial: FOUT web-perf text must not false-trigger preservation ---
     {
         "name": "foreign_fout_web_perf_false_positive_avoided",
         "category": "lint",

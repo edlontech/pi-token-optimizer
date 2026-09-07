@@ -1,5 +1,5 @@
 diff --git a/skills/token-optimizer/scripts/archive_result.py b/skills/token-optimizer/scripts/archive_result.py
-index 1ceab68..77d608a 100644
+index 4b95d9da..89e39dbe 100644
 --- a/skills/token-optimizer/scripts/archive_result.py
 +++ b/skills/token-optimizer/scripts/archive_result.py
 @@ -43,7 +43,7 @@ from hook_io import read_stdin_hook_input
@@ -9,15 +9,15 @@ index 1ceab68..77d608a 100644
 -from runtime_env import claude_home
 +from runtime_env import claude_home, detect_runtime
  from session_store import SessionStore, _sanitize_session_id as sanitize_sid
- 
+
  # ---------------------------------------------------------------------------
 @@ -659,15 +659,10 @@ _MCP_CAP_TOKENS_CACHE = _MCP_CAP_CACHE_UNSET
- 
- 
+
+
  def _resolve_mcp_cap_tokens() -> int | None:
 -    """Read explicit MAX_MCP_OUTPUT_TOKENS from env or user settings.json.
 +    """Read explicit MAX_MCP_OUTPUT_TOKENS from the environment or Claude settings.
- 
+
 -    Resolution order mirrors the Claude Code env injection chain:
 -      1. Process environment (set by Claude Code from settings.json at startup)
 -      2. ~/.claude/settings.json "env" block (direct read — for callers running
@@ -33,7 +33,7 @@ index 1ceab68..77d608a 100644
 @@ -684,6 +679,10 @@ def _resolve_mcp_cap_tokens() -> int | None:
          except ValueError:
              pass
- 
+
 +    if detect_runtime() == "pi":
 +        _MCP_CAP_TOKENS_CACHE = None
 +        return None
@@ -51,7 +51,7 @@ index 1ceab68..77d608a 100644
      global _EXEMPT_PATTERNS_CACHE
      if _EXEMPT_PATTERNS_CACHE is not _EXEMPT_PATTERNS_UNSET:
 @@ -749,7 +748,7 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
- 
+
      raw = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_TOOLS", "").strip()
      defaults_flag = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS", "").strip()
 -    if not raw or not defaults_flag:
@@ -62,12 +62,12 @@ index 1ceab68..77d608a 100644
 @@ -1235,22 +1234,20 @@ def _compress_mcp_table(text: str) -> str:
  # Main logic
  # ---------------------------------------------------------------------------
- 
+
 -def archive_result(quiet: bool = False) -> None:
 -    """PostToolUse hook handler: archive large tool results to disk.
 +def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict | None:
 +    """Archive a large tool result, reading stdin when input is not injected.
- 
+
 -    Reads hook JSON from stdin. If tool_response >= _ARCHIVE_THRESHOLD chars,
 -    saves the full result to disk and (for MCP tools) outputs a trimmed
 -    replacement via stdout with updatedMCPToolOutput.
@@ -85,7 +85,7 @@ index 1ceab68..77d608a 100644
      if not hook_input:
 -        return
 +        return None
- 
+
      tool_name = hook_input.get("tool_name", "")
 +    tool_kind = hook_input.get("tool_kind", "")
      tool_use_id = hook_input.get("tool_use_id", "")
@@ -94,9 +94,9 @@ index 1ceab68..77d608a 100644
 @@ -1292,18 +1289,17 @@ def archive_result(quiet: bool = False) -> None:
              print(f"[Tool Archive] Unsafe archive directory for {tool_name}; leaving output unchanged.", file=sys.stderr)
          return
- 
+
 -    # Fingerprint the call (name + args) so the PreToolUse re-fetch guard can
--    # detect an identical re-fetch of this result (issue #88 self-healing).
+-    # detect an identical re-fetch of this result (self-healing).
 -    # ONLY for MCP tools whose result we actually replace with a preview. Exempt
 -    # allowlisted tools serve their full fresh result (see below), so the guard
 -    # must NOT block a re-call of them — record args_hash=None so it never matches.
@@ -108,7 +108,7 @@ index 1ceab68..77d608a 100644
          args_hash = tool_fingerprint(tool_name, hook_input.get("tool_input", {}))
      else:
          args_hash = None
- 
+
      meta = {
          "tool_name": tool_name,
 +        "tool_kind": tool_kind or ("mcp" if "__" in tool_name else tool_name.lower()),
@@ -116,7 +116,7 @@ index 1ceab68..77d608a 100644
          ARGS_HASH_KEY: args_hash,
          "chars": char_count,
 @@ -1383,7 +1379,7 @@ def archive_result(quiet: bool = False) -> None:
- 
+
      store = None
      try:
 -        tool_type = "mcp" if "__" in tool_name else tool_name.lower()
@@ -142,13 +142,13 @@ index 1ceab68..77d608a 100644
 +                "metadata": meta,
 +            }
 +        return None
- 
+
      # For MCP tools (tool_name contains "__"): output replacement via stdout
      # No pressure gate here: the compressed replacement SAVES tokens.
 @@ -1442,7 +1446,7 @@ def archive_result(quiet: bool = False) -> None:
      if not entry_exists:
          return
- 
+
 -    if "__" in tool_name:
 +    if replaceable:
          output_type = _detect_output_type(safe_response)
@@ -178,14 +178,14 @@ index 1ceab68..77d608a 100644
 +            "metadata": meta,
 +        }
 +    return None
- 
- 
+
+
  if __name__ == "__main__":
 diff --git a/skills/token-optimizer/scripts/bash_hook.py b/skills/token-optimizer/scripts/bash_hook.py
-index 805a24d..716659b 100644
+index 209b1232..a04ccb90 100644
 --- a/skills/token-optimizer/scripts/bash_hook.py
 +++ b/skills/token-optimizer/scripts/bash_hook.py
-@@ -318,7 +318,43 @@ def main():
+@@ -150,7 +150,43 @@ def main():
      # the chain is byte-identical to before for a missing/odd id.
      _sid = str(payload.get("session_id", "") or "")
      _sid_export = ""
@@ -231,30 +231,30 @@ index 805a24d..716659b 100644
      rewritten = (
          'for b in bash /bin/bash /usr/bin/bash /usr/local/bin/bash /opt/homebrew/bin/bash; '
 diff --git a/skills/token-optimizer/scripts/measure.py b/skills/token-optimizer/scripts/measure.py
-index 152b8e9..3745727 100644
+index cdac4aa6..eb36225d 100644
 --- a/skills/token-optimizer/scripts/measure.py
 +++ b/skills/token-optimizer/scripts/measure.py
-@@ -148,6 +148,7 @@ import codex_session
- import codex_state
+@@ -152,6 +152,7 @@ import codex_state
  import copilot_session
+ import cursor_session
  import hermes_session
 +import pi_session
- 
+
  CHARS_PER_TOKEN = 4.0
  _SKILL_DESC_TRUNCATION_LIMIT = 1536
-@@ -211,7 +212,7 @@ _OPENCODE_CLAUDE_TARGET_CMDS = _CLAUDE_TARGET_CMDS
+@@ -215,7 +216,7 @@ _OPENCODE_CLAUDE_TARGET_CMDS = _CLAUDE_TARGET_CMDS
  # before this, trends/savings/quality/drift/coach fell through to the
  # CLAUDE_DIR scan path in measure_components()/_find_all_jsonl_files() and
- # produced empty output against the wrong tree (the #57 isolation leak).
--_FOREIGN_RUNTIMES = frozenset({"opencode", "copilot", "hermes"})
-+_FOREIGN_RUNTIMES = frozenset({"opencode", "copilot", "hermes", "pi"})
- 
+ # produced empty output against the wrong tree (the isolation leak).
+-_FOREIGN_RUNTIMES = frozenset({"opencode", "copilot", "hermes", "cursor", "antigravity", "grok"})
++_FOREIGN_RUNTIMES = frozenset({"opencode", "copilot", "hermes", "cursor", "antigravity", "grok", "pi"})
+
  # Per-runtime exemptions: foreign-runtime subcommands that a NATIVE flow
  # invokes as a TOP-LEVEL subcommand AND that are runtime-aware (do not scan
-@@ -377,7 +378,10 @@ if (
+@@ -460,7 +461,10 @@ if (
  else:
      _STATE_BASE = RUNTIME_DIR
- 
+
 -DASHBOARD_PATH = SNAPSHOT_DIR / "dashboard.html"
 +if detect_runtime() == "pi":
 +    DASHBOARD_PATH = RUNTIME_DIR / "token-optimizer" / "dashboard.html"
@@ -263,10 +263,10 @@ index 152b8e9..3745727 100644
  # Headline-shape marker for the current dashboard data contract. Bumped only when the data
  # shape changes; ensure-health regenerates any dashboard whose sidecar meta lacks it.
  _DASHBOARD_SHAPE_MARKER = "estimated_volume_transformation_usd"
-@@ -538,6 +542,13 @@ def _use_copilot_session_adapter():
-     """True when sessions should be loaded from the Copilot adapters."""
-     return detect_runtime() == "copilot"
- 
+@@ -646,6 +650,13 @@ def _use_grok_session_adapter():
+     """True when sessions should be loaded from the Grok Build adapter."""
+     return detect_runtime() == "grok"
+
 +
 +def _use_pi_session_adapter(filepath=None):
 +    """True when session JSONL should be parsed with the Pi adapter."""
@@ -277,28 +277,28 @@ index 152b8e9..3745727 100644
  # Tokens per skill frontmatter (loaded at startup)
  TOKENS_PER_SKILL_APPROX = 100
  # Skill wrapper overhead: previously estimated at 35 tokens per skill for boilerplate
-@@ -1412,6 +1423,8 @@ def find_projects_dir():
- 
+@@ -1520,6 +1531,8 @@ def find_projects_dir():
+
  def get_session_baselines(limit=10):
      """Extract first-message token counts from recent JSONL session logs."""
 +    if detect_runtime() == "pi":
 +        return []
-     # Hermes (issue #57): sessions live in ~/.hermes/state.db, not
+     # Hermes: sessions live in ~/.hermes/state.db, not
      # ~/.claude/projects/*.jsonl. Return [] so the dashboard's baselines
      # row renders empty without scanning CLAUDE_DIR.
-@@ -1984,6 +1997,8 @@ def measure_components():
-         return _measure_codex_components()
-     if runtime == "hermes":
-         return _measure_hermes_components()
+@@ -2100,6 +2113,8 @@ def measure_components():
+         return _measure_cursor_components()
+     if runtime == "antigravity":
+         return _measure_antigravity_components()
 +    if runtime == "pi":
 +        return _measure_pi_components()
- 
+
      components = {}
      seen_real_paths = set()
-@@ -2685,6 +2700,23 @@ def _measure_codex_components():
-     return components
- 
- 
+@@ -2824,6 +2839,23 @@ def _measure_cursor_components():
+     }
+
+
 +def _measure_pi_components():
 +    """Return Pi-owned dashboard inventory without reading another host."""
 +    home = runtime_home()
@@ -318,17 +318,17 @@ index 152b8e9..3745727 100644
 +
  def _measure_hermes_components():
      """Measure Hermes-relevant startup/config components without reading Claude config.
- 
-@@ -2920,6 +2952,8 @@ def detect_context_window():
+
+@@ -3110,6 +3142,8 @@ def detect_context_window():
        7. Claude fallback: 1M (Opus 4.6+/4.7 and Sonnet 4.6 are 1M GA since March 2026)
      """
      global _context_window_cache
 +    if detect_runtime() == "pi":
 +        return None, "Pi context window unavailable"
-     # Resolve context flags from process env AND settings.json (issue #77 class):
+     # Resolve context flags from process env AND settings.json:
      # a user who set these in settings.json env would otherwise get a mis-detected
      # window, corrupting fill-% and every downstream recommendation.
-@@ -5209,10 +5243,12 @@ def generate_dashboard(coord_path):
+@@ -5399,10 +5433,12 @@ def generate_dashboard(coord_path):
      # v5.3.6 / v5.4.10: mirror the same HTML to BOTH dashboard paths so
      # the daemon serves fresh audit content regardless of which path it
      # was configured to use. Same dual-path pattern as v5.4.7 daemon script.
@@ -343,8 +343,8 @@ index 152b8e9..3745727 100644
          # Version-downgrade guard: an older build's audit must not clobber a
          # shared dashboard a newer build already wrote. The per-run audit artifact
          # (out_path) is still written above; only the SHARED served copies are
-@@ -5260,6 +5296,15 @@ def _display_path(absolute_path):
- 
+@@ -5450,6 +5486,15 @@ def _display_path(absolute_path):
+
  def _collect_hook_status_for_dashboard():
      """Collect hook installation status for dashboard toggle panel."""
 +    if detect_runtime() == "pi":
@@ -359,8 +359,8 @@ index 152b8e9..3745727 100644
      if detect_runtime() == "codex":
          return _collect_codex_hook_status_for_dashboard()
      if detect_runtime() == "hermes":
-@@ -5790,6 +5835,15 @@ def _manage_codex_mcp(action: str, name: str) -> bool:
- 
+@@ -6145,6 +6190,15 @@ def _manage_codex_mcp(action: str, name: str) -> bool:
+
  def _collect_management_data(components=None, trends=None):
      """Collect data for the Manage tab: active/archived skills, MCP servers."""
 +    if detect_runtime() == "pi":
@@ -374,11 +374,11 @@ index 152b8e9..3745727 100644
 +        }
      if components is None:
          components = measure_components()
- 
-@@ -6382,28 +6436,36 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+
+@@ -6750,28 +6804,36 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      except Exception:
          health = None
- 
+
 -    # Generate auto-recommendations from rules engine
 -    if not quiet:
 -        print("  Generating auto-recommendations...")
@@ -406,7 +406,7 @@ index 152b8e9..3745727 100644
 +        auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
 +        if not quiet and rec_count > 0:
 +            print(f"  Found {rec_count} auto-recommendations")
- 
+
 -    # Collect context quality data (v2.0)
 -    if not quiet:
 -        print("  Analyzing context quality...")
@@ -418,7 +418,7 @@ index 152b8e9..3745727 100644
 +            coach = generate_coach_data(components=components, trends=trends)
 +        except Exception:
 +            coach = None
- 
+
 -    # Collect hook installation status for dashboard toggles
 -    hook_status = _collect_hook_status_for_dashboard()
 +        # Collect context quality data (v2.0)
@@ -428,13 +428,13 @@ index 152b8e9..3745727 100644
 +
 +        # Collect hook installation status for dashboard toggles
 +        hook_status = _collect_hook_status_for_dashboard()
- 
+
      # Collect management data for Manage tab
      if not quiet:
-@@ -6453,19 +6515,23 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -6821,19 +6883,23 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      except Exception:
          pass
- 
+
 -    pricing_tier = _load_pricing_tier()
 -    ttl_period_summary = []
 -    for period in (7, 30):
@@ -468,10 +468,10 @@ index 152b8e9..3745727 100644
      # Lightweight memory health for dashboard cards (reuses already-computed components,
      # no second measure_components() call, no full detector suite)
      mr_data = None
-@@ -6536,43 +6602,58 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -6904,43 +6970,58 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      except Exception:
          pass
- 
+
 -    # Merged savings (measured + realized + opportunity + estimated, tier-labelled).
 -    # Wrapped so a slow/failed eval never breaks the SessionEnd dashboard regen.
 -    savings_data = _dashboard_savings_data(days=30, include_billing_mode=True)
@@ -510,7 +510,7 @@ index 152b8e9..3745727 100644
          except Exception:
 -            pass
 +            cache_health = {"available": False, "tier": "opportunity"}
- 
+
 -    # Cache-TTL watchdog (opportunity tier — observed waste, potential recovery).
 -    # Standalone analysis; never reaches the realized savings headline. Fail-open.
 -    # Mirrors generate_dashboard's cache_health wiring so the standalone/daemon
@@ -536,7 +536,7 @@ index 152b8e9..3745727 100644
 +                cache_health["keepwarm"] = keepwarm_cache_health_block(days=30)
 +        except Exception:
 +            pass
- 
+
 -    # Subscription runway. This generator produces the dashboard the CLI writes,
 -    # so the key must be assembled here too: the template gates the card on
 -    # `data.runway` and silently renders nothing when it is absent, which is
@@ -557,10 +557,10 @@ index 152b8e9..3745727 100644
 +            runway = runway_snapshot(days=30)
 +        except Exception:
 +            runway = None
- 
+
      data = {
          "runway": runway,
-@@ -6588,18 +6669,18 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -6956,18 +7037,18 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
          "savings": savings_data,
          "cache_health": cache_health,
          "standalone": True,
@@ -584,7 +584,7 @@ index 152b8e9..3745727 100644
          "runtime_label": runtime_name_for_humans(),
      }
      data = _sanitize_dashboard_paths(data)
-@@ -6620,8 +6701,9 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -6988,8 +7069,9 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      # The daemon script's DASHBOARD constant points to whichever path was
      # active when setup-daemon ran. Write to BOTH so the daemon always
      # serves current content regardless of which path it expects.
@@ -596,19 +596,19 @@ index 152b8e9..3745727 100644
      wrote_any = False
      for wp in write_paths:
          try:
-@@ -8760,6 +8842,8 @@ def generate_coach_block(components=None, trends=None):
- 
+@@ -9316,6 +9398,8 @@ def generate_coach_block(components=None, trends=None):
+
  def _find_all_jsonl_files(days=30):
      """Find all JSONL session files across all projects within the given day window."""
 +    if _use_pi_session_adapter():
 +        return pi_session.find_all_jsonl_files(days)
      if _use_codex_session_adapter():
          return codex_session.find_all_jsonl_files(days)
- 
-@@ -9183,6 +9267,14 @@ def _parse_session_jsonl(filepath):
+
+@@ -9750,6 +9834,14 @@ def _parse_session_jsonl(filepath):
      except OSError:
          cache_key = None  # stat failed — parse without caching
- 
+
 +    if _use_pi_session_adapter(filepath):
 +        result = pi_session.parse_session_jsonl(filepath)
 +        if cache_key is not None:
@@ -620,8 +620,8 @@ index 152b8e9..3745727 100644
      if _use_codex_session_adapter(filepath):
          result = codex_session.parse_session_jsonl(filepath)
          if cache_key is not None:
-@@ -9565,6 +9657,9 @@ def parse_session_turns(filepath):
- 
+@@ -10132,6 +10224,9 @@ def parse_session_turns(filepath):
+
      Returns empty list if file is empty/unparseable.
      """
 +    if _use_pi_session_adapter(filepath):
@@ -630,7 +630,7 @@ index 152b8e9..3745727 100644
      if _use_codex_session_adapter(filepath):
          turns = codex_session.parse_session_turns(filepath)
          for turn in turns:
-@@ -9687,7 +9782,7 @@ def score_session_quality(session_data):
+@@ -10254,7 +10349,7 @@ def score_session_quality(session_data):
      # Lower fill = better (more room for work)
      context_window = detect_context_window()[0]
      total_input = session_data.get("total_input_tokens", 0)
@@ -639,7 +639,7 @@ index 152b8e9..3745727 100644
      if fill_ratio < 0.3:
          fill_score = 100
      elif fill_ratio < 0.5:
-@@ -10669,6 +10764,7 @@ def _backfill_session_metrics(conn, days=30, limit=50):
+@@ -11246,6 +11341,7 @@ def _backfill_session_metrics(conn, days=30, limit=50):
              """SELECT jsonl_path
                 FROM session_log
                 WHERE date >= ?
@@ -647,10 +647,28 @@ index 152b8e9..3745727 100644
                   AND (
                         IFNULL(cache_ttl_scanned, 0) = 0
                      OR avg_call_gap_seconds IS NULL
-@@ -18759,6 +18855,127 @@ def _collect_copilot_sessions(days=90, quiet=False, rebuild=False):
+@@ -18736,7 +18832,7 @@ def _is_file_collected(conn, jsonl_path):
+     return cur.fetchone() is not None
+
+
+-def _insert_normalized_session(conn, dedup_key, parsed, platform, project_fallback, quiet=False):
++def _insert_foreign_normalized_session(conn, dedup_key, parsed, platform, project_fallback, quiet=False):
+     """Insert or upgrade one normalized session row; returns 1 on new/upgraded.
+
+     Owns the 33-column session_log INSERT and the in-place upgrade. An existing
+@@ -19879,7 +19975,7 @@ def _collect_cursor_sessions(days=90, quiet=False, rebuild=False):
+                     pass
+
+             dedup_key = f"cursor:{cid}"
+-            if _insert_normalized_session(conn, dedup_key, parsed, "cursor", "cursor", quiet=quiet):
++            if _insert_foreign_normalized_session(conn, dedup_key, parsed, "cursor", "cursor", quiet=quiet):
+                 new_count += 1
+
+         if new_count > 0:
+@@ -20222,6 +20318,127 @@ def _collect_antigravity_sessions(days=90, quiet=False, rebuild=False):
      return new_count
- 
- 
+
+
 +def _insert_normalized_session(
 +    conn,
 +    parsed,
@@ -774,19 +792,19 @@ index 152b8e9..3745727 100644
 +
  def collect_sessions(days=90, quiet=False, rebuild=False):
      """Parse new JSONL files and insert into SQLite. Zero token cost.
- 
-@@ -19020,6 +19237,8 @@ def _collect_trends_from_db(days=30):
+
+@@ -20492,6 +20709,8 @@ def _collect_trends_from_db(days=30):
          return None
- 
+
      try:
 +        if detect_runtime() == "pi":
 +            return _query_trends_db(conn, days)
          _backfill_session_metrics(conn, days=days)
          return _query_trends_db(conn, days)
      except (sqlite3.Error, sqlite3.DatabaseError):
-@@ -19177,7 +19396,8 @@ def _query_trends_db(conn, days):
+@@ -20649,7 +20868,8 @@ def _query_trends_db(conn, days):
      current_total = calculate_totals(components).get("estimated_total", 0)
- 
+
      # Daily breakdown from session_log
 -    pricing_tier = _load_pricing_tier()
 +    pi_runtime = detect_runtime() == "pi"
@@ -794,7 +812,7 @@ index 152b8e9..3745727 100644
      daily = {}
      total_cost_usd = 0.0
      total_cost_priced_tokens = 0
-@@ -19190,7 +19410,7 @@ def _query_trends_db(conn, days):
+@@ -20662,7 +20882,7 @@ def _query_trends_db(conn, days):
                    avg_call_gap_seconds, max_call_gap_seconds, p95_call_gap_seconds, skills_json,
                    subagents_json, model_usage_json, slug, topic, project,
                    model_usage_breakdown_json,
@@ -803,7 +821,7 @@ index 152b8e9..3745727 100644
             FROM session_log WHERE date >= ? ORDER BY date DESC""",
          (cutoff,),
      ).fetchall()
-@@ -19246,38 +19466,47 @@ def _query_trends_db(conn, days):
+@@ -20718,38 +20938,47 @@ def _query_trends_db(conn, days):
              mb = {}
          session_priced_tokens = 0
          session_unpriced_tokens = 0
@@ -881,7 +899,7 @@ index 152b8e9..3745727 100644
          total_cost_usd += session_cost
          total_cost_priced_tokens += session_priced_tokens
          total_cost_unpriced_tokens += session_unpriced_tokens
-@@ -19305,6 +19534,7 @@ def _query_trends_db(conn, days):
+@@ -20777,6 +21006,7 @@ def _query_trends_db(conn, days):
              "topic": sr["topic"],
              "project": _clean_project_name(sr["project"]),
              "cost_usd": round(session_cost, 4),
@@ -889,21 +907,21 @@ index 152b8e9..3745727 100644
              "cost_priced_tokens": session_priced_tokens,
              "cost_unpriced_tokens": session_unpriced_tokens,
              "model": _normalize_model_name(dom_model) or dom_model,
-@@ -19362,9 +19592,9 @@ def _query_trends_db(conn, days):
+@@ -20834,9 +21064,9 @@ def _query_trends_db(conn, days):
      # conn.close() removed — caller (_collect_trends_from_db) owns the connection
-     # and closes it in its finally block (Lang Reviewer H3: double-close fix).
- 
+     # and closes it in its finally block (double-close fix).
+
 -    # Pricing tier info for dashboard
 -    pricing_tier = _load_pricing_tier()
 -    tier_label = _pricing_tier_label(pricing_tier)
 +    # Pricing provenance for dashboard
 +    pricing_tier = "pi_usage" if pi_runtime else _load_pricing_tier()
 +    tier_label = "Exact Pi usage" if pi_runtime else _pricing_tier_label(pricing_tier)
- 
+
      return {
          "period_days": days,
-@@ -19806,6 +20036,14 @@ def _collect_trends_data(days=30):
- 
+@@ -21278,6 +21508,14 @@ def _collect_trends_data(days=30):
+
      Falls back to live JSONL parsing if DB doesn't exist or is empty.
      """
 +    # Pi rollups are already normalized into SQLite. Never scan host projects
@@ -917,7 +935,7 @@ index 152b8e9..3745727 100644
      # Try SQLite first (faster, accumulated data)
      result = _collect_trends_from_db(days)
      if result is not None:
-@@ -20467,12 +20705,13 @@ def _collect_health_data():
+@@ -21939,12 +22177,13 @@ def _collect_health_data():
      # semantically wrong and would report stale/empty data. Return a
      # hermes-mode minimal dict so the dashboard's health row renders
      # without probing the Claude CLI.
@@ -931,9 +949,9 @@ index 152b8e9..3745727 100644
 +            "recommendations": [],
 +            "runtime": runtime,
          }
-     process_name = "codex" if runtime == "codex" else "claude"
- 
-@@ -27125,6 +27364,8 @@ def _scaled_tool_call_thresholds():
+     # Cursor: sessions are not `claude` processes either; probing the Claude
+     # CLI and `ps | grep claude` under a Cursor pin reports wrong data.
+@@ -28614,6 +28853,8 @@ def _scaled_tool_call_thresholds():
          ctx_size, _ = detect_context_window()
      except Exception:
          ctx_size = 200_000
@@ -942,7 +960,7 @@ index 152b8e9..3745727 100644
      scale = max(1.0, (ctx_size / 200_000) ** 1.3)
      base_warn = 25
      base_crit = 40
-@@ -27330,6 +27571,8 @@ def _parse_jsonl_for_quality(filepath):
+@@ -28819,6 +29060,8 @@ def _parse_jsonl_for_quality(filepath):
      system reminders, messages, and compaction markers. Returns None if
      the file is empty or unparseable.
      """
@@ -950,8 +968,8 @@ index 152b8e9..3745727 100644
 +        return pi_session.parse_jsonl_for_quality(filepath)
      if _use_codex_session_adapter(filepath):
          return codex_session.parse_jsonl_for_quality(filepath)
- 
-@@ -28103,6 +28346,9 @@ def _find_current_session_jsonl():
+
+@@ -29592,6 +29835,9 @@ def _find_current_session_jsonl():
      For non-hook contexts (manual CLI), results are the same since the most
      recently modified JSONL is almost always the currently active session.
      """
@@ -959,10 +977,10 @@ index 152b8e9..3745727 100644
 +        return pi_session.find_current_session_jsonl()
 +
      if _use_codex_session_adapter():
-         # Deterministic resolution (issue #108): prefer the state-DB-resolved
+         # Deterministic resolution: prefer the state-DB-resolved
          # active thread id over the mtime guess. `find_current_session_jsonl`
-@@ -28138,6 +28384,9 @@ def _find_current_session_jsonl():
- 
+@@ -29630,6 +29876,9 @@ def _find_current_session_jsonl():
+
  def _find_session_jsonl_by_id(session_id):
      """Find a JSONL file by session ID (UUID filename)."""
 +    if _use_pi_session_adapter():
@@ -971,10 +989,10 @@ index 152b8e9..3745727 100644
      # Sanitize to prevent path traversal
      safe_id = sanitize_session_id(session_id)
      if safe_id == "unknown":
-@@ -29969,6 +30218,23 @@ def _summarize_tool_output_for_recovery(text):
+@@ -31464,6 +31713,23 @@ def _summarize_tool_output_for_recovery(text):
      return "Large tool output archived."
- 
- 
+
+
 +def _iter_tool_outputs(filepath, min_chars=4096, max_outputs=20):
 +    """Return normalized tool outputs from a supported session adapter."""
 +    if _use_pi_session_adapter(filepath):
@@ -994,8 +1012,8 @@ index 152b8e9..3745727 100644
 +
  def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20):
      """Backfill durable tool-output pointers from Codex JSONL.
- 
-@@ -29991,7 +30257,7 @@ def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20)
+
+@@ -31486,7 +31752,7 @@ def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20)
          return 0
      archived = 0
      try:
@@ -1004,8 +1022,8 @@ index 152b8e9..3745727 100644
              path,
              min_chars=_ARCHIVE_THRESHOLD,
              max_outputs=max_outputs,
-@@ -30784,6 +31050,12 @@ def _extract_session_state(filepath, tail_lines=500):
- 
+@@ -32279,6 +32545,12 @@ def _extract_session_state(filepath, tail_lines=500):
+
      Returns a dict, or None if file is empty/unreadable.
      """
 +    if _use_pi_session_adapter(filepath):
@@ -1016,36 +1034,35 @@ index 152b8e9..3745727 100644
 +        )
      if _use_codex_session_adapter(filepath):
          return codex_session.extract_session_state(filepath, tail_lines=tail_lines, max_files=_CHECKPOINT_MAX_FILES)
- 
+
 diff --git a/skills/token-optimizer/scripts/runtime_env.py b/skills/token-optimizer/scripts/runtime_env.py
-index 8e4049c..6d8b857 100644
+index 5d97fc80..7d10c41e 100644
 --- a/skills/token-optimizer/scripts/runtime_env.py
 +++ b/skills/token-optimizer/scripts/runtime_env.py
-@@ -1,4 +1,4 @@
--"""Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, and Copilot adapters.
-+"""Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, Copilot, and Pi adapters.
- 
+@@ -1,5 +1,5 @@
+ """Runtime home detection shared by Claude Code, Codex, Hermes, OpenCode, Copilot,
+-Google Antigravity, and Grok Build adapters.
++Google Antigravity, Grok Build, and Pi adapters.
+
  This module keeps runtime integration deliberately simple:
- 
-@@ -49,8 +49,16 @@ _RUNTIME_CODEX = "codex"
- _RUNTIME_HERMES = "hermes"
- _RUNTIME_OPENCODE = "opencode"
- _RUNTIME_COPILOT = "copilot"
+
+@@ -79,6 +79,7 @@ _RUNTIME_COPILOT = "copilot"
+ _RUNTIME_CURSOR = "cursor"
+ _RUNTIME_ANTIGRAVITY = "antigravity"
+ _RUNTIME_GROK = "grok"
 +_RUNTIME_PI = "pi"
  _VALID_RUNTIMES = frozenset(
--    {_RUNTIME_CLAUDE, _RUNTIME_CODEX, _RUNTIME_HERMES, _RUNTIME_OPENCODE, _RUNTIME_COPILOT}
-+    {
-+        _RUNTIME_CLAUDE,
-+        _RUNTIME_CODEX,
-+        _RUNTIME_HERMES,
-+        _RUNTIME_OPENCODE,
-+        _RUNTIME_COPILOT,
+     {
+         _RUNTIME_CLAUDE,
+@@ -89,6 +90,7 @@ _VALID_RUNTIMES = frozenset(
+         _RUNTIME_CURSOR,
+         _RUNTIME_ANTIGRAVITY,
+         _RUNTIME_GROK,
 +        _RUNTIME_PI,
-+    }
+     }
  )
  _CLAUDE_PLUGIN_ENVS = ("CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_DATA")
- # Claude Cowork host markers. Cowork is Claude Code running in a cloud/local VM,
-@@ -87,6 +95,7 @@ _CLAUDE_CODE_ENVS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSIO
+@@ -126,6 +128,7 @@ _CLAUDE_CODE_ENVS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSIO
  _CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
  _CODEX_HOME_ENV = "CODEX_HOME"
  _HERMES_HOME_ENV = "HERMES_HOME"
@@ -1053,10 +1070,10 @@ index 8e4049c..6d8b857 100644
  # COPILOT_HOME is GitHub Copilot CLI's OWN config variable (GitHub docs: it
  # "replaces the entire ~/.copilot path", and Copilot's session-state/,
  # session.db, events.jsonl all live inside it). Token Optimizer must NOT ask
-@@ -942,6 +951,22 @@ def hermes_home() -> Path:
+@@ -1232,6 +1235,22 @@ def hermes_home() -> Path:
      return _safe_home_from_env(_HERMES_HOME_ENV, _safe_home() / ".hermes")
- 
- 
+
+
 +def pi_home() -> Path:
 +    """Return Pi's explicitly configured agent directory without a host fallback."""
 +    raw = os.environ.get(_PI_HOME_ENV, "").strip()
@@ -1075,34 +1092,29 @@ index 8e4049c..6d8b857 100644
 +
  def copilot_home(*, mnt_root: Path | None = None) -> Path:
      """Return GitHub Copilot CLI's home directory (~/.copilot by default).
- 
-@@ -1037,12 +1062,21 @@ def runtime_home() -> Path:
-     if runtime == _RUNTIME_COPILOT:
-         return copilot_home()
- 
+
+@@ -1411,6 +1430,9 @@ def runtime_home() -> Path:
+     if runtime == _RUNTIME_GROK:
+         return grok_home()
+
 +    if runtime == _RUNTIME_PI:
 +        return pi_home()
 +
      return claude_home()
- 
- 
- def plugin_data_env_vars() -> tuple[str, ...]:
-     """Return plugin-data env vars in runtime-specific priority order."""
--    if detect_runtime() in (_RUNTIME_CODEX, _RUNTIME_HERMES, _RUNTIME_OPENCODE, _RUNTIME_COPILOT):
-+    if detect_runtime() in (
-+        _RUNTIME_CODEX,
-+        _RUNTIME_HERMES,
-+        _RUNTIME_OPENCODE,
-+        _RUNTIME_COPILOT,
+
+
+@@ -1424,6 +1446,7 @@ def plugin_data_env_vars() -> tuple[str, ...]:
+         _RUNTIME_CURSOR,
+         _RUNTIME_ANTIGRAVITY,
+         _RUNTIME_GROK,
 +        _RUNTIME_PI,
-+    ):
+     ):
          return ("TOKEN_OPTIMIZER_PLUGIN_DATA",)
      return ("CLAUDE_PLUGIN_DATA", "TOKEN_OPTIMIZER_PLUGIN_DATA")
- 
-@@ -1058,6 +1092,8 @@ def runtime_name_for_humans() -> str:
-         return "OpenCode"
-     if runtime == _RUNTIME_COPILOT:
-         return "GitHub Copilot"
+@@ -1446,6 +1469,8 @@ def runtime_name_for_humans() -> str:
+         return "Google Antigravity"
+     if runtime == _RUNTIME_GROK:
+         return "Grok Build"
 +    if runtime == _RUNTIME_PI:
 +        return "Pi"
      # Cowork is the claude runtime in a VM; label the refinement without changing

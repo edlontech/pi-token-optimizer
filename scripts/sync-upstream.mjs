@@ -13,9 +13,9 @@ const PATCH = resolve(ROOT, PATCH_PATH);
 const SNAPSHOT = {
   repository: "https://github.com/alexgreensh/token-optimizer",
   identity: "github.com/alexgreensh/token-optimizer",
-  ref: "v5.13.4",
-  commit: "eda65d61b4750b530a6f9956193d4e4632aca0cb",
-  version: "5.13.4",
+  ref: "v5.13.8",
+  commit: "c5d4796fa750530bb7dc9b91ad09373883b728c1",
+  version: "5.13.8",
 };
 const FIXED_PATHS = [
   "LICENSE",
@@ -47,7 +47,7 @@ const REQUIRED_SYMBOLS = {
   ],
   "skills/token-optimizer/scripts/measure.py": [
     "import pi_session",
-    "_FOREIGN_RUNTIMES = frozenset({\"opencode\", \"copilot\", \"hermes\", \"pi\"})",
+    "_FOREIGN_RUNTIMES = frozenset({\"opencode\", \"copilot\", \"hermes\", \"cursor\", \"antigravity\", \"grok\", \"pi\"})",
     "def _use_pi_session_adapter(filepath=None):",
     "def _measure_pi_components():",
     "def _insert_normalized_session(",

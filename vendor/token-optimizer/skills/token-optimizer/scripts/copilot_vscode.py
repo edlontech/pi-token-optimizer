@@ -190,8 +190,13 @@ def _safe_int(value: Any, default: int = 0) -> int:
     if value is None:
         return default
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        # Parse through float first so a float-shaped string ("1234.0",
+        # common in JSON exports) doesn't collapse to the default the way
+        # int("1234.0") would. int() still truncates toward zero, matching
+        # prior behavior for genuine float inputs. OverflowError guards
+        # against float("inf")-style values.
+        return int(float(value))
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -619,8 +624,15 @@ def read_sessions(
 @contextmanager
 def _ro_connect_otel(path: Path) -> Iterator[sqlite3.Connection]:
     """Open an OTel db read-only; always close even on error."""
+    # H-2: build the file: URI via Path.as_uri() rather than string
+    # interpolation. With uri=True, characters like ?, #, % and spaces in the
+    # path are URI syntax, so a path containing '?' would start the query
+    # string early and could drop or override mode=ro (opening read-write).
+    # N-4 (M-3 parity): resolve() first so a relative path doesn't raise an
+    # uncaught ValueError past callers that only catch (sqlite3.Error, OSError).
+    db_uri = Path(path).resolve().as_uri()
     conn = sqlite3.connect(
-        f"file:{path}?mode=ro&immutable=1",
+        f"{db_uri}?mode=ro&immutable=1",
         uri=True,
         timeout=0.25,
     )

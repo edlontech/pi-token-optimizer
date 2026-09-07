@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Shared re-fetch fingerprint for Token Optimizer (issue #88 self-healing).
+"""Shared re-fetch fingerprint for Token Optimizer (self-healing).
 
 SINGLE SOURCE OF TRUTH for the archive de-duplication fingerprint. Imported by
 archive_result.py (writes the fingerprint into the archive manifest at
 PostToolUse) and refetch_guard.py (recomputes it at PreToolUse to detect an
 identical re-fetch). Keeping the writer and reader on one function prevents the
-two from drifting apart — the class of gap that let #88 regress.
+two from drifting apart — the class of gap that caused a regression.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 # SINGLE SOURCE OF TRUTH for the manifest field name the writer stores and the
 # guard matches on. Referencing this constant from both sides means a rename is a
-# one-line change that can't silently break the match (the exact #88 drift mode:
+# one-line change that can't silently break the match (the exact drift mode:
 # a renamed field makes `entry.get("args_hash")` return None and the guard stops
 # denying with zero error).
 ARGS_HASH_KEY = "args_hash"

@@ -206,8 +206,15 @@ def _ro_connect(path: Path) -> Iterator[sqlite3.Connection]:
     """
     # Q3: immutable=1 prevents SQLite from creating WAL/SHM side-effect files
     # when opening a read-only view of a DB owned by another process (Hermes).
+    # H-2: build the file: URI via Path.as_uri() rather than string
+    # interpolation. With uri=True, characters like ?, #, % and spaces in the
+    # path are URI syntax, so a path containing '?' would start the query
+    # string early and could drop or override mode=ro (opening read-write).
+    # N-4 (M-3 parity): resolve() first so a relative path doesn't raise an
+    # uncaught ValueError past callers that only catch (sqlite3.Error, OSError).
+    db_uri = Path(path).resolve().as_uri()
     conn = sqlite3.connect(
-        f"file:{path}?mode=ro&immutable=1",
+        f"{db_uri}?mode=ro&immutable=1",
         uri=True,
         timeout=_BUSY_TIMEOUT_SECONDS,
     )
@@ -237,8 +244,8 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
-        return int(value) if value is not None else default
-    except (TypeError, ValueError):
+        return int(float(value)) if value is not None else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 

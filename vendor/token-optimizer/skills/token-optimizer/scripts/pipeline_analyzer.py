@@ -11,7 +11,7 @@ A pipeline is eligible for compression ONLY when EVERY stage is a known
 read-only command. Any unrecognized, side-effecting, or unparseable stage
 causes the whole pipeline to be rejected (fail-closed: pass through raw).
 
-SECURITY (post-adversarial-review hardening):
+SECURITY hardening:
 - Raw command string is screened for injection constructs BEFORE tokenization:
   newlines, $(), backticks, <(), >(), and bare & (async/background).
 - Every token is checked for glued operators (a|rm passes shlex but
@@ -21,7 +21,8 @@ SECURITY (post-adversarial-review hardening):
   env, command, xargs, tee, awk, aws, gcloud, az removed.
 - Cloud CLIs require explicit read-only subcommand allow-list.
 - git uses an explicit ALLOW-list (not deny-list).
-- git branch rejects -d/-D/--delete/-m/-M flags.
+- git branch rejects delete (-d/-D/--delete), rename (-m/-M/--move),
+  copy (-c/-C/--copy) and --force/-f flags.
 - find rejects -delete/-exec/-ok/-fprint/-fls.
 - sqlite3 rejects replace, vacuum, .import, .restore, pragma.
 - npm run / terraform state / git config / kubectl config / docker pull
@@ -345,8 +346,29 @@ _GIT_READ_ONLY_SUBCMDS = frozenset({
     "stash", "remote",
 })
 
-# git branch destructive flags.
-_GIT_BRANCH_DESTRUCTIVE_FLAGS = frozenset({"-d", "-D", "--delete", "-m", "-M"})
+# git branch destructive flags. Covers delete (-d/-D/--delete), rename
+# (-m/-M/--move) and copy (-c/-C/--copy, which are copy/force-copy, not
+# "create"). All are state-changing and must not pass the read-only gate.
+#
+# M-14: -f/--force is NOT in this set. `git branch -f <branchname>
+# <startpoint>` is a legitimate non-destructive operation (force-create/
+# reset a branch pointer). -f only forces a destructive operation when
+# combined with -d/-D/-m/-M/-c/-C (e.g. `git branch -Df`), and those
+# combined forms are caught by the short-flag expansion check below.
+_GIT_BRANCH_DESTRUCTIVE_FLAGS = frozenset({
+    "-d", "-D", "--delete",
+    "-m", "-M", "--move",
+    "-c", "-C", "--copy",
+})
+
+# H-3: destructive short-flag characters for combined-flag expansion. Git
+# allows bundling short flags: `git branch -Df` = -D + -f. The token "-Df"
+# is NOT in the frozenset above, so the exact-match check bypasses it. For
+# any token starting with a single dash (not --) with len > 2, check if
+# any character after the dash is in this set. -f is deliberately excluded
+# (M-14): -f alone is non-destructive, and -f combined with a destructive
+# flag is caught by the destructive character in the same token.
+_GIT_BRANCH_DESTRUCTIVE_SHORT_CHARS = frozenset({"d", "D", "m", "M", "c", "C"})
 
 # find destructive flags.
 _FIND_DESTRUCTIVE_FLAGS = frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir",
@@ -430,8 +452,19 @@ def _is_stage_read_only(tokens: list[str]) -> tuple[bool, str]:
         # Special guard: git branch with destructive flags.
         if subcmd == "branch":
             for tok in remaining:
+                # Exact match against long flags and single short flags.
                 if tok in _GIT_BRANCH_DESTRUCTIVE_FLAGS:
                     return False, f"git-branch-destructive-flag:{tok}"
+                # H-3: expand combined short flags. Git allows bundling:
+                # `git branch -Df` = -D + -f. The token "-Df" is not in
+                # the frozenset, so the exact-match check above bypasses
+                # it. For any single-dash token with len > 2, check if any
+                # character after the dash is a destructive short flag.
+                if (len(tok) > 2 and tok.startswith("-")
+                        and not tok.startswith("--")):
+                    for ch in tok[1:]:
+                        if ch in _GIT_BRANCH_DESTRUCTIVE_SHORT_CHARS:
+                            return False, f"git-branch-destructive-flag:{tok}"
         return True, "git-read-only"
 
     # -------------------------------------------------------------------

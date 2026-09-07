@@ -12,7 +12,7 @@ Thin, fast, fail-safe entry point invoked by Copilot's hooks system
 Contract notes (verified against github/copilot-cli as of v1.0.60, 2026-06-10):
 
 - Hook payloads arrive on stdin as JSON. ``toolArgs`` may be a JSON-encoded
-  STRING (camelCase variant, issue #3349) or a parsed object under
+  STRING (camelCase variant) or a parsed object under
   ``tool_input`` (snake_case variant). Both are handled; anything that fails
   to decode results in a silent no-op — never a malformed permission output.
 - Every engine action is gated on ``capabilities.json``: a per-installed-
@@ -45,7 +45,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Windows console-flash guard (#107). `copilot` is distributed via npm, so on
+# Windows console-flash guard. `copilot` is distributed via npm, so on
 # Windows the PATH entry is copilot.cmd -- CreateProcess hands a .cmd to
 # cmd.exe, a console-subsystem binary that allocates a console window unless
 # the parent passes CREATE_NO_WINDOW. Same for python.exe children. getattr ->
@@ -71,7 +71,7 @@ except ImportError:  # pragma: no cover - broken install
         # degraded broken-install path: does NOT detach. Does NOT replicate the
         # OS-flag logic or the breakaway retry; canonical
         # spawn_utils.spawn_detached has both. It DOES carry CREATE_NO_WINDOW
-        # (#107) so a broken install degrades to "child dies with the parent"
+        # so a broken install degrades to "child dies with the parent"
         # rather than to "console window flashes on every stop hook". OR-in
         # rather than assign so a caller-supplied creationflags survives.
         import subprocess as _sp
@@ -264,20 +264,19 @@ def _copilot_cli_version():
 def _seed_capabilities(version):
     """Verified capability matrix for a Copilot CLI version (2026-06-10 research).
 
-    Sources: github/copilot-cli release notes + issues #2013/#2585/#2643/
-    #2142/#3727. Unknown/future versions stay conservative: fields with a
+    Sources: github/copilot-cli release notes and issue tracker. Unknown/future versions stay conservative: fields with a
     history of breakage stay OFF until the matrix is updated; long-stable
     fields stay ON.
     """
     v = version or (0, 0, 0)
     caps = {
         CAP_DENY: True,                      # stable since launch
-        CAP_ALLOW: v >= (1, 0, 18),          # issue #2643
-        CAP_UPDATED_INPUT: v >= (1, 0, 24),  # v1.0.24 release notes, #2013
-        CAP_PRETOOL_CTX: False,              # issue #2585 OPEN as of 2026-06-10
+        CAP_ALLOW: v >= (1, 0, 18),          # v1.0.18 release notes
+        CAP_UPDATED_INPUT: v >= (1, 0, 24),  # v1.0.24 Copilot CLI release notes
+        CAP_PRETOOL_CTX: False,              # OPEN as of 2026-06-10
         CAP_POSTTOOL_CTX: v >= (1, 0, 49),   # v1.0.49/51 release notes
-        CAP_SESSIONSTART_CTX: True,          # issue #2142 closed-fixed
-        # Worked through v1.0.59; regressed in v1.0.60 (#3727). Future
+        CAP_SESSIONSTART_CTX: True,          # closed-fixed
+        # Worked through v1.0.59; regressed in v1.0.60 (Copilot CLI). Future
         # versions stay OFF until the regression is confirmed fixed.
         CAP_USERPROMPT_CTX: (1, 0, 30) <= v <= (1, 0, 59),
     }
@@ -334,7 +333,7 @@ def load_capabilities(refresh=True):
     # the conservative "unknown" seed. The sessionStart hook and `bash install.sh`
     # often run in a WSL-root context where the native-Windows `copilot` binary
     # isn't on PATH, so `copilot --version` returns nothing there even though the
-    # CLI is real and capable (issue #78). Erasing known-good caps in that context
+    # CLI is real and capable. Erasing known-good caps in that context
     # silently gates postToolUse/allow/updated-input off. Keep what we resolved.
     if (
         version is None
@@ -382,7 +381,7 @@ def reseed_capabilities(version, raw=""):
     copilot-doctor calls this to self-heal a matrix stuck at "unknown" (or seeded
     for an older CLI) the moment it HAS resolved the real version. The doctor runs
     in the native shell where `copilot` is on PATH, unlike the WSL-root hook that
-    seeded "unknown" (issue #78). Returns the freshly-written caps.
+    seeded "unknown". Returns the freshly-written caps.
     """
     return _write_capabilities(version, raw)
 
@@ -583,7 +582,7 @@ def handle_post_tool_use(payload):
 def _events_growth_level(session_id):
     """0/1/2 by events.jsonl size — a cheap proxy for context growth.
 
-    Hook payloads carry no token data (issue #3686), so size thresholds on the
+    Hook payloads carry no token data (a Copilot CLI hook contract gap), so size thresholds on the
     persisted event stream are the honest live signal available per tool call.
     """
     if copilot_home is None or not session_id or session_id == "unknown":

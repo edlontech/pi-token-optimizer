@@ -41,9 +41,9 @@ test("vendor checker validates the pinned tag snapshot and rejects fixture chang
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.deepEqual(manifest.upstream, {
       repository: "https://github.com/alexgreensh/token-optimizer",
-      ref: "v5.13.4",
-      commit: "eda65d61b4750b530a6f9956193d4e4632aca0cb",
-      version: "5.13.4",
+      ref: "v5.13.8",
+      commit: "c5d4796fa750530bb7dc9b91ad09373883b728c1",
+      version: "5.13.8",
     });
     assert.equal(manifest.patch.path, "patches/pi-runtime.patch");
     assert.match(manifest.patch.sha256, /^[a-f0-9]{64}$/);
@@ -74,7 +74,7 @@ test("vendor checker validates the pinned tag snapshot and rejects fixture chang
 });
 
 test("tag verification is anchored to the tag namespace", () => {
-  assert.equal(tagCommitRef("v5.13.4"), "refs/tags/v5.13.4^{commit}");
+  assert.equal(tagCommitRef("v5.13.8"), "refs/tags/v5.13.8^{commit}");
 });
 
 test("manifest replacement leaves an external hard-link target unchanged", async () => {
@@ -138,11 +138,19 @@ const releaseFiles = [
   "vendor/token-optimizer/hooks/python-launcher.sh",
   "vendor/token-optimizer/skills/token-optimizer/assets/dashboard.html",
   "vendor/token-optimizer/skills/token-optimizer/scripts/activity_tracker.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/antigravity_doctor.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/antigravity_hook_bridge.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/antigravity_install.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/antigravity_proto.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/antigravity_session.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/antigravity_state.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/archive_result.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/bash_compress.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/bash_compress_hook.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/bash_hook.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/bash_whitelist.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/benchmark.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/build_output_compress.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/codex_compact_prompt.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/codex_doctor.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/codex_hook_bridge.py",
@@ -165,6 +173,11 @@ const releaseFiles = [
   "vendor/token-optimizer/skills/token-optimizer/scripts/cowork_doctor.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/cowork_install.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/credential_patterns.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/cursor_doctor.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/cursor_hook_bridge.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/cursor_install.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/cursor_session.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/cursor_state.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/delta_diff.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/detectors/__init__.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/detectors/bad_decomposition.py",
@@ -180,6 +193,11 @@ const releaseFiles = [
   "vendor/token-optimizer/skills/token-optimizer/scripts/detectors/wasteful_thinking.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/detectors/weak_model.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/detectors/websearch_routing.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/grok_doctor.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/grok_hook_bridge.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/grok_install.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/grok_session.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/grok_state.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/hermes_doctor.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/hermes_hook_bridge.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/hermes_install.py",
@@ -193,6 +211,7 @@ const releaseFiles = [
   "vendor/token-optimizer/skills/token-optimizer/scripts/outline.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/pipeline_analyzer.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/plugin_env.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/py_trust.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/quality_cache_gate.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/read_cache.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/refetch_fingerprint.py",
@@ -205,6 +224,7 @@ const releaseFiles = [
   "vendor/token-optimizer/skills/token-optimizer/scripts/structure_map.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/structure_map_ts.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/structure_replay.py",
+  "vendor/token-optimizer/skills/token-optimizer/scripts/thrash_guard.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/token_estimate.py",
   "vendor/token-optimizer/skills/token-optimizer/scripts/utf8_io.py",
 ].sort();

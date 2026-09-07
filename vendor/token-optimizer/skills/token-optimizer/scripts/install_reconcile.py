@@ -12,7 +12,7 @@ up under ``<claude_home>/_backups/token-optimizer/<timestamp>/`` BEFORE anything
 is moved, then the stale skill tree is removed so only the canonical skill
 loads. When AMBIGUOUS, it warns loudly and does NOT act.
 
-Safety contract (issue #57 / plan U3):
+Safety contract:
 - NEVER delete without a backup first. If the backup dir is unwritable, abort
   the reconcile and warn, leaving state untouched.
 - No-op for normal single-install users (plugin cache only, no symlink).
@@ -211,7 +211,7 @@ def _is_confined_to_cache(target: Path, home: Path) -> bool:
 
     Guards ``shutil.rmtree`` against an intermediate symlinked path component
     (or a crafted ``installPath`` in installed_plugins.json) redirecting a
-    delete outside the plugin cache tree (issue #57). Resolving
+    delete outside the plugin cache tree. Resolving
     both paths catches symlink escapes (a symlinked component would resolve
     outside the cache root); the per-component check additionally refuses to
     rmtree *through* any symlink even when it resolves back inside the cache.
@@ -556,7 +556,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 # ---------------------------------------------------------------------------
-# Uninstall-direction manifest reconcile (issue #106 / F3)
+# Uninstall-direction manifest reconcile
 # ---------------------------------------------------------------------------
 
 _KNOWN_MARKETPLACES_NAME = "known_marketplaces.json"
@@ -570,7 +570,7 @@ _TOKEN_MARKER = "token-optimizer"
 def _is_our_marketplace(name: str, entry: object, our_marketplaces=None) -> bool:
     """True only when we can EVIDENCE that ``name`` is our own marketplace.
 
-    #106 F3 (P2-5): the old rule was a bare substring test -- any marketplace
+    The old rule was a bare substring test -- any marketplace
     whose name merely contained "token-optimizer" was claimed as ours and
     deleted. A user's own marketplace (a fork, a "my-token-optimizer-tweaks"
     registry, a colleague's mirror) is not ours to remove, and
@@ -613,7 +613,7 @@ def _our_marketplace_names(registry: dict) -> set:
     ``token-optimizer@alexgreensh-token-optimizer`` -> the marketplace name
     after the ``@``. This is the registry's own statement that we installed a
     plugin from that marketplace, which is the only self-evident proof of
-    ownership available (#106 F3 / P2-5).
+    ownership available.
     """
     names = set()
     for key in _our_plugin_keys(registry):
@@ -749,8 +749,7 @@ def reconcile_uninstall(
 ) -> dict:
     """Report (and optionally remove) our stale host-manifest entries.
 
-    Two Claude Code state files are reconciled on the UNINSTALL direction
-    (issue #106 / F3):
+    Two Claude Code state files are reconciled on the UNINSTALL direction:
 
     - ``installed_plugins.json``: our ``token-optimizer@*`` entries whose
       ``installPath`` no longer exists (left dangling after
@@ -833,7 +832,7 @@ def reconcile_uninstall(
         })
 
     marketplaces = _load_known_marketplaces(home)
-    # #106 F3 (P2-5): ownership must be evidenced by our own installed_plugins
+    # Ownership must be evidenced by our own installed_plugins
     # keys (or an exact plugin-name path segment), never a bare name substring.
     our_marketplace_names = _our_marketplace_names(registry)
     our_mkt_keys = sorted(

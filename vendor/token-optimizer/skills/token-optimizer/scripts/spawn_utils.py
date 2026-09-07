@@ -8,7 +8,7 @@ spawn in measure.py (~line 21658, CXP-1): OR together DETACHED_PROCESS,
 CREATE_NEW_PROCESS_GROUP, CREATE_BREAKAWAY_FROM_JOB, and CREATE_NO_WINDOW via
 getattr so the flags degrade to 0 on builds where an attribute is missing.
 
-CREATE_NO_WINDOW (#107) is belt-and-suspenders here: Windows ignores it when
+CREATE_NO_WINDOW is belt-and-suspenders here: Windows ignores it when
 DETACHED_PROCESS is also set, so it changes nothing today, but it keeps the
 invariant "every spawn site carries the no-flash flag" uniform and survives a
 future refactor that drops DETACHED_PROCESS. It never makes CreateProcess fail.
@@ -52,7 +52,7 @@ def detach_spawn_kwargs():
 
     The Windows flag OR uses ``getattr(subprocess, name, 0)`` so a flag
     absent on an older Python build contributes 0 instead of raising.
-    ``CREATE_NO_WINDOW`` (#107) is ignored by Windows while
+    ``CREATE_NO_WINDOW`` is ignored by Windows while
     ``DETACHED_PROCESS`` is present; it is included so every consumer of this
     helper inherits the no-console-flash intent unconditionally.
     """

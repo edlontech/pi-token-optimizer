@@ -11,11 +11,11 @@
 # console binary to avoid the per-hook console-window flash and orphaned
 # conhost.exe: python.exe/python3.exe swap to pythonw.exe, and py.exe (the
 # py-launcher) swaps to pyw.exe beside it, so py-launcher-only installs no
-# longer flash (#107). See _maybe_swap_to_pythonw for the constraints.
+# longer flash. See _maybe_swap_to_pythonw for the constraints.
 # Exits 127 with a diagnostic message if none found.
 
 set -eu
-# C7: extglob enables +([0-9]) in the version-number case patterns below so
+# Extglob enables +([0-9]) in the version-number case patterns below so
 # the glob is anchored to the path-component boundary. Without it, * in a
 # case pattern crosses / and Python[23]* matches Python3-evil/python.exe.
 shopt -s extglob
@@ -50,7 +50,7 @@ _to_realpath() {
 # trust). The pad matters: GNU `stat -c %a` prints "2" for mode 0002, and the
 # caller's last-3-digit slice would then read EMPTY group/other digits -- a set
 # write bit reading as clean, a false-accept. Flooring to 3 digits makes the
-# group/other-writable check robust to stat's short formatting. (torture: batch 2)
+# group/other-writable check robust to stat's short formatting.
 _to_mode() {
     local mode
     mode=$(stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null) || return 1
@@ -109,7 +109,7 @@ _is_safe_prefix() {
     # Drive-letter-anchored to preserve the anti-PATH-hijack intent.
     # Version-number suffixes block directory-name spoofing (e.g. Python3-evil).
     case "$binpath" in
-        # C7: +([0-9]) anchors the version suffix to digits-only so a spoofed
+        # +([0-9]) anchors the version suffix to digits-only so a spoofed
         # dir name like Python3-evil cannot pass (previously * crossed / and
         # matched Python3-evil/python.exe). The trailing /* requires a path
         # separator after the version component.
@@ -122,7 +122,7 @@ _is_safe_prefix() {
         # locations only -- never derived from MISE_DATA_DIR/PYENV_ROOT, which
         # would reopen the PATH-hijack vector. POSIX shims are covered generically
         # by the ownership fallback below; Windows has no reliable stat, so its
-        # managers are enumerated here. (mise pattern via #146, trekie86.)
+        # managers are enumerated here. (mise pattern, trekie86.)
         /[a-zA-Z]/Users/*/AppData/Local/mise/shims/*)                   return 0 ;;
         /[a-zA-Z]/Users/*/.pyenv/pyenv-win/shims/*)                     return 0 ;;
         # All-users `py` launcher lives in the (admin-only-writable) Windows dir.
@@ -130,7 +130,7 @@ _is_safe_prefix() {
         /[a-zA-Z]/Windows/py.exe)                                      return 0 ;;
         /[a-zA-Z]/Windows/pyw.exe)                                     return 0 ;;
     esac
-    # C8: case-insensitive WindowsApps allow for Windows-style drive-letter
+    # Case-insensitive WindowsApps allow for Windows-style drive-letter
     # paths. On a case-insensitive FS the dir can be any casing; the drive-
     # letter anchor ([a-zA-Z]/) constrains this to Windows-style paths so
     # Linux is unaffected.
@@ -170,7 +170,7 @@ _is_msys_platform() {
     return 1
 }
 
-# C8: Windows is case-insensitive, so the WindowsApps directory can appear in
+# Windows is case-insensitive, so the WindowsApps directory can appear in
 # any casing (WindowsApps, windowsapps, WINDOWSAPPS, Windowsapps). The old
 # explicit-variant patterns (*/WindowsApps/*|*/windowsapps/*) only covered
 # two casings and would miss others, letting a Store AppExecutionAlias stub
@@ -262,9 +262,10 @@ _setup_interpreter_cache() {
         { [ -n "$cache_dir" ] && _cache_dir_ready "$cache_dir"; } || return 0
     fi
 
-    # Cache key includes a PROBE-LOGIC EPOCH (#143). The key is otherwise
+    # Cache key includes a PROBE-LOGIC EPOCH. The key is otherwise
     # plugin-dir + PATH checksums, neither of which changes when the launcher's
-    # interpreter-liveness logic changes -- so a user already bitten by #143 has a
+    # interpreter-liveness logic changes -- so a user already bitten by a stale
+    # probe has a
     # cache record naming the DEAD WindowsApps stub, and the fixed probe never runs
     # on a cache HIT (only on a miss). Bumping this epoch renames the cache file, so
     # every stale record is ignored once on upgrade: discovery re-runs, the new
@@ -297,8 +298,8 @@ _setup_interpreter_cache() {
 #     pythonw inherits intact.
 #   * Non-Windows is a strict no-op: the MSYS guard short-circuits before any
 #     filesystem probe, so POSIX behaviour is byte-for-byte unchanged.
-#   * py.exe (the `py -3` launcher) swaps to pyw.exe in the same directory
-#     (#107): pyw.exe is the GUI-subsystem launcher twin and `pyw -3` execs
+#   * py.exe (the `py -3` launcher) swaps to pyw.exe in the same directory.
+#     pyw.exe is the GUI-subsystem launcher twin and `pyw -3` execs
 #     pythonw.exe. Every other guard (same-dir, safe prefix, WindowsApps
 #     skip, tty check, liveness probe) applies to pyw.exe unchanged.
 #
@@ -323,7 +324,7 @@ _maybe_swap_to_pythonw() {
     pythonw="${dir}/${twin}"
     [ -f "$pythonw" ] && [ -x "$pythonw" ] && [ -s "$pythonw" ] || return 0
     _is_safe_prefix "$pythonw" || return 0
-    # C8: case-insensitive WindowsApps skip (any casing on case-insensitive FS).
+    # Case-insensitive WindowsApps skip (any casing on case-insensitive FS).
     _path_contains_windowsapps "$pythonw" && return 0
     # Liveness-probe the twin before committing to it. A corrupt/garbage
     # pythonw.exe (e.g. a half-overwritten install twin, or a 0xC000-style
@@ -335,7 +336,7 @@ _maybe_swap_to_pythonw() {
     # /dev/null so the hook's real stdin is never consumed by the probe.
     # On any doubt, keep python.exe (return 0) -- this can only ever opt
     # INTO pythonw, never block an exec.
-    # C6: --kill-after=1s escalates to SIGKILL 1s after SIGTERM. pythonw is
+    # --kill-after=1s escalates to SIGKILL 1s after SIGTERM. pythonw is
     # GUI-subsystem and can ignore SIGTERM (no console handler), leaving a
     # hung twin holding the 2s budget past expiry and stalling the hook.
     if command -v timeout >/dev/null 2>&1; then
@@ -467,23 +468,23 @@ fi
 _setup_interpreter_cache
 _exec_cached_interpreter "$@" || :
 
-# F2 (#107): decide whether a WindowsApps candidate is a real Store install
+# Decide whether a WindowsApps candidate is a real Store install
 # or a dead AppExecutionAlias stub -- WITHOUT flashing a console window on
 # the common path. The old probe ran the console-subsystem `python.exe
 # --version` on every cache miss, which is exactly the flash this launcher
 # exists to prevent.
 #
-# Design (revised for #143): the CANDIDATE ITSELF must supply POSITIVE PROOF
+# Design (revised for the WindowsApps probe fix): the CANDIDATE ITSELF must supply POSITIVE PROOF
 # OF LIFE by writing a marker to a temp file whose content we then require. A
 # dead AppExecutionAlias stub exits without writing it. We do NOT trust a bare
 # exit code (a dead alias can exit 0 silently, see measure.py), and we do NOT
-# trust a sibling "twin" (pythonw.exe): #143 proved that in WindowsApps each
+# trust a sibling "twin" (pythonw.exe): the WindowsApps probe proved that in WindowsApps each
 # alias name is claimed independently, so a LIVE pythonw twin can sit beside a
 # DEAD python3.exe from a different package -- the old twin probe then cached
 # and exec'd the dead stub on every hook. Only the candidate's own liveness
 # decides now.
 #
-# Flash tradeoff (was #107's concern): the twin was GUI-subsystem, so probing
+# Flash tradeoff (the no-flash concern): the twin was GUI-subsystem, so probing
 # it never flashed a console; probing the console candidate directly can flash
 # a window ONCE on a cache miss. That regression is accepted deliberately -- a
 # silently-dead cached interpreter breaks EVERY hook for affected users, which
@@ -512,7 +513,7 @@ _exec_cached_interpreter "$@" || :
 # _path_contains_windowsapps, exactly like the old inline probe.
 _probe_windowsapps_candidate() {
     local binpath="$1" probe_tmp probe_arg out ver
-    # #143: probe the CANDIDATE ITSELF, never a sibling "twin". In WindowsApps each
+    # Probe the CANDIDATE ITSELF, never a sibling "twin". In WindowsApps each
     # App Execution Alias name is claimed independently, so pythonw.exe can resolve
     # to a DIFFERENT, live package (e.g. the Python Install Manager) while this
     # candidate (python3.exe) is a dead Microsoft Store redirector. The old code
@@ -575,7 +576,7 @@ find_interpreter() {
     # .bat directly; a mis-exec is fail-safe here (falls through to the next
     # candidate, then to the exit-0 no-block guarantee), never a wedge. Gated to
     # Windows so a POSIX box never probes for a python3.bat. NOTE: the .bat exec
-    # path is only verifiable on a real Windows host (see #145) -- discovery is
+    # path is only verifiable on a real Windows host -- discovery is
     # what this adds; exec is MSYS-native and may flash a console window.
     _is_msys_platform 2>/dev/null && win_exts=".bat .cmd"
     for dir in $PATH; do
@@ -587,10 +588,10 @@ find_interpreter() {
             # Reject interpreters outside known-safe prefix directories.
             # Prevents PATH-order attacks where a malicious dir appears first.
             _is_safe_prefix "$binpath" || continue
-            # C8: case-insensitive WindowsApps detection (any casing on
+            # Case-insensitive WindowsApps detection (any casing on
             # case-insensitive FS). WindowsApps may contain real Store-installed
             # Python OR non-functional AppExecutionAlias stubs (non-zero-byte,
-            # pass -s). F2 (#107): distinguish them flash-free via the GUI
+            # pass -s). Distinguish them flash-free via the GUI
             # twin's proof-of-life probe, with the console --version probe as
             # the fallback authority -- see _probe_windowsapps_candidate.
             if _path_contains_windowsapps "$binpath"; then

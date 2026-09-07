@@ -108,7 +108,7 @@ _DEFAULT_CONTEXT_WINDOW = 200_000
 # Fail-safe window for an unrecognised *modern* Claude (non-haiku) model. Every
 # non-haiku Claude family since the 4.x GA line ships at 1M, so this is the
 # right value AND the safe direction: too large only understates fill, whereas
-# the 200K default cries "100% CRITICAL" wolf on a 1M model (bug #97).
+# the 200K default cries "100% CRITICAL" wolf on a 1M model.
 _LARGE_CONTEXT_WINDOW = 1_000_000
 
 # Known Hermes model → approximate context window (tokens).
@@ -188,7 +188,7 @@ def _context_window_for_model(model: str) -> int:
     # Durable fallback for a Claude family that shares no prefix with any known
     # key. Modern non-haiku Claude (4.x/5 and whatever comes next) is 1M; only
     # haiku, and the legacy 2.x/3.x lines, stay at 200K. This stops each new
-    # family from silently regressing to a false-CRITICAL 200K (bug #97). See
+    # family from silently regressing to a false-CRITICAL 200K. See
     # _LARGE_CONTEXT_WINDOW for why failing large is the safe direction.
     if (
         low.startswith("claude-")
@@ -384,8 +384,8 @@ def _parse_ts(value: Any) -> str | None:
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
-        return int(value) if value is not None else default
-    except (TypeError, ValueError):
+        return int(float(value)) if value is not None else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 

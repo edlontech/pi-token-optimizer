@@ -26,7 +26,7 @@ SUPPORTED_EVENTS = (
 # A Codex marketplace install lives in a versioned directory
 # (.../token-optimizer/<X.Y.Z>/) that the marketplace replaces on upgrade.
 # Used to decide whether the baked hook command must resolve the active version
-# at runtime instead of pinning it (which dies on the next update — see #75).
+# at runtime instead of pinning it (which dies on the next update).
 _SEMVER_DIR_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -34,7 +34,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-# Inline POSIX bash-resolver prefix/suffix (#80). When Claude/Codex runs a hook
+# Inline POSIX bash-resolver prefix/suffix. When Claude/Codex runs a hook
 # command under `/bin/sh -c` with a stripped/empty PATH, bare `bash` is not
 # found → exit 127 spam on every tool call. The resolver probes `command -v`
 # for bash in PATH then a fixed list of absolute locations (POSIX guarantees
@@ -47,8 +47,10 @@ _BASH_RESOLVER_PREFIX = (
 _BASH_RESOLVER_SUFFIX = "; done; exit 0"
 
 
-def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
+def _hook_command(script: str, *args: str, redirect_quiet: bool = False,
+                   extra_env: dict[str, str] | None = None) -> str:
     root = _repo_root()
+    extra_env = extra_env or {}
     if sys.platform == "win32":
         # Codex runs command hooks through cmd.exe on native Windows. Invoke the
         # current interpreter directly so the hot path does not traverse MSYS
@@ -60,8 +62,11 @@ def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
         # `%COMSPEC% /C <command>` (fallback cmd.exe) on Windows unless the
         # user overrides the hook shell in config. So the cmd.exe syntax below
         # (setlocal, for /f, 2^>NUL, >NUL 2>&1) is CORRECT here — do NOT
-        # "bash-ify" it. #118 was the inverse bug: Claude Code runs hooks via
+        # "bash-ify" it. The inverse bug: Claude Code runs hooks via
         # Git Bash, so measure.py's Claude-facing commands are POSIX-shaped.
+        _win_env = ''.join(
+            f'set "{k}={v}" && ' for k, v in extra_env.items()
+        )
         if _SEMVER_DIR_RE.match(root.name):
             # CMD needs a Windows-native counterpart to the POSIX runtime
             # resolver below. Keep the baked path as a fail-open fallback when
@@ -84,6 +89,7 @@ def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
                 f'set "TOKEN_OPTIMIZER_RUNTIME_ROOT={root}" && '
                 f'for /f "delims=" %R in (\'{resolver} 2^>NUL\') '
                 f'do @set "TOKEN_OPTIMIZER_RUNTIME_ROOT={base}\\%R" && '
+                f'{_win_env}'
             )
             python = subprocess.list2cmdline([sys.executable])
             script_args = subprocess.list2cmdline([script, *args])
@@ -92,7 +98,7 @@ def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
                 f"{script_args}"
             )
         else:
-            prefix = 'set "TOKEN_OPTIMIZER_RUNTIME=codex" && '
+            prefix = f'set "TOKEN_OPTIMIZER_RUNTIME=codex" && {_win_env}'
             argv = [sys.executable, str(root / "hooks" / "run.py"), script, *args]
         redirect = " >NUL 2>&1" if redirect_quiet else ""
         if _SEMVER_DIR_RE.match(root.name):
@@ -101,11 +107,13 @@ def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
 
     command_args = " ".join(shlex.quote(arg) for arg in (script, *args))
     redirect = " >/dev/null 2>&1" if redirect_quiet else ""
+    _posix_env = " ".join(f"{k}={shlex.quote(v)}" for k, v in extra_env.items())
+    _posix_env_prefix = f"{_posix_env} " if _posix_env else ""
     if _SEMVER_DIR_RE.match(root.name):
         # Marketplace install: root is .../token-optimizer/<X.Y.Z>/, which is
         # deleted when Codex installs a newer version. Pinning it here makes
         # hooks.json point at a missing directory after every upgrade, so each
-        # Codex tool call fails (#75). Resolve the newest installed version at
+        # Codex tool call fails. Resolve the newest installed version at
         # runtime from the stable parent dir, falling back to the baked path.
         base = shlex.quote(str(root.parent))
         fallback = shlex.quote(str(root) + "/")
@@ -125,7 +133,7 @@ def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
         )
         command = (
             f"{_BASH_RESOLVER_PREFIX}"
-            f'TOKEN_OPTIMIZER_RUNTIME=codex exec "$b" -c {shlex.quote(inner)} "$b"'
+            f'TOKEN_OPTIMIZER_RUNTIME=codex {_posix_env_prefix}exec "$b" -c {shlex.quote(inner)} "$b"'
             f"{_BASH_RESOLVER_SUFFIX}"
         )
     else:
@@ -133,7 +141,7 @@ def _hook_command(script: str, *args: str, redirect_quiet: bool = False) -> str:
         runner = shlex.quote(str(root / "hooks" / "run.py"))
         command = (
             f"{_BASH_RESOLVER_PREFIX}"
-            f'TOKEN_OPTIMIZER_RUNTIME=codex exec "$b" {launcher} {runner} {command_args}'
+            f'TOKEN_OPTIMIZER_RUNTIME=codex {_posix_env_prefix}exec "$b" {launcher} {runner} {command_args}'
             f"{redirect}{_BASH_RESOLVER_SUFFIX}"
         )
     return command
@@ -148,15 +156,14 @@ def _managed_hooks(
 ) -> dict[str, list[dict[str, Any]]]:
     """Build Codex project hooks.
 
-    Default is the aggressive profile (max savings). All hooks are wired to run
-    silently: prompt/session/subagent hooks via redirect_quiet, the PostToolUse
-    archive hook via redirect_quiet, and context_intel emits no stdout. The
-    PostToolUse hooks match Bash only, so archive_result never reaches its
-    MCP-output-replacement branch (which Codex rejects as unsupported anyway).
-    The result is no visible Codex Desktop rows under normal operation.
-
-    Bash compression is the one genuinely-visible hook (Codex cannot rewrite
-    command input yet), so it stays explicit opt-in on every profile.
+    Default is the aggressive profile (max savings). SessionStart,
+    UserPromptSubmit, PostToolUse, and Stop are routed through the consolidated
+    runner scripts (hooks/sessionstart_runner.py, hooks/userpromptsubmit_runner.py,
+    hooks/posttooluse_runner.py, hooks/stop_runner.py) so Codex users receive the
+    same diagnostics-routing, systemMessage-preservation, and process-
+    consolidation fixes as Claude Code. SubagentStart/Stop remain on the
+    Codex-specific bridge (no runner exists for subagent events). Bash
+    compression stays explicit opt-in (Codex cannot rewrite command input yet).
     """
     hooks = {
         "Stop": [
@@ -165,15 +172,10 @@ def _managed_hooks(
                     {
                         "type": "command",
                         "command": _hook_command(
-                            "skills/token-optimizer/scripts/measure.py",
-                            "session-end-flush",
-                            "--trigger",
-                            "stop",
-                            "--quiet",
-                            "--defer",
+                            "hooks/stop_runner.py",
                             redirect_quiet=True,
                         ),
-                        "timeout": 8,
+                        "timeout": 15,
                     }
                 ]
             }
@@ -187,10 +189,9 @@ def _managed_hooks(
                     {
                         "type": "command",
                         "command": _hook_command(
-                            "skills/token-optimizer/scripts/codex_hook_bridge.py",
-                            "session-start",
+                            "hooks/sessionstart_runner.py",
                         ),
-                        "timeout": 15,
+                        "timeout": 20,
                     }
                 ],
             }
@@ -201,10 +202,9 @@ def _managed_hooks(
                     {
                         "type": "command",
                         "command": _hook_command(
-                            "skills/token-optimizer/scripts/codex_hook_bridge.py",
-                            "user-prompt-submit",
+                            "hooks/userpromptsubmit_runner.py",
                         ),
-                        "timeout": 12,
+                        "timeout": 20,
                     }
                 ]
             }
@@ -252,23 +252,14 @@ def _managed_hooks(
                 "hooks": [
                     {
                         "type": "command",
+                        # TOKEN_OPTIMIZER_NO_UPDATED_TOOL_OUTPUT gates off the
+                        # updatedToolOutput emission in bash_compress_hook (Codex
+                        # does not honor that field). thrash_guard recording and
+                        # archive_result still run -- only the emission is skipped.
                         "command": _hook_command(
-                            "skills/token-optimizer/scripts/context_intel.py",
-                            "--quiet",
-                        ),
-                        "timeout": 10,
-                    }
-                ],
-            },
-            {
-                "matcher": "Bash",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": _hook_command(
-                            "skills/token-optimizer/scripts/archive_result.py",
-                            "--quiet",
+                            "hooks/posttooluse_runner.py",
                             redirect_quiet=True,
+                            extra_env={"TOKEN_OPTIMIZER_NO_UPDATED_TOOL_OUTPUT": "1"},
                         ),
                         "timeout": 10,
                     }
@@ -459,7 +450,7 @@ def uninstall(project: Path, *, is_global: bool = False, dry_run: bool = False) 
     updated = _remove_hooks(existing)
     details: dict[str, Any] = {"hook_events": sorted(updated.get("hooks", {}).keys())}
     # Reverse the config.toml writes the installer made: the compact-prompt
-    # managed block + prompt file (issue #78, workstream B2) and the [tui]
+    # managed block + prompt file and the [tui]
     # status-line managed block. Both are idempotent and scoped to TO's own
     # managed markers, so user-authored keys are never clobbered.
     if dry_run:

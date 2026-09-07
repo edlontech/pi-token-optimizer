@@ -16,7 +16,7 @@ from typing import Any
 from runtime_env import detect_runtime, hermes_home, runtime_home
 
 # Windows: a console-subsystem child (python.exe) flashes a console window
-# unless the parent passes CREATE_NO_WINDOW (#107). getattr -> 0 on POSIX,
+# unless the parent passes CREATE_NO_WINDOW. getattr -> 0 on POSIX,
 # where creationflags=0 is an accepted no-op.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -27,7 +27,7 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DASHBOARD_PORT = 24844
 _PLUGIN_NAME = "token-optimizer"
 
-# #58: the plugin's __init__.py imports these three from its own directory, so
+# The plugin's __init__.py imports these three from its own directory, so
 # they MUST be present for /token-optimizer, the dashboard launcher, and rollups
 # to work. Earlier doctor only checked plugin.yaml + __init__.py and reported OK
 # on a broken (payload-only) install.
@@ -38,7 +38,7 @@ REQUIRED_PLUGIN_FILES = (
     "hermes_state.py",
     "hermes_session.py",
     "runtime_env.py",
-    # v5.11.1 (#58): the installer always writes the measure-path locator when
+    # v5.11.1: the installer always writes the measure-path locator when
     # measure.py exists; its absence means a broken / payload-only install.
     "measure-path",
 )
@@ -219,7 +219,7 @@ def _plugin_yaml_checks() -> list[dict[str, str]]:
 
 
 def _bridge_smoke_check() -> list[dict[str, str]]:
-    """Run the installed bridge's __main__ smoke test (#58).
+    """Run the installed bridge's __main__ smoke test.
 
     hermes_hook_bridge.py's __main__ locates measure.py and exits 0 (OK) or 1
     (WARN/not found). We invoke it as a subprocess to confirm the installed copy
@@ -236,7 +236,7 @@ def _bridge_smoke_check() -> list[dict[str, str]]:
             f"{bridge} not found; re-run: python3 hermes_install.py",
         )]
 
-    # v5.11.1 (#58): the installer copies a regular file. A symlink here means a
+    # v5.11.1: the installer copies a regular file. A symlink here means a
     # tampered/relocated install -- FAIL before executing it (don't run code
     # from an unexpected target).
     if bridge.is_symlink():
@@ -270,7 +270,7 @@ def _bridge_smoke_check() -> list[dict[str, str]]:
 
 
 def _activation_check() -> list[dict[str, str]]:
-    """WARN if token-optimizer is not allow-listed under plugins.enabled (#58).
+    """WARN if token-optimizer is not allow-listed under plugins.enabled.
 
     Hermes (v0.15.x) requires explicit allow-listing; directory presence is not
     enough. Uses the same dual approach as _plugin_yaml_checks (PyYAML if
@@ -312,7 +312,7 @@ def _activation_check() -> list[dict[str, str]]:
         enabled = _activation_text_scan(text)
 
     if enabled:
-        # v5.11.1 (#58): use the full path, not just the basename, so the OK
+        # v5.11.1: use the full path, not just the basename, so the OK
         # message is unambiguous about which config was checked.
         return [_check("OK", "Plugin activation", f"token-optimizer allow-listed in {cfg}")]
     return [_check(
@@ -332,7 +332,7 @@ def _activation_text_scan(text: str) -> bool:
     """
     try:
         from hermes_install import _enabled_in_text  # noqa: PLC0415
-    except Exception:  # noqa: BLE001 -- v5.11.1 (#58): any import failure
+    except Exception:  # noqa: BLE001 -- v5.11.1: any import failure
         # (ImportError, but also a SyntaxError in a half-written install or a
         # surprise at module top-level) must degrade to not-enabled, not crash
         # the doctor.
@@ -358,7 +358,10 @@ def _state_db_checks() -> list[dict[str, str]]:
 
     conn = None
     try:
-        uri = f"file:{db_path}?mode=ro&immutable=1"
+        # H-2: build the file: URI via Path.as_uri() rather than string
+        # interpolation. A path containing '?' would start the query string
+        # early and could drop or override mode=ro (opening read-write).
+        uri = f"{Path(db_path).as_uri()}?mode=ro&immutable=1"
         conn = sqlite3.connect(uri, uri=True, timeout=5)
         conn.execute("PRAGMA query_only = ON")
         conn.execute("PRAGMA busy_timeout=3000")

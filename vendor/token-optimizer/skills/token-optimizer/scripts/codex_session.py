@@ -113,8 +113,8 @@ def _estimate_tokens(text: str | int) -> int:
 
 def _safe_int(value: Any) -> int:
     try:
-        return int(value or 0)
-    except (TypeError, ValueError):
+        return int(float(value or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

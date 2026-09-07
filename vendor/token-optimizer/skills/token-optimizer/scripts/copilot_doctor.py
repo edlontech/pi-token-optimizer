@@ -216,7 +216,7 @@ def _capability_checks() -> list:
             if data.get("cli_version") not in (current, None):
                 # The doctor runs in the native shell where `copilot` IS on PATH,
                 # so it can resolve the real version even when the WSL-root
-                # sessionStart hook could only seed "unknown" (issue #78). Rather
+                # sessionStart hook could only seed "unknown". Rather
                 # than tell the user to "start a session" (which, in that WSL-root
                 # context, would just re-seed "unknown" again), self-heal now:
                 # persist the correct matrix so postToolUse/allow/etc. stop being

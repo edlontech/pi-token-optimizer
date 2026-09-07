@@ -7,7 +7,7 @@ Record the release commit, operator, date, operating system, Python version, wor
 ## Source and vendor provenance
 
 - [ ] **SOURCE-01 — The release worktree is clean and points at the intended 0.1.0 commit.** Run `git status --short`, `git rev-parse HEAD`, and confirm `package.json` reports `0.1.0`.
-- [ ] **VENDOR-01 — The upstream tag resolves to the pinned commit.** In a clean checkout of `https://github.com/alexgreensh/token-optimizer`, run `git rev-parse 'refs/tags/v5.13.4^{commit}'` and require exactly `eda65d61b4750b530a6f9956193d4e4632aca0cb`.
+- [ ] **VENDOR-01 — The upstream tag resolves to the pinned commit.** In a clean checkout of `https://github.com/alexgreensh/token-optimizer`, run `git rev-parse 'refs/tags/v5.13.8^{commit}'` and require exactly `c5d4796fa750530bb7dc9b91ad09373883b728c1`.
 - [ ] **VENDOR-02 — A fresh vendor sync reproduces the committed snapshot.** Run `npm run vendor:sync -- /absolute/path/to/clean/token-optimizer-checkout`, then require `git diff --exit-code -- patches vendor` and run `npm run vendor:check`.
 - [ ] **LEGAL-01 — Package and upstream legal notices are present and reviewed.** Compare `LICENSE`, `NOTICE`, `PRIVACY.md`, `vendor/token-optimizer/LICENSE`, and `vendor/token-optimizer/PRIVACY.md`; verify the root documentation describes the Pi adaptation and preserves upstream attribution.
 
@@ -76,12 +76,12 @@ PI_TOKEN_OPTIMIZER_BENCH_ITERATIONS=2 npm run benchmark
 
 ## Exact package inspection
 
-The allowlist in `tests/vendor.test.ts` is the release manifest: exactly 93 files. It includes package/runtime sources, both documentation files, root and upstream legal/privacy files, the compatibility patch, vendor manifest, static dashboard asset, and the executable launcher. It excludes tests, fixtures, caches, local optimizer data, repository scripts, upstream demos, unrelated skills, and CI files.
+The allowlist in `tests/vendor.test.ts` is the release manifest: exactly 113 files. It includes package/runtime sources, both documentation files, root and upstream legal/privacy files, the compatibility patch, vendor manifest, static dashboard asset, and the executable launcher. It excludes tests, fixtures, caches, local optimizer data, repository scripts, upstream demos, unrelated skills, and CI files.
 
 ```sh
 npm run package:check
 npm pack --dry-run --json > /tmp/pi-token-optimizer-pack-dry-run.json
-node -e 'const p=require("/tmp/pi-token-optimizer-pack-dry-run.json")[0]; if(p.files.length!==93) process.exit(1); console.log(p.files.map(f=>f.path).sort().join("\n"))'
+node -e 'const p=require("/tmp/pi-token-optimizer-pack-dry-run.json")[0]; if(p.files.length!==113) process.exit(1); console.log(p.files.map(f=>f.path).sort().join("\n"))'
 pack_dir=$(mktemp -d)
 npm pack --json --pack-destination "$pack_dir" > "$pack_dir/pack.json"
 tarball=$(node -e 'const p=require(process.argv[1])[0]; process.stdout.write(require("node:path").join(require("node:path").dirname(process.argv[1]),p.filename))' "$pack_dir/pack.json")

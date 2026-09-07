@@ -1,6 +1,7 @@
 # Pi Token Optimizer
 
-Pi Token Optimizer 0.1.0 is a Pi package that adapts a bounded set of Token Optimizer 5.13.4 behaviors to Pi: local read caching, tool-output compression and archives, quality/continuity context, session metrics, a static dashboard, and guided compaction. See the [capability matrix](docs/capabilities.md) for evidence and explicit exclusions.
+A Pi package that adapts a bounded set of Token behaviors to Pi: local read caching, tool-output compression and archives, quality/continuity context, session metrics, a static dashboard, and guided compaction. 
+See the [capability matrix](docs/capabilities.md) for evidence and explicit exclusions.
 
 ## Requirements
 

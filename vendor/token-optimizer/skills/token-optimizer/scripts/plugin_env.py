@@ -129,7 +129,7 @@ def resolve_claude_plugin_data_env() -> Path | None:
     CLAUDE_PLUGIN_DATA sharing the same plugins/data/ root is rejected.
 
     This is the SINGLE identity check every raw-CLAUDE_PLUGIN_DATA site shares
-    (issue #140): resolve_plugin_data_dir() below calls it directly, and so do
+    (identity check): resolve_plugin_data_dir() below calls it directly, and so do
     the sibling sites that read CLAUDE_PLUGIN_DATA outside this module —
     hooks/run.py's consent-config read and detectors/cache_instability.py's
     detector-state write. None of the three duplicate the identity logic; a
@@ -457,7 +457,7 @@ def _warn_unrecognized_flag_value(flag_name: str, value, config_path) -> None:
     Deduped per (flag, type) so a misconfigured config.json warns once, not on
     every hook invocation. The raw value is NEVER echoed in full — only its type
     and length — so a secret mistakenly placed as a flag value can't leak into
-    logs/CI captures (issue #79). The dedup key is a string so an unhashable
+    logs/CI captures. The dedup key is a string so an unhashable
     JSON value (list/dict) can't crash the caller.
     """
     sig = (flag_name, type(value).__name__)
@@ -493,7 +493,7 @@ def interpret_flag_value(value, *, env_truthy_value: str | None = None):
     as-is. Tri-state flags (env_truthy_value set, e.g. structure-map "beta") are
     ALWAYS decisive: only the exact token (case-insensitive) enables, everything
     else disables. Both readers (this module's hot path and measure.py's
-    dashboard) call this so they can never disagree (issue #79).
+    dashboard) call this so they can never disagree.
     """
     if isinstance(value, bool):
         return value

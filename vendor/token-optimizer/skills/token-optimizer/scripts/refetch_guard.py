@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Token Optimizer - PreToolUse re-fetch guard (standalone entry point).
 
-Self-healing loop-breaker for issue #88. When a large MCP result is archived,
+Self-healing loop-breaker. When a large MCP result is archived,
 its compressed replacement tells the model to `expand` the saved copy instead of
 re-fetching. If the model re-issues the SAME MCP call anyway (identical tool +
 arguments), this guard detects the duplicate against the session archive manifest

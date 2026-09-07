@@ -385,7 +385,7 @@ def print_report(report):
 # decides, per the configured exception rule.
 # ---------------------------------------------------------------------------
 
-# C1: single source of truth — import the runtime gate constants from
+# Single source of truth — import the runtime gate constants from
 # archive_result (the hot-path hook that actually performs the head+tail+pointer
 # treatment) so the backfill measures EXACTLY what production would gate on.
 # Both now use CHAR semantics (the runtime gates on char count, not byte count),
@@ -500,7 +500,7 @@ def analyze_agent_results(projects_dir: Path, limit: int | None):
             break
         saw = False
         for result_text, next_text in replay_agent_results(path):
-            # C3: count EVERY agent result in the pool, pre-gate, so the JSON's
+            # Count EVERY agent result in the pool, pre-gate, so the JSON's
             # "results" total is truthful (it was previously initialized but
             # never incremented). The >=8KB gate decides the candidate subset.
             totals["results"] += 1
@@ -537,7 +537,7 @@ def build_agent_report(totals):
         "metric": "agent/task result compression (head+tail+pointer)",
         "head_chars": _AGENT_HEAD_CHARS,
         "tail_chars": _AGENT_TAIL_CHARS,
-        "min_chars": _AGENT_RESULT_MIN_CHARS,  # C1: char-semantics gate (shared)
+        "min_chars": _AGENT_RESULT_MIN_CHARS,  # Char-semantics gate (shared)
         "harm_span_min_chars": _HARM_MIN_SPAN,
         "totals": totals,
         "harm_rate_pct": round(100 * harm_rate, 1),

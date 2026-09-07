@@ -240,7 +240,7 @@ body {
 /* v5.1: Global font size bump for readability.
    Only BUMPS sizes -- never shrinks. Avoids overriding classes that are
    reused for both large headers and small body text (like .label, .card-header).
-   Adversarial review caught that overly broad !important rules caused regressions. */
+   Overly broad !important rules caused regressions. */
 .empty-state { font-size: 16px !important; }
 .bar-label { font-size: 14px !important; }
 .bar-value { font-size: 14px !important; }
@@ -4520,7 +4520,7 @@ var DB = (function() {
       // the same as — or slightly more than — the frozen baseline would have). We show NO
       // counterfactual headline (a saving we didn't make), just an honest neutral note plus
       // the arms; the directly-metered floor card below still reports realized savings. This
-      // is the net<=0 branch of the issue #87 fix — parity with OpenClaw/OpenCode.
+      // is the net<=0 branch — parity with OpenClaw/OpenCode.
       html += '<div class="card wide" style="padding:var(--s-5) var(--s-4);margin-bottom:var(--s-3);">' +
         '<div class="label" style="margin-bottom:var(--s-2);">At or above your baseline this period</div>' +
         '<div class="lede">Your recent sessions cost about what your frozen baseline would have — est. <strong>' + money(ba.actual_monthly_usd) + '/mo</strong> now vs <strong>' + money(ba.counterfactual_monthly_usd) + '/mo</strong> the old way. There is no net saving to headline this period, so we are not showing one. The figure below is what Token Optimizer counted directly, action by action.</div>' +
@@ -5394,7 +5394,7 @@ var DB = (function() {
         ['Balanced', 'Recommended. Installs SessionStart, UserPromptSubmit, and Stop for quality cache, loop signals, continuity, and dashboard refresh.', balancedCmd, 'recommended'],
         ['Quiet', 'Stop-only. Lowest visible noise, but prompt-quality hooks stay off and telemetry is weaker.', quietCmd, ''],
         ['Telemetry', 'Adds PostToolUse rows for tool-output archive/context intel. Useful for QA, noisier in Desktop.', telemetryCmd, ''],
-        ['Aggressive', 'All currently available Codex hooks, including experimental Bash PreToolUse. Best for torture-room testing, not default Desktop UX.', aggressiveCmd, '']
+        ['Aggressive', 'All currently available Codex hooks, including experimental Bash PreToolUse. Best for stress testing, not default Desktop UX.', aggressiveCmd, '']
       ].forEach(function(profile) {
         if (!profile[2]) return;
         html += '<div class="hook-profile-card ' + profile[3] + '">' +
@@ -5676,7 +5676,7 @@ var DB = (function() {
         else if (f.risk_level === 'moderate') { riskBg = 'var(--c-badge-amber)'; riskLabel = 'MODERATE RISK'; }
 
         // A feature the user set via env var is theirs to control -- never stamp
-        // RECOMMENDED on it (that would contradict the "cannot toggle" note). Issue #77.
+        // RECOMMENDED on it (that would contradict the "cannot toggle" note).
         var envManaged = f.source === 'env';
         var recBadge = managedByHooks
           ? '<span style="background:var(--c-badge-info);color:#000;font-size:12px;padding:3px 10px;border-radius:4px;margin-left:10px;font-weight:700;vertical-align:middle;">HOOK-MANAGED</span>'
@@ -5939,7 +5939,7 @@ var DB = (function() {
       input.addEventListener('change', function(e) {
         // Env-managed / hook-managed / unavailable rows render the checkbox as
         // disabled. Native clicks are blocked, but a programmatic change must not
-        // POST a config write the env var would silently shadow. Issue #77.
+        // POST a config write the env var would silently shadow.
         if (e.target.disabled) { return; }
         var fname = e.target.dataset.v5Name;
         var newState = e.target.checked;
@@ -7061,9 +7061,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   // v5.4.19: helper that all mutating API calls must use. Adds the per-install
   // CSRF token header so the server accepts the request. Without this, POSTs
-  // are rejected with 403 -- that's the whole point of the M-4 hardening.
+  // are rejected with 403 -- that's the whole point of the CSRF hardening.
   //
-  // Torture-room M-1 (2026-04-16): surface auth errors as a distinct message
+  // Surface auth errors as a distinct message
   // rather than letting callers hit r.json() on a text body ("Forbidden:
   // invalid token") and seeing a confusing JSON parse error. The helper
   // intercepts 403 responses and rejects with an Error whose .authError flag

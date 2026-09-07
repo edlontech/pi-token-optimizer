@@ -15,7 +15,7 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
-// --- Self-disabling guard (issue #106 / F1) ---
+// --- Self-disabling guard ---
 // Claude Code has NO plugin uninstall/teardown hook, so a `/plugin uninstall`
 // (or a manual `rm -rf` of the plugin tree) can leave this statusLine command
 // pointing at a script whose plugin tree has been removed. A missing command
@@ -45,7 +45,7 @@ function _pluginTreeGone() {
   return false;
 }
 
-// --- Clone-path uninstall guard (issue #106 / F1, G3 C-P2-2) ---
+// --- Clone-path uninstall guard ---
 // For plugin-cache installs the statusLine command now points at the marketplace
 // CLONE (<claude>/plugins/marketplaces/<mkt>/skills/token-optimizer/scripts/
 // statusline.js) so it survives version bumps. But a native `/plugin uninstall

@@ -83,7 +83,7 @@ def _state_dir():
     plugin_env.resolve_snapshot_dir()'s CLAUDE_PLUGIN_DATA handling.
     TOKEN_OPTIMIZER_SNAPSHOT_DIR wins (tests/sandbox); else the
     identity-checked CLAUDE_PLUGIN_DATA (via plugin_env.resolve_claude_plugin_data_env
-    -- issue #140 sibling site: this detector WRITES state, so a foreign
+    -- this detector WRITES state, so a foreign
     plugin's CLAUDE_PLUGIN_DATA sharing the same shared plugins/data root must
     never redirect that write into another plugin's directory, unlike the
     pre-fix raw env read this duplicated); else ~/.claude/token-optimizer/data.

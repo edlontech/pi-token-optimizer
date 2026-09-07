@@ -25,7 +25,7 @@ _DEADLINE_LOCAL = threading.local()
 class HookDeadline:
     """Hard process deadline enforced by a daemon watchdog thread."""
 
-    def __init__(self, seconds: float, message: bytes | None = None):
+    def __init__(self, seconds: float, message: bytes | None = None, on_timeout=None):
         self.seconds = max(0.0, float(seconds))
         self.end = time.monotonic() + self.seconds
         self.message = (
@@ -33,6 +33,11 @@ class HookDeadline:
             if message is None
             else message
         )
+        # Callbacks that run on the timeout path only, before the process is
+        # torn down: the place to hand unfinished work to a detached child
+        # (the dashboard rebuild does this). Each one is bounded; a callback
+        # that hangs is abandoned, never allowed to delay the exit.
+        self._on_timeout = [on_timeout] if on_timeout is not None else []
         self._cancelled = threading.Event()
         self._thread = threading.Thread(
             target=self._watch,
@@ -50,6 +55,31 @@ class HookDeadline:
             self._thread.start()
         return self
 
+    def add_on_timeout(self, callback) -> None:
+        """Register work to run if (and only if) the deadline fires."""
+        if callback is not None:
+            self._on_timeout.append(callback)
+
+    def _run_on_timeout(self, budget: float = 1.0) -> None:
+        """Run the timeout callbacks, each on its own bounded thread."""
+        end = time.monotonic() + max(0.0, budget)
+        for callback in list(self._on_timeout):
+            runner = threading.Thread(
+                target=self._call_quietly,
+                args=(callback,),
+                name="token-optimizer-hook-deadline-callback",
+                daemon=True,
+            )
+            runner.start()
+            runner.join(max(0.0, end - time.monotonic()))
+
+    @staticmethod
+    def _call_quietly(callback) -> None:
+        try:
+            callback()
+        except Exception:
+            pass
+
     def remaining(self) -> float:
         return max(0.0, self.end - time.monotonic())
 
@@ -64,6 +94,7 @@ class HookDeadline:
 
     def _watch(self):
         if not self._cancelled.wait(self.remaining()):
+            self._run_on_timeout()
             # The diagnostic belongs on the timeout path only - emitting it at
             # arm time made every NORMAL completion print "budget exceeded".
             # It runs in a bounded side thread so a full/undrained stderr pipe
@@ -436,11 +467,16 @@ class LeaseLock:
         if self.deadline is not None:
             wait_for = min(wait_for, self.deadline.remaining())
         stop = time.monotonic() + wait_for
-        first_attempt = True
+        # Attempt FIRST, check the deadline after a failed attempt. A waiter
+        # whose sleep overslept (loaded box, descheduling) must still take a
+        # lease that was released while it slept; checking the deadline before
+        # the attempt made acquire() give up on an observably free lock, which
+        # flaked test_cleanup_period_and_statusline_writers_merge_stale_reads
+        # ~1-in-5 (instrumented 2026-09-02: iters=2, acquire False at 0.0777s,
+        # lease free since 0.001s). The bottom-of-loop check still bounds the
+        # wait: the loop exits at `stop` after a failed attempt and never
+        # sleeps past it.
         while True:
-            if not first_attempt and time.monotonic() >= stop:
-                return False
-            first_attempt = False
             created = self._try_create()
             if created is True:
                 return True

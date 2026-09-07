@@ -30,6 +30,7 @@ intentionally out of scope.
 
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 import time
@@ -101,7 +102,17 @@ def _ro_connect(path: Path) -> Iterator[sqlite3.Connection]:
     Never writes, never checkpoints, never attaches. The caller must keep the
     open window minimal: introspect + one query + fetch, then exit.
     """
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=_BUSY_TIMEOUT_SECONDS)
+    # Build the file: URI via Path.as_uri() rather than string interpolation:
+    # with uri=True, characters like ?, #, % and spaces in the path are URI
+    # syntax, so a path containing '?' would start the query string early and
+    # could drop or override mode=ro (opening the wrong DB, or read-write).
+    # as_uri() percent-encodes those, keeping the whole path in the path
+    # component. (Discovered DB paths are absolute, which as_uri() requires.)
+    # M-3: as_uri() raises ValueError on relative paths. Resolve first so a
+    # relative CODEX_HOME doesn't propagate an uncaught ValueError past
+    # callers that only catch (sqlite3.Error, OSError).
+    db_uri = Path(path).resolve().as_uri()
+    conn = sqlite3.connect(f"{db_uri}?mode=ro", uri=True, timeout=_BUSY_TIMEOUT_SECONDS)
     try:
         # Defense-in-depth: `mode=ro` blocks writes to this DB but not ATTACH;
         # `query_only` also blocks ATTACH and any write through the connection,
@@ -157,9 +168,16 @@ def _normalize_ms(updated_at_ms: Any, updated_at: Any) -> int | None:
     would be misread as decades stale and falsely flagged as leaked.
     """
     _MS_2001 = 1_000_000_000_000  # ms epoch for ~2001; below this = seconds
+    # M-2: float('inf') passes the > 0 check but int(float('inf')) raises
+    # OverflowError, which is not caught by any caller's try/except. Guard
+    # with math.isfinite() so inf and nan return None instead of crashing.
     if isinstance(updated_at_ms, (int, float)) and updated_at_ms > 0:
+        if not math.isfinite(updated_at_ms):
+            return None
         return int(updated_at_ms) if updated_at_ms >= _MS_2001 else int(updated_at_ms * 1000)
     if isinstance(updated_at, (int, float)) and updated_at > 0:
+        if not math.isfinite(updated_at):
+            return None
         return int(updated_at) if updated_at >= _MS_2001 else int(updated_at * 1000)
     return None
 
@@ -170,7 +188,7 @@ def _parse_parent_goal_marker(objective: Any) -> str | None:
     ``None`` when the objective lacks the explicit opt-in marker. This is the
     ONLY mechanism by which an independent worker goal session is grouped under
     a coordinator thread — absent the marker, no cross-goal aggregation happens
-    (issue #108 requirement 4).
+    (requirement 4).
     """
     if not objective:
         return None
@@ -221,7 +239,7 @@ def _resolve_subtree(
     Pure-Python BFS over the fetched edge rows. The visited set plus the
     ``_MAX_ROWS`` cap make a malformed (self-referential / cyclic) edge graph
     terminate: a child already in the subtree is never re-enqueued, and the
-    subtree never grows past the row bound (issue #108 non-negotiable:
+    subtree never grows past the row bound (non-negotiable:
     cycle-safe descendant walk).
 
     Returns ``(subtree_ids, aggregation_edges)`` where ``aggregation_edges`` is
@@ -266,7 +284,7 @@ def current_thread_id() -> str | None:
     The most-recently-updated row in ``threads`` is the live thread. This is
     deterministic (keyed off the state DB's own update timestamps) rather than
     the JSONL mtime guess used by the session resolver, which can pick an
-    older session when several are open concurrently (issue #108 requirement
+    older session when several are open concurrently (requirement
     3: ``quality current`` must resolve to the active thread, not the
     most-recent-mtime session).
 
@@ -322,7 +340,7 @@ def subagent_costs(root_thread_id: str | None = None) -> dict[str, Any]:
     aggregated: the root plus its transitive descendants via
     ``thread_spawn_edges``. Historical/closed spawn edges from unrelated prior
     work are excluded, so a current goal no longer reports old subagents and
-    token totals reflect only the selected goal (issue #108 requirements 1, 2).
+    token totals reflect only the selected goal (requirements 1, 2).
     When ``root_thread_id`` is ``None`` the legacy whole-DB aggregation runs
     unchanged so existing callers keep working (backward-compatible signature).
 
@@ -524,7 +542,7 @@ def goal_budgets(root_thread_id: str | None = None) -> dict[str, Any]:
     the opt-in parent-goal rollup — an independent worker goal whose objective
     carries an explicit ``Parent goal <root_thread_id>`` marker is grouped
     under the coordinator WITHOUT pulling unrelated historical sessions in
-    (issue #108 requirements 1, 2, 4). When ``root_thread_id`` is ``None`` the
+    (requirements 1, 2, 4). When ``root_thread_id`` is ``None`` the
     legacy whole-DB aggregation runs unchanged (backward-compatible signature).
 
     The resolved thread id and every aggregation edge used (spawn edges for the

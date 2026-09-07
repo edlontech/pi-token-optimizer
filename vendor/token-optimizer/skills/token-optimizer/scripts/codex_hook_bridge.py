@@ -43,7 +43,7 @@ def _emit_additional_context(event_name: str, text: str) -> None:
     if not text:
         return
     # If stdout is already valid JSON with a hookSpecificOutput key, pass it
-    # through unchanged (#81). This prevents double-wrapping when a helper
+    # through unchanged. This prevents double-wrapping when a helper
     # emits its own Codex envelope.
     try:
         parsed = json.loads(text)

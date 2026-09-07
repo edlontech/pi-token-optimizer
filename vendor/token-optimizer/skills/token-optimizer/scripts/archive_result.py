@@ -731,7 +731,7 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
     Some tools are *documented* to return large verbatim payloads (source
     fetchers, doc retrievers). Compressing those to a metadata preview defeats
     the reason they were called, so they are exempt from MCP output replacement
-    (issues #88 / #91 follow-up).
+    (follow-up to the exempt-tools expansion).
 
     The list is the union of ``_DEFAULT_EXEMPT_PATTERNS`` (well-known code/doc
     MCPs, on by default) and the user's ``TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_TOOLS``
@@ -910,7 +910,7 @@ def derive_archive_key(session_id: str | None, file_path: str, mtime_ns: int) ->
 
 
 def _expand_instruction(key: str, tool_name: str | None = None) -> str:
-    """The actionable retrieval line for an archive footer (issue #88).
+    """The actionable retrieval line for an archive footer.
 
     The prior footer said only "Retrieve with: expand <id>", but `expand` is a
     measure.py subcommand, not a callable tool — the model had no way to act on it
@@ -961,7 +961,7 @@ def archive_original(content: str, session_id: str | None, key: str,
     the MCP archive path (same dir layout + manifest) so expand_archived retrieves
     it unchanged. Fail-open: returns None on any failure (caller serves raw).
 
-    `file_path`/`language` (issue #79): when the caller knows which file is being
+    `file_path`/`language`: when the caller knows which file is being
     degraded (the first-read skeleton path does), record it so a degraded read is
     self-identifiable from the archive without transcript archaeology. Additive
     and always present (null when unknown) so the record schema stays uniform.
@@ -1420,7 +1420,7 @@ def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict 
         if store is not None:
             store.close()
 
-    # Allowlisted tools (issue #88 follow-up) are documented large-payload
+    # Allowlisted tools are documented large-payload
     # fetchers: skip the replacement so the full verbatim result reaches
     # context. It's still archived to disk above, so `expand <id>` works —
     # same treatment as _AGENT_RESULT_TOOL_NAMES (archive, don't replace).

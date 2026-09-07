@@ -22,7 +22,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-# ONE source of truth (finding 1): import the event tuple the packager actually
+# ONE source of truth: import the event tuple the packager actually
 # emits instead of duplicating it. The doctor previously hardcoded
 # ("SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"), so it FAILed a
 # correctly built payload -- SessionStart does NOT fire in Cowork and PostToolUse
@@ -39,7 +39,7 @@ def _check(status: str, name: str, detail: str) -> dict[str, str]:
 def _repo_root() -> Path:
     """Walk up to the plugin root (holds .claude-plugin/plugin.json).
 
-    Mirrors cowork_install._repo_root (finding 7): parents[3] is wrong from the
+    Mirrors cowork_install._repo_root: parents[3] is wrong from the
     Codex-marketplace mirror tree, so walk up for the marker and fall back to the
     legacy index if none is found. Keeps the doctor from reading payload/version
     off the wrong root in the mirror.

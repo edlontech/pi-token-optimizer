@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Windows: a console-subsystem child (python.exe, or an npm .cmd shim hosted by
 # cmd.exe) allocates and flashes a console window unless the parent passes
-# CREATE_NO_WINDOW (#107). getattr -> 0 on POSIX, where creationflags=0 is an
+# CREATE_NO_WINDOW. getattr -> 0 on POSIX, where creationflags=0 is an
 # accepted no-op (CPython only rejects creationflags != 0 off-Windows).
 # Fire-and-forget spawns go through spawn_utils.spawn_detached instead, whose
 # DETACHED_PROCESS already suppresses console creation.
@@ -52,7 +52,7 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _SCRIPTS_DIR = Path(__file__).parent.resolve()
 _MEASURE_PY = _SCRIPTS_DIR / "measure.py"
 
-# v5.X.Y (#58): the installer does NOT copy measure.py into the plugin dir
+# v5.X.Y: the installer does NOT copy measure.py into the plugin dir
 # (version-drift risk). Instead it writes a one-line "measure-path" locator
 # next to this bridge, naming the canonical measure.py in the checkout. We read
 # it after the sibling check, before the hardcoded fallbacks.
@@ -69,7 +69,7 @@ _FALLBACK_PATHS: list[Path] = [
 _SENTINEL = object()  # "not yet resolved" marker for the locate cache
 _locate_measure_py_cache: Path | None | object = _SENTINEL
 
-# v5.11.1 (#58): emit the "measure.py not found - rollups paused" warning at
+# v5.11.1: emit the "measure.py not found - rollups paused" warning at
 # most once per process so a paused install doesn't spam the Hermes terminal.
 _rollup_missing_warned = False
 
@@ -83,7 +83,7 @@ def _locate_measure_py() -> Path | None:
     """
     global _locate_measure_py_cache
     if isinstance(_locate_measure_py_cache, Path):
-        # v5.11.1 (#58): verify the cached path still exists before returning it.
+        # v5.11.1: verify the cached path still exists before returning it.
         # A measure.py that was moved/deleted after first resolution would
         # otherwise have us shell to a dead path forever; one cheap stat per
         # call re-resolves it instead.
@@ -93,7 +93,7 @@ def _locate_measure_py() -> Path | None:
     if _MEASURE_PY.is_file():
         _locate_measure_py_cache = _MEASURE_PY
         return _MEASURE_PY
-    # Locator file written by hermes_install.py (#58). Tolerate any read/parse
+    # Locator file written by hermes_install.py. Tolerate any read/parse
     # failure — a missing or garbage locator must never raise here.
     try:
         if _MEASURE_LOCATOR.is_file():
@@ -174,7 +174,7 @@ def run_rollup(session_id: str = "", platform: str = "hermes", reason: str = "")
         return
     measure_py = _locate_measure_py()
     if measure_py is None:
-        # v5.11.1 (#58): a missing measure.py silently pauses rollups, which is
+        # v5.11.1: a missing measure.py silently pauses rollups, which is
         # easy to miss. Surface it once to stderr with a remediation pointer.
         global _rollup_missing_warned
         if not _rollup_missing_warned:

@@ -1,6 +1,6 @@
 # Pi Token Optimizer Privacy Policy
 
-Pi Token Optimizer 0.1.0 adapts Token Optimizer 5.13.4 to Pi. This document describes the shipped Pi package, not every capability present in the vendored upstream source.
+Pi Token Optimizer 0.1.0 adapts Token Optimizer 5.13.8 to Pi. This document describes the shipped Pi package, not every capability present in the vendored upstream source.
 
 ## Consent
 

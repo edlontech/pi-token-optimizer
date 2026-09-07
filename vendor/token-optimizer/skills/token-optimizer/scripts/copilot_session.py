@@ -26,7 +26,7 @@ tests/test_copilot_session.py):
   cost/savings, never overstates (per the savings-copy mandate: lean
   understates).
 
-Cost convention (flow ruling C5/Q5): platform-computed cost first, never
+Cost convention: platform-computed cost first, never
 OpenAI list prices against Copilot sessions.
 
   - VS Code plane: ``copilotUsageNanoAiu`` is authoritative.
@@ -53,7 +53,7 @@ _UNKNOWN_MODEL = "unknown"
 # Per-model context windows AS SERVED BY COPILOT (June 2026). Copilot caps
 # most models at 128K regardless of what the raw model supports elsewhere;
 # OpenAI reasoning models are served with their 200K windows. Default for
-# unknown models under Copilot is 128K (flow ruling Q8/I8) — NOT the 1M
+# unknown models under Copilot is 128K — NOT the 1M
 # Claude Code fallback, which suppressed fill nudges by 7-8x.
 _COPILOT_DEFAULT_CONTEXT_WINDOW = 128_000
 _CONTEXT_WINDOW_PREFIXES = (
@@ -82,8 +82,8 @@ def context_window_for_model(model: str) -> int:
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
-        return int(value) if value is not None else default
-    except (TypeError, ValueError):
+        return int(float(value)) if value is not None else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -475,7 +475,7 @@ def normalize_vscode_session(raw: dict) -> Optional[dict]:
 
 def normalize_session(raw: dict) -> Optional[dict]:
     """Dispatch by data_source. The two planes are separate session
-    populations and are NEVER merged or summed (flow ruling C6/KTD7)."""
+    populations and are NEVER merged or summed."""
     if not isinstance(raw, dict):
         return None
     source = str(raw.get("data_source") or "")
