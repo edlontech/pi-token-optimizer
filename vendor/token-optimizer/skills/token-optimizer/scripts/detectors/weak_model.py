@@ -1,5 +1,7 @@
 """Weak model detector: cheap model used for complex tasks."""
 
+from runtime_env import detect_runtime
+
 _CHEAP_MODELS = ("haiku", "claude-haiku")
 
 
@@ -9,6 +11,10 @@ def detect_weak_model(session_data):
     Flags when: high input tokens (>100K) + Haiku dominant + many tool calls,
     suggesting complex work that would benefit from Sonnet/Opus.
     """
+    if detect_runtime() not in ("claude", "hermes"):
+        # "Consider Sonnet" is Claude-tier routing advice; under foreign
+        # runtimes it must never be emitted. Hermes is a Claude runtime.
+        return []
     model_usage = session_data.get("model_usage", {})
     if not model_usage:
         return []

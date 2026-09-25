@@ -344,6 +344,7 @@ def normalize_cli_session(raw: dict) -> Optional[dict]:
     session.update(
         {
             "first_ts": _parse_ts(st),
+            "last_ts": _parse_ts(et),
             "duration_minutes": round(duration_minutes, 2),
             "total_input_tokens": total_input,
             "total_output_tokens": total_output,

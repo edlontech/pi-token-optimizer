@@ -123,7 +123,7 @@ def plan_install(force: bool = False) -> dict[str, str | bool | list[str]]:
     codex_io.validate_codex_path(config_path, codex_home())
     try:
         config_text = config_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         config_text = ""
     _, action = _replace_or_append_config(config_text, force=force)
     return {
@@ -140,7 +140,7 @@ def install(force: bool = False) -> str:
     config_path = codex_io.ensure_codex_child(home, "config.toml")
     try:
         config_text, crlf = codex_io.read_config_text(config_path)
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         config_text, crlf = "", False
     updated, action = _replace_or_append_config(config_text, force=force)
     codex_io.atomic_write(config_path, updated, crlf=crlf)
@@ -240,7 +240,10 @@ def status() -> str:
     config_path = _config_path()
     if not config_path.exists():
         return f"not configured: {config_path} not found"
-    text = config_path.read_text(encoding="utf-8")
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return f"not configured: {config_path} unreadable"
     if MANAGED_BEGIN in text and MANAGED_END in text:
         return "configured: Token Optimizer status line"
     span = _tui_span(text)

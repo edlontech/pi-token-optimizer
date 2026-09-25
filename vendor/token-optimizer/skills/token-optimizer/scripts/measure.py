@@ -439,6 +439,17 @@ else:
     SNAPSHOT_DIR = RUNTIME_DIR / "_backups" / "token-optimizer"
     _CONFIG_BASE = None  # resolved below after constants
 
+
+def _daemon_snapshot_sandboxed():
+    """True when session data was explicitly redirected for tests/sandboxes.
+
+    A sandbox snapshot must never mutate the machine-wide daemon identity.
+    The value is frozen with SNAPSHOT_DIR at import so later environment drift
+    cannot separate the guard from the paths it protects.
+    """
+    return bool(_SNAPSHOT_DIR_OVERRIDE)
+
+
 # Cowork dual-write: the per-session state dirs -- QUALITY_CACHE_DIR
 # (quality-cache-*.json, resumable-*.json, run-once markers) and CHECKPOINT_DIR
 # -- default to RUNTIME_DIR (~/.claude/token-optimizer). But SNAPSHOT_DIR
@@ -696,8 +707,12 @@ PRICING_TIERS = {
         "label": "Anthropic API",
         "claude_models": {
             # cache_write = 5-minute TTL (1.25x input); cache_write_1h = 1-hour TTL (2x input).
-            # Verified 2026-05-30 from platform.claude.com/docs pricing.
+            # Verified 2026-09-24 from platform.claude.com/docs/en/about-claude/pricing.
             "fable":  {"input": 10.0, "output": 50.0, "cache_read": 1.0,  "cache_write": 12.5,  "cache_write_1h": 20.0},
+            # Fable 5.1 / Mythos 5.1: cache reads are 0.025x input ($0.25), not 0.1x.
+            "fable_5_1": {"input": 10.0, "output": 50.0, "cache_read": 0.25, "cache_write": 12.5, "cache_write_1h": 20.0},
+            # Opus 5.5 is $4/$20 with 0.05x cache reads; every other Opus is $5/$25.
+            "opus_5_5": {"input": 4.0, "output": 20.0, "cache_read": 0.2, "cache_write": 5.0, "cache_write_1h": 8.0},
             "opus":   {"input": 5.0,  "output": 25.0, "cache_read": 0.5,  "cache_write": 6.25,  "cache_write_1h": 10.0},
             "sonnet": {"input": 3.0,  "output": 15.0, "cache_read": 0.3,  "cache_write": 3.75,  "cache_write_1h": 6.0},
             # Sonnet 4.6 / 4.5 / 4.0 keep the $3/$15 card. Sonnet 5 (2026-06-30) is $2/$10,
@@ -710,6 +725,10 @@ PRICING_TIERS = {
         "label": "Vertex AI Global",
         "claude_models": {
             "fable":  {"input": 10.0, "output": 50.0, "cache_read": 1.0,  "cache_write": 12.5,  "cache_write_1h": 20.0},
+            # Fable 5.1 / Mythos 5.1: cache reads are 0.025x input ($0.25), not 0.1x.
+            "fable_5_1": {"input": 10.0, "output": 50.0, "cache_read": 0.25, "cache_write": 12.5, "cache_write_1h": 20.0},
+            # Opus 5.5 is $4/$20 with 0.05x cache reads; every other Opus is $5/$25.
+            "opus_5_5": {"input": 4.0, "output": 20.0, "cache_read": 0.2, "cache_write": 5.0, "cache_write_1h": 8.0},
             "opus":   {"input": 5.0,  "output": 25.0, "cache_read": 0.5,  "cache_write": 6.25,  "cache_write_1h": 10.0},
             "sonnet": {"input": 3.0,  "output": 15.0, "cache_read": 0.3,  "cache_write": 3.75,  "cache_write_1h": 6.0},
             # Sonnet 4.6 / 4.5 / 4.0 keep the $3/$15 card. Sonnet 5 (2026-06-30) is $2/$10,
@@ -723,6 +742,10 @@ PRICING_TIERS = {
         "claude_models": {
             # Vertex regional applies a +10% surcharge on all Claude rates.
             "fable":  {"input": 11.0, "output": 55.0, "cache_read": 1.1,  "cache_write": 13.75, "cache_write_1h": 22.0},
+            # Fable 5.1 / Mythos 5.1: cache reads are 0.025x input ($0.25), not 0.1x.
+            "fable_5_1": {"input": 11.0, "output": 55.0, "cache_read": 0.275, "cache_write": 13.75, "cache_write_1h": 22.0},
+            # Opus 5.5 is $4/$20 with 0.05x cache reads; every other Opus is $5/$25.
+            "opus_5_5": {"input": 4.4, "output": 22.0, "cache_read": 0.22, "cache_write": 5.5, "cache_write_1h": 8.8},
             "opus":   {"input": 5.5,  "output": 27.5, "cache_read": 0.55, "cache_write": 6.875, "cache_write_1h": 11.0},
             "sonnet": {"input": 3.3,  "output": 16.5, "cache_read": 0.33, "cache_write": 4.125, "cache_write_1h": 6.6},
             "sonnet_legacy": {"input": 3.3,  "output": 16.5, "cache_read": 0.33, "cache_write": 4.125, "cache_write_1h": 6.6},
@@ -733,6 +756,10 @@ PRICING_TIERS = {
         "label": "AWS Bedrock",
         "claude_models": {
             "fable":  {"input": 10.0, "output": 50.0, "cache_read": 1.0,  "cache_write": 12.5,  "cache_write_1h": 20.0},
+            # Fable 5.1 / Mythos 5.1: cache reads are 0.025x input ($0.25), not 0.1x.
+            "fable_5_1": {"input": 10.0, "output": 50.0, "cache_read": 0.25, "cache_write": 12.5, "cache_write_1h": 20.0},
+            # Opus 5.5 is $4/$20 with 0.05x cache reads; every other Opus is $5/$25.
+            "opus_5_5": {"input": 4.0, "output": 20.0, "cache_read": 0.2, "cache_write": 5.0, "cache_write_1h": 8.0},
             "opus":   {"input": 5.0,  "output": 25.0, "cache_read": 0.5,  "cache_write": 6.25,  "cache_write_1h": 10.0},
             "sonnet": {"input": 3.0,  "output": 15.0, "cache_read": 0.3,  "cache_write": 3.75,  "cache_write_1h": 6.0},
             # Sonnet 4.6 / 4.5 / 4.0 keep the $3/$15 card. Sonnet 5 (2026-06-30) is $2/$10,
@@ -801,6 +828,8 @@ def _apply_sonnet_intro_pricing(as_of=None):
 _apply_sonnet_intro_pricing()
 
 OPENAI_MODEL_PRICING = {
+    # https://developers.openai.com/api/docs/models/gpt-6-astra
+    "gpt-6-astra": {"input": 10.0, "cache_read": 1.0, "cache_write": 12.50, "output": 50.0},
     # Prices per 1M tokens from OpenAI API pricing/model docs.
     # GPT-5.x family
     "gpt-5-codex": {"input": 1.25, "cache_read": 0.125, "output": 10.0},
@@ -835,6 +864,7 @@ OPENAI_MODEL_PRICING = {
     "o4-mini": {"input": 1.10, "cache_read": 0.275, "output": 4.40},
 }
 OPENAI_LONG_CONTEXT_PRICING = {
+    "gpt-6-astra": {"input": 20.0, "cache_read": 2.0, "cache_write": 25.0, "output": 75.0},
     "gpt-5.4": {"input": 5.0, "cache_read": 0.50, "output": 22.5},
     "gpt-5.5": {"input": 10.0, "cache_read": 1.0, "output": 45.0},
     "gpt-5.6-sol": {"input": 10.0, "cache_read": 1.0, "cache_write": 12.50, "output": 45.0},
@@ -842,6 +872,41 @@ OPENAI_LONG_CONTEXT_PRICING = {
     "gpt-5.6-luna": {"input": 0.40, "cache_read": 0.04, "cache_write": 0.50, "output": 1.80},
 }
 OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272_000
+
+# --- gpt-5.6-sol promotional pricing (date-gated) -------------------------------
+# OpenAI documents the $4/$20 rate as "available at least through November 21, 2026."
+# The canonical OPENAI_MODEL_PRICING / OPENAI_LONG_CONTEXT_PRICING literals above hold
+# the STANDARD card ($5/$30); while the promo window is open we swap the promo card in
+# so dollar savings stay accurate today AND flip back automatically after 2026-11-21
+# with no manual edit. Mirrors _apply_sonnet_intro_pricing (same _pricing_as_of gate).
+_GPT56_SOL_STANDARD = {"input": 5.0, "cache_read": 0.50, "cache_write": 6.25, "output": 30.0}
+_GPT56_SOL_PROMO = {"input": 4.0, "cache_read": 0.40, "cache_write": 5.0, "output": 20.0}
+_GPT56_SOL_LC_STANDARD = {"input": 10.0, "cache_read": 1.0, "cache_write": 12.50, "output": 45.0}
+_GPT56_SOL_LC_PROMO = {"input": 8.0, "cache_read": 0.80, "cache_write": 10.0, "output": 30.0}
+_GPT56_SOL_PROMO_UNTIL = datetime(2026, 11, 21, tzinfo=timezone.utc)
+
+
+def _apply_gpt56_sol_promo_pricing(as_of=None):
+    """Swap the gpt-5.6-sol card to the promotional rate while it is in effect.
+
+    Idempotent (always recomputes from the canonical standard card, so repeated
+    calls / a date change are safe). Returns True when the promotional rate is
+    active. A naive `as_of` (or env date) is interpreted as UTC so the boundary
+    compares apples to apples.
+    """
+    d = as_of or _pricing_as_of()
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    if d < _GPT56_SOL_PROMO_UNTIL:
+        OPENAI_MODEL_PRICING["gpt-5.6-sol"] = dict(_GPT56_SOL_PROMO)
+        OPENAI_LONG_CONTEXT_PRICING["gpt-5.6-sol"] = dict(_GPT56_SOL_LC_PROMO)
+        return True
+    OPENAI_MODEL_PRICING["gpt-5.6-sol"] = dict(_GPT56_SOL_STANDARD)
+    OPENAI_LONG_CONTEXT_PRICING["gpt-5.6-sol"] = dict(_GPT56_SOL_LC_STANDARD)
+    return False
+
+
+_apply_gpt56_sol_promo_pricing()
 
 GEMINI_MODEL_PRICING = {
     # Prices per 1M tokens from ai.google.dev/gemini-api/docs/pricing (May 2026).
@@ -863,6 +928,104 @@ GEMINI_LONG_CONTEXT_PRICING = {
     "gemini-3.1-pro-preview": {"input": 4.0, "cache_read": 0.40, "output": 18.0},
 }
 GEMINI_LONG_CONTEXT_INPUT_THRESHOLD = 200_000
+
+
+# --- Bundled price table (auto-refreshed) --------------------------------------
+# pricing/prices.json is regenerated daily in CI by scripts/refresh_prices.py from
+# Anthropic's pricing page and the LiteLLM price feed, and ships with each release,
+# so new models and price changes arrive without anyone hand-editing the tables
+# above. It is read ONCE at import, read-only: no network, no locks, no writes.
+# The literals above stay as the fallback; the file only adds or updates cards,
+# never removes one. A missing, oversized or malformed file is ignored.
+_PRICES_FILE_MAX_BYTES = 2 * 1024 * 1024
+_PRICE_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+_PRICE_FIELDS = ("input", "output", "cache_read", "cache_write", "cache_write_1h")
+BUNDLED_PRICES_STATUS = {"loaded": False, "path": None, "generated_at": None, "error": None}
+
+
+def _bundled_prices_path():
+    override = os.environ.get("TOKEN_OPTIMIZER_PRICES_FILE", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parent.parent / "pricing" / "prices.json"
+
+
+def _clean_price_cards(section):
+    """Keep only well-formed cards: safe key, finite non-negative rates, input+output present."""
+    out = {}
+    if not isinstance(section, dict):
+        return out
+    for key, card in section.items():
+        if not isinstance(key, str) or not _PRICE_KEY_RE.match(key) or not isinstance(card, dict):
+            continue
+        clean = {}
+        for field in _PRICE_FIELDS:
+            value = card.get(field)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                clean = None
+                break
+            value = float(value)
+            if not math.isfinite(value) or value < 0 or value > 1000:
+                clean = None
+                break
+            clean[field] = value
+        if clean and "input" in clean and "output" in clean:
+            out[key] = clean
+    return out
+
+
+_PROMO_MANAGED_OPENAI_KEYS = frozenset({"gpt-5.6-sol"})
+
+
+def _apply_bundled_prices(path=None):
+    """Merge pricing/prices.json over the built-in rate tables. Returns True when applied."""
+    path = Path(path) if path else _bundled_prices_path()
+    BUNDLED_PRICES_STATUS.update(loaded=False, path=str(path), generated_at=None, error=None)
+    if os.environ.get("TOKEN_OPTIMIZER_BUNDLED_PRICES", "1").strip() == "0":
+        BUNDLED_PRICES_STATUS["error"] = "disabled by TOKEN_OPTIMIZER_BUNDLED_PRICES=0"
+        return False
+    try:
+        if path.stat().st_size > _PRICES_FILE_MAX_BYTES:
+            raise ValueError("prices file too large")
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(doc, dict) or doc.get("schema") != 1:
+            raise ValueError("unsupported prices schema")
+    except (OSError, ValueError) as exc:
+        BUNDLED_PRICES_STATUS["error"] = str(exc)
+        return False
+
+    claude = _clean_price_cards(doc.get("anthropic"))
+    for card in claude.values():
+        card.setdefault("cache_read", round(card["input"] * 0.1, 6))
+        card.setdefault("cache_write", round(card["input"] * 1.25, 6))
+        card.setdefault("cache_write_1h", round(card["input"] * 2, 6))
+    # First-party rates apply on Vertex global and Bedrock; Vertex regional is +10%.
+    for tier_name, tier in PRICING_TIERS.items():
+        mult = 1.1 if tier_name == "vertex-regional" else 1.0
+        for key, card in claude.items():
+            tier["claude_models"][key] = {f: round(v * mult, 6) for f, v in card.items()}
+    for table, section in ((OPENAI_MODEL_PRICING, "openai"),
+                           (OPENAI_LONG_CONTEXT_PRICING, "openai_long_context"),
+                           (GEMINI_MODEL_PRICING, "gemini"),
+                           (GEMINI_LONG_CONTEXT_PRICING, "gemini_long_context")):
+        for key, card in _clean_price_cards(doc.get(section)).items():
+            # The dated promo switch owns this card, so the swap back to the
+            # standard rate still happens on its date whatever the feed says.
+            if key in _PROMO_MANAGED_OPENAI_KEYS:
+                continue
+            card.setdefault("cache_read", card["input"])
+            card.pop("cache_write_1h", None)
+            table[key] = card
+    BUNDLED_PRICES_STATUS.update(loaded=True, generated_at=doc.get("generated_at"))
+    return True
+
+
+# Tests pin a pricing regime with TOKEN_OPTIMIZER_PRICING_AS_OF; the bundled file
+# reflects today's prices, so it is skipped there to keep those regimes exact.
+if not os.environ.get("TOKEN_OPTIMIZER_PRICING_AS_OF"):
+    _apply_bundled_prices()
 
 # ---------------------------------------------------------------------------
 # PROVIDER CACHE-PROFILE REGISTRY  (one source of truth for cache economics)
@@ -1096,7 +1259,7 @@ def _get_model_cost(model, input_tokens, output_tokens, cache_read=0, cache_crea
                 + cache_create * rates.get("cache_write", 0) / 1e6
             )
 
-    normalized = _normalize_model_name(model) if model else None
+    normalized = _claude_price_key(model, tier_data["claude_models"]) if model else None
     if normalized and normalized in tier_data["claude_models"]:
         rates = tier_data["claude_models"][normalized]
     else:
@@ -1137,8 +1300,42 @@ def _is_priced_model(model, tier=None):
     if tier is None:
         tier = _load_pricing_tier()
     tier_data = PRICING_TIERS.get(tier, PRICING_TIERS["anthropic"])
-    normalized = _normalize_model_name(model) if model else None
-    return bool(normalized and normalized in tier_data.get("claude_models", {}))
+    claude_models = tier_data.get("claude_models", {})
+    normalized = _claude_price_key(model, claude_models) if model else None
+    return bool(normalized and normalized in claude_models)
+
+
+_PRICE_ALIAS_CACHE = {}
+_PRICE_MATCH_MEMO = {}
+_MISSING = object()
+
+
+def _price_aliases(table):
+    """Priced ids of a rate table, longest first; cached until the table changes."""
+    sig = (id(table), len(table))
+    cached = _PRICE_ALIAS_CACHE.get(sig)
+    # keys() == frozenset compares in C without building sets: this runs once
+    # per priced request, so a per-call copy of the table showed up in profiles.
+    if cached is None or table.keys() != cached[1]:
+        cached = (tuple(sorted(table, key=len, reverse=True)), frozenset(table))
+        _PRICE_ALIAS_CACHE[sig] = cached
+    return cached[0]
+
+
+def _match_price_alias(value, table):
+    """Longest priced id that `value` equals or extends with "-...", memoized
+    per alias set so repeated model ids resolve with one dict lookup."""
+    aliases = _price_aliases(table)
+    memo = _PRICE_MATCH_MEMO.get(id(table))
+    if memo is None or memo[0] is not aliases:
+        memo = (aliases, {})
+        _PRICE_MATCH_MEMO[id(table)] = memo
+    hit = memo[1].get(value, _MISSING)
+    if hit is _MISSING:
+        hit = next((a for a in aliases if value == a or value.startswith(a + "-")), None)
+        if len(memo[1]) < 4096:
+            memo[1][value] = hit
+    return hit
 
 
 def _normalize_openai_model_name(model):
@@ -1148,38 +1345,15 @@ def _normalize_openai_model_name(model):
     value = re.sub(r"[\s_]+", "-", _strip_provider_prefixes(model))
     if not value or value in {"codex", "openai", "unknown"}:
         return None
-    aliases = (
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.5-pro",
-        "gpt-5.4-mini",
-        "gpt-5.4-nano",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-codex",
-        "gpt-5.3-codex",
-        "gpt-5.2-codex",
-        "gpt-5-codex",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "gpt-5",
-        "gpt-5.5",
-        "gpt-5.4",
-        "gpt-5.2",
-        "gpt-5.1",
-        "gpt-4.1-mini",
-        "gpt-4.1-nano",
-        "gpt-4.1",
-        "gpt-4o-mini",
-        "gpt-4o",
-        "o3-pro",
-        "o3-mini",
-        "o4-mini",
-        "o3",
-    )
-    for alias in aliases:
-        if value == alias or value.startswith(alias + "-"):
-            return alias
+    if value == "gpt-5.6":
+        return "gpt-5.6-sol"  # bare alias: OpenAI's docs name Sol the default 5.6
+    # Every priced id is an alias, longest first so "gpt-5.4-mini" wins over
+    # "gpt-5.4" and dated snapshots ("gpt-5.4-2026-03-05") map to their base.
+    alias = _match_price_alias(value, OPENAI_MODEL_PRICING)
+    if alias == "gpt-5.6":
+        return "gpt-5.6-sol"  # dated bare-5.6 ids follow the same Sol default
+    if alias:
+        return alias
     if value == "gpt-5.6" or value.startswith("gpt-5.6-"):
         return "gpt-5.6-sol"
     return None
@@ -1199,21 +1373,7 @@ def _normalize_gemini_model_name(model):
             _GEMINI_DEPRECATION_WARNED.add(value)
             print(f"[Token Optimizer] WARNING: {value} was deprecated June 1, 2026. Migrate to gemini-2.5-flash or gemini-3.5-flash.", file=sys.stderr)
         return None
-    aliases = (
-        "gemini-3.1-pro-preview",
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash",
-        "gemini-3.1-pro",
-        "gemini-3-flash",
-        "gemini-3-pro",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-    )
-    for alias in aliases:
-        if value == alias or value.startswith(alias + "-"):
-            return alias
-    return None
+    return _match_price_alias(value, GEMINI_MODEL_PRICING)
 
 
 # Process-local cache for _resolve_session_model to avoid re-reading JSONL
@@ -1232,6 +1392,17 @@ def _resolve_session_model(session_id=None):
 
     Never raises. Always returns a normalized name ("opus"|"sonnet"|"haiku"|"sonnet" default).
     """
+    if detect_runtime() == 'codex':
+        # Claude message.model/environment/defaults are not Codex telemetry.
+        # Do not cache across model switches, or borrow another task's model.
+        path = codex_session.find_session_jsonl_by_id(session_id) if session_id else None
+        model = None
+        if path:
+            for record in codex_session._iter_json_records(path):
+                candidate = codex_session._extract_model(codex_session._payload(record))
+                if candidate:
+                    model = candidate
+        return model or (None if session_id else _codex_config_model()) or 'unknown'
     cache_key = session_id or "__env_or_recent__"
     if cache_key in _RESOLVED_MODEL_CACHE:
         return _RESOLVED_MODEL_CACHE[cache_key]
@@ -1264,13 +1435,19 @@ def _resolve_session_model(session_id=None):
         except (OSError, PermissionError):
             pass
 
-    # 2. Try CLAUDE_MODEL env var
+    # 2. Try CLAUDE_MODEL env var — but only for Claude-family runtimes. A
+    # foreign runtime (cursor, grok, opencode, copilot, antigravity) running
+    # on a host that also has CLAUDE_MODEL set would otherwise be priced at
+    # Claude model rates, the exact cross-runtime leak the isolation pass
+    # closes for detect_context_window() and quick_scan().
     if not result:
-        env_model = os.environ.get("CLAUDE_MODEL") or os.environ.get("ANTHROPIC_MODEL")
-        if env_model:
-            norm = _normalize_model_name(env_model)
-            if norm in ("opus", "sonnet", "haiku"):
-                result = norm
+        _rt = detect_runtime()
+        if _rt in ("claude", "hermes"):
+            env_model = os.environ.get("CLAUDE_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+            if env_model:
+                norm = _normalize_model_name(env_model)
+                if norm in ("opus", "sonnet", "haiku"):
+                    result = norm
 
     # 3. Try trends DB for most-recent dominant model
     if not result:
@@ -1317,7 +1494,7 @@ def _simulate_model_switch(session_data, target_model="sonnet"):
     total_input = session_data.get("total_input_tokens", 0)
     total_output = session_data.get("total_output_tokens", 0)
     cache_hit = session_data.get("cache_hit_rate", 0)
-    cache_read = int(total_input * cache_hit)
+    cache_read = _safe_int(total_input * cache_hit)
     uncached = max(0, total_input - cache_read)
 
     dom_model = max(model_usage, key=model_usage.get) if model_usage else "unknown"
@@ -1340,6 +1517,26 @@ def _cost_from_model_breakdown(model_usage_breakdown, tier=None, cache_create_1h
     total = 0.0
     for model, parts in model_usage_breakdown.items():
         if not isinstance(parts, dict):
+            continue
+        # Long-context pricing applies per request, never to a session sum.
+        requests = parts.get('requests')
+        if isinstance(requests, list) and requests:
+            total += sum(_cost_from_model_breakdown({model: request}, tier=tier)
+                         for request in requests if isinstance(request, dict))
+            # Bucket totals include deltas from records that were never
+            # appended to requests (e.g. a cache-read-only turn with zero
+            # input/output, or cache_create which requests never carry).
+            # Price the unpriced remainder at the aggregate rate instead of
+            # silently dropping those tokens from the cost.
+            remainder = {
+                key: max(0, int(parts.get(key) or 0) - sum(
+                    int(request.get(key) or 0) for request in requests
+                    if isinstance(request, dict)))
+                for key in ('fresh_input', 'cache_read', 'output',
+                            'cache_create', 'cache_create_1h', 'cache_create_5m')
+            }
+            if any(remainder.values()):
+                total += _cost_from_model_breakdown({model: remainder}, tier=tier)
             continue
         part_1h = parts.get("cache_create_1h")
         part_5m = parts.get("cache_create_5m")
@@ -1364,6 +1561,45 @@ def _fmt_context_window(size):
     if size >= 1_000_000:
         return f"{size / 1_000_000:.0f}M" if size % 1_000_000 == 0 else f"{size / 1_000_000:.1f}M"
     return f"{size // 1000}K"
+
+
+# ANSI/VT escape sequences: CSI (\x1b[ ... final byte), OSC (\x1b] ... BEL or
+# ST), charset/two-byte sequences. Session-log text is attacker-influenceable;
+# strip before echoing it to a terminal (coach previews, subagent names).
+_ANSI_ESCAPE_RE = re.compile(
+    r"\x1b\[[0-9;:<=>?]*[ -/]*[@-~]"   # CSI (full ECMA-48 parameter bytes 0x30-0x3f)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC ... BEL or ST
+    r"|\x1b[()][0-2A-Z]"                # charset selection
+    r"|\x1b[@-Z\\-_]"                   # remaining two-byte escapes
+    r"|\x1b\]"                          # bare OSC introducer (unterminated)
+    r"|\x1b\[[\x00-\x1f]*[ -/]*[@-~]"   # CSI with control bytes before final
+    r"|\x1b\["                          # bare CSI introducer (unterminated)
+)
+_BEL_RE = re.compile(r"\x07")
+
+
+def _strip_ansi(text):
+    """Remove ANSI/VT escape sequences from text destined for the terminal."""
+    if not isinstance(text, str):
+        text = str(text) if text is not None else ""
+    text = _ANSI_ESCAPE_RE.sub("", text)
+    # Strip stray BEL characters left by malformed OSC sequences whose
+    # terminator survived the OSC branch (embedded ESC broke the match).
+    return _BEL_RE.sub("", text)
+
+
+def _safe_int(value):
+    """Coerce to int, mapping non-finite/garbage input to 0.
+
+    Claude-path equivalent of codex_session._safe_int: json.loads accepts the
+    non-standard Infinity/NaN literals, so a corrupt or hostile transcript can
+    put float("inf")/nan into usage fields where int() then raises
+    OverflowError/ValueError — neither caught by the readers' OSError guards.
+    """
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
 
 def estimate_tokens_from_file(filepath):
@@ -3080,7 +3316,9 @@ def _codex_config_int(name: str) -> int | None:
     value = _read_codex_config().get(name)
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # TOML allows `inf`/`nan` literals: int(inf) raises OverflowError,
+        # int(nan) ValueError — both mean "no usable value", skip the key.
         return None
     return parsed if parsed > 0 else None
 
@@ -3172,11 +3410,16 @@ def detect_context_window():
     raw = _ctx_size_override
     if raw:
         try:
-            return remember((int(raw), "env: TOKEN_OPTIMIZER_CONTEXT_SIZE"))
+            _parsed_ctx = int(raw)
         except ValueError:
-            pass
+            _parsed_ctx = 0
+        # Mirror _codex_config_int's >0 guard: "0"/negative/garbage would
+        # otherwise yield ctx_window<=0 and crash every `overhead / ctx_window`
+        # division downstream.
+        if _parsed_ctx > 0:
+            return remember((_parsed_ctx, "env: TOKEN_OPTIMIZER_CONTEXT_SIZE"))
     # CLI override (set by --context-size flag)
-    if _cli_context_size:
+    if _cli_context_size and _cli_context_size > 0:
         return remember((_cli_context_size, "cli: --context-size"))
     if detect_runtime() == "codex":
         logged_window, session_name = _latest_codex_logged_context_window()
@@ -3185,7 +3428,15 @@ def detect_context_window():
         configured_window = _codex_config_int("model_context_window")
         if configured_window:
             return remember((configured_window, "codex config: model_context_window"))
-        model = os.environ.get("CODEX_MODEL") or os.environ.get("OPENAI_MODEL") or _codex_config_model()
+        model = ((os.environ.get("CODEX_MODEL") or "").strip()
+                 or (os.environ.get("OPENAI_MODEL") or "").strip()
+                 or _codex_config_model())
+        import codex_models
+        window = codex_models.effective_window(model)
+        if window:
+            return remember((window, f'Codex model catalog: {model}'))
+        if _normalize_openai_model_name(model) == 'gpt-6-astra':
+            return remember((1_050_000, 'OpenAI published GPT-6 Astra context window'))
         model_note = f" for {model}" if model else ""
         return remember((CODEX_DEFAULT_EFFECTIVE_CONTEXT_WINDOW, f"Codex conservative effective window{model_note} (override: TOKEN_OPTIMIZER_CONTEXT_SIZE)"))
     # Hermes: Hermes does not expose a model field in
@@ -3199,6 +3450,13 @@ def detect_context_window():
             if _is_1m_model(model):
                 return remember((1_000_000, f"hermes env: {model} (1M)"))
         return remember((200_000, "hermes default (200K. Override: TOKEN_OPTIMIZER_CONTEXT_SIZE)"))
+    # Foreign runtimes (cursor, antigravity, grok, opencode, copilot) must not
+    # inherit Claude's model env vars, ~/.claude config, or the 1M Claude
+    # default — a conservative labeled default, always overridable via
+    # TOKEN_OPTIMIZER_CONTEXT_SIZE.
+    _rt = detect_runtime()
+    if _rt != "claude":
+        return remember((200_000, f"{_rt} default (200K conservative. Override: TOKEN_OPTIMIZER_CONTEXT_SIZE)"))
     # Detect from model string in environment
     model = os.environ.get("CLAUDE_MODEL", "").lower()
     if not model:
@@ -3317,6 +3575,12 @@ def _interpolate_curve(value, curve):
 
 def _quality_curve_for_model(model):
     m = str(model or "").lower()
+    if 'gpt-5.6' in m or 'daybreak' in m or m == 'gpt-reserve':
+        return 'openai-gpt-5.5-proxy (uncalibrated)', _OPENAI_GPT55_MRCR_TOKENS, 'absolute_tokens'
+    if 'gpt-6-astra' in m:
+        # No calibrated Astra retrieval curve is bundled. Label the proxy
+        # explicitly instead of silently treating Astra as an Anthropic model.
+        return 'openai-gpt-5.5-proxy-for-astra (uncalibrated)', _OPENAI_GPT55_MRCR_TOKENS, 'absolute_tokens'
     if "gemini" in m:
         return "google-gemini", _GEMINI_MRCR_TOKENS, "absolute_tokens"
     if "gpt-5.5" in m:
@@ -3432,6 +3696,7 @@ def quick_scan(as_json=False):
     components = measure_components()
     totals = calculate_totals(components)
     ctx_window, ctx_source = detect_context_window()
+    ctx_window = max(int(ctx_window or 0), 1)  # every division below needs >0
     ctx_label = _fmt_context_window(ctx_window)
 
     overhead = totals["estimated_total"]
@@ -3444,7 +3709,34 @@ def quick_scan(as_json=False):
 
     # Current session fill estimate (overhead only, no session data)
     fill_pct = overhead / ctx_window
-    quality_est = _estimate_quality_from_fill(fill_pct)
+    # Resolve the model so Codex never gets scored on the Anthropic curve.
+    # Codex sessions run gpt-5.x-codex variants; env/config resolution covers
+    # the common cases, and "codex" as fallback maps to the published
+    # openai-gpt-5 MRCR curve rather than anthropic-default.
+    _rt = detect_runtime()
+    if _rt == "codex":
+        _qmodel = ((os.environ.get("CODEX_MODEL") or "").strip()
+                   or (os.environ.get("OPENAI_MODEL") or "").strip()
+                   or _codex_config_model() or "codex")
+    elif _rt in ("claude", "hermes"):
+        _qmodel = os.environ.get("CLAUDE_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+    else:
+        # Foreign runtimes have no Claude-model settings to read — leave the
+        # model unresolved rather than inherit another runtime's env vars.
+        _qmodel = None
+    quality_est, _qcurve = _estimate_quality_with_curve(fill_pct, model=_qmodel, context_window=ctx_window)
+    if _rt == "codex" and _qcurve == "anthropic-default":
+        # Custom/unknown Codex model string (o3, gpt-4.1, custom-provider
+        # names) matched no known family — a Codex session must never be
+        # scored or labeled on the Anthropic curve. Fall back to the
+        # documented Codex default.
+        quality_est, _qcurve = _estimate_quality_with_curve(
+            fill_pct, model="codex", context_window=ctx_window)
+    elif _rt not in ("claude", "hermes", "codex") and _qcurve == "anthropic-default":
+        # No model-family knowledge for this runtime — the estimate came from
+        # the generic fill-fraction curve, so label it honestly instead of
+        # implying an Anthropic curve scored a foreign runtime.
+        _qcurve = "generic-fill"
     band_name, band_color = _degradation_band(fill_pct)
 
     # Top offenders
@@ -3495,8 +3787,11 @@ def quick_scan(as_json=False):
                              f"AGENTS.md chain ({agents_md_lines} lines)"))
     mem = components.get("memory_md", {})
     if mem.get("tokens", 0) > 0:
+        # Under Codex this component holds state_*.sqlite memory, not a
+        # MEMORY.md file — label it for the runtime the user is on.
+        _mem_label = "Codex memories" if _rt == "codex" else "MEMORY.md"
         offenders.append(("memory_md", mem.get("lines", 0), mem.get("tokens", 0),
-                         f"MEMORY.md ({mem.get('lines', 0)} lines)"))
+                         f"{_mem_label} ({mem.get('lines', 0)} lines)"))
 
     # Sort by tokens descending, top 3
     offenders.sort(key=lambda x: -x[2])
@@ -3508,15 +3803,41 @@ def quick_scan(as_json=False):
         trends = _collect_trends_data(days=30)
         if trends and detect_runtime() != "codex":
             never_used = trends.get("skills", {}).get("never_used", [])
+            active_names = set(skills.get("names", []))
+            never_used = sorted({n for n in never_used
+                                 if n in active_names and not _is_own_tool_skill(n)})
             if len(never_used) >= 3:
-                avg_per_skill = skills.get("tokens", 0) // max(skills.get("count", 1), 1)
-                savings = len(never_used) * avg_per_skill
-                quick_win = {
-                    "action": f"Review {len(never_used)} skills not invoked in the window",
-                    "savings": savings,
-                    "detail": f"save ~{savings:,} tokens/session",
-                    "extend": f"Extends peak quality zone by ~{savings:,} tokens",
-                }
+                # Same rule as the coach's unused-skill savings: measured
+                # per-skill frontmatter only — never count x inventory average
+                # (which reports the inventory bound when most skills are
+                # unused) and never count x a flat constant.
+                detail_map = components.get("skills_detail", {})
+                measured = 0
+                unmeasured = 0
+                for _n in never_used:
+                    try:
+                        _t = int((detail_map.get(_n) or {}).get("frontmatter_tokens") or 0)
+                    except (TypeError, ValueError, OverflowError):
+                        _t = 0
+                    if _t > 0:
+                        measured += _t
+                    else:
+                        unmeasured += 1
+                if measured > 0:
+                    _unm = f" ({unmeasured} of {len(never_used)} lack per-skill measurement)" if unmeasured else ""
+                    quick_win = {
+                        "action": f"Review {len(never_used)} skills not invoked in the window",
+                        "savings": measured,
+                        "detail": f"save ~{measured:,} measured tokens/session{_unm}",
+                        "extend": f"Extends peak quality zone by ~{measured:,} tokens",
+                    }
+                else:
+                    quick_win = {
+                        "action": f"Review {len(never_used)} skills not invoked in the window",
+                        "savings": 0,
+                        "detail": "savings unknown: per-skill measurements unavailable",
+                        "extend": "Removing unused skills extends the peak quality zone",
+                    }
     except Exception:
         pass
 
@@ -3600,6 +3921,10 @@ def quick_scan(as_json=False):
             "messages_before_compact": msgs_before_compact,
             "fill_pct": round(fill_pct * 100, 1),
             "quality_estimate": quality_est,
+            "quality_curve": _qcurve,
+            "quality_basis": (
+                f"heuristic: {_qcurve} MRCR curve at current startup fill; not a measured per-session score"
+            ),
             "grade": grade,
             "degradation_band": band_name,
             "top_offenders": [
@@ -3622,7 +3947,7 @@ def quick_scan(as_json=False):
 
     print("\n  DEGRADATION RISK")
     print(f"    Current startup fill:  {fill_pct * 100:.0f}% ({overhead:,}) -- {band_name}")
-    print(f"    Quality estimate:      {grade} ({quality_est}/100) (MRCR-based at this fill level)")
+    print(f"    Quality estimate:      {grade} ({quality_est}/100) ({_qcurve} MRCR curve at this fill level; heuristic, not measured)")
     next_danger = int(ctx_window * 0.50)
     print(f"    Next danger zone:      {next_danger:,} (50%, \"lost in the middle\" begins)")
     compact_at = int(ctx_window * 0.80)
@@ -4415,11 +4740,13 @@ def print_snapshot_summary(snapshot):
     print(f"  {core_label:<35s} {core.get('tokens', 0):>6,} tokens")
 
     print(f"  {'=' * 53}")
+    # Minimal/external snapshots may carry only `total_overhead`.
+    est_total = t.get("estimated_total", t.get("total_overhead", 0))
     total_label = "LOCAL FOOTPRINT (measurable)" if _cowork else "ESTIMATED TOTAL"
-    print(f"  {total_label:<35s} {t['estimated_total']:>6,} tokens")
+    print(f"  {total_label:<35s} {est_total:>6,} tokens")
     ctx_window, ctx_source = detect_context_window()
     ctx_label = _fmt_context_window(ctx_window)
-    pct_of_ctx = t['estimated_total'] / ctx_window * 100
+    pct_of_ctx = est_total / ctx_window * 100 if ctx_window else 0
     if _cowork:
         # The denominator (context window) is real, but the numerator is ONLY the
         # locally-controllable slice: platform overhead is not counted, so this %
@@ -4479,10 +4806,11 @@ def print_snapshot_summary(snapshot):
     truncated_descs = [s for s in all_verbose if s.get("truncated")]
     verbose_descs = [s for s in all_verbose if not s.get("truncated")]
     if truncated_descs:
-        names = [s["name"] for s in truncated_descs]
+        # Skill names come from SKILL.md frontmatter — attacker-influenceable.
+        names = [_strip_ansi(str(s["name"])) for s in truncated_descs]
         print(f"  TRUNCATED skill descriptions (>1,536 chars): {len(truncated_descs)} ({', '.join(names[:5])}{'...' if len(truncated_descs) > 5 else ''})")
     if verbose_descs:
-        names = [s["name"] for s in verbose_descs]
+        names = [_strip_ansi(str(s["name"])) for s in verbose_descs]
         print(f"  Verbose skill descriptions (>200 chars): {len(verbose_descs)} ({', '.join(names[:5])}{'...' if len(verbose_descs) > 5 else ''})")
 
     # Calibration gap
@@ -4724,6 +5052,36 @@ def _daemon_is_running():
     return False
 
 
+def _launch_opener(argv):
+    """Run a browser opener detached from our terminal (#199).
+
+    The opener and the browser it starts must not inherit our stdin/stdout/
+    stderr: Chrome logs freely to whatever stderr it gets, which painted over
+    TUI hosts like OpenCode. A new session keeps a TUI's Ctrl-C from reaching
+    the browser. We still wait briefly so a failing opener (bad exit code)
+    falls back to printing the URL; a slow opener is assumed to have launched.
+    """
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=(os.name == "posix"),
+        creationflags=_NO_WINDOW,
+    )
+    try:
+        rc = proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        # A slow or hung opener: reap it in the background (no zombie, no
+        # ResourceWarning) and say where the page is, so a hang is never silent.
+        import threading
+        threading.Thread(target=proc.wait, daemon=True).start()
+        print(f"  Browser is slow to open. If nothing appears, open: {argv[-1]}")
+        return
+    if rc != 0:
+        raise subprocess.CalledProcessError(rc, argv)
+
+
 def _open_in_browser(filepath):
     """Open a file in the default browser. Cross-platform.
 
@@ -4735,9 +5093,9 @@ def _open_in_browser(filepath):
     system = platform.system()
     try:
         if system == "Darwin":
-            subprocess.run(["open", filepath], check=True, timeout=10, creationflags=_NO_WINDOW)
+            _launch_opener(["open", filepath])
         elif system == "Linux":
-            subprocess.run(["xdg-open", filepath], check=True, timeout=10, creationflags=_NO_WINDOW)
+            _launch_opener(["xdg-open", filepath])
         elif system == "Windows":
             os.startfile(filepath)
         else:
@@ -4766,9 +5124,9 @@ def _open_dashboard(fallback_filepath):
         system = platform.system()
         try:
             if system == "Darwin":
-                subprocess.run(["open", url], check=True, timeout=10, creationflags=_NO_WINDOW)
+                _launch_opener(["open", url])
             elif system == "Linux":
-                subprocess.run(["xdg-open", url], check=True, timeout=10, creationflags=_NO_WINDOW)
+                _launch_opener(["xdg-open", url])
             elif system == "Windows":
                 os.startfile(url)
             else:
@@ -5151,6 +5509,8 @@ def _codex_state_summary():
         "effort": None,
         "compaction": None,
     }
+    import codex_models
+    summary['available_models'] = codex_models.visible_models()
     try:
         current = codex_session.find_current_session_jsonl()
         if current:
@@ -5937,6 +6297,28 @@ def _collect_codex_skill_inventory(cfg: dict, *, project: Path) -> dict[str, lis
     if plugin_cache.exists():
         candidates.extend((p, "plugin") for p in plugin_cache.rglob("skills/*/SKILL.md"))
 
+    # Plugins disabled in config.toml ([plugins."name@marketplace"] enabled=false)
+    # do not expose their cached skills to the model — they belong in "disabled",
+    # not "active", or the inventory reports an advertised surface larger than
+    # what Codex actually loads.
+    disabled_plugin_keys: set[str] = set()
+    plugins_cfg = cfg.get("plugins")
+    if isinstance(plugins_cfg, dict):
+        for _pkey, _pcfg in plugins_cfg.items():
+            if isinstance(_pcfg, dict) and not _pcfg.get("enabled", True):
+                disabled_plugin_keys.add(str(_pkey))
+
+    def _plugin_key_for(path_str: str) -> str | None:
+        # Cache layout: <cache>/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md
+        try:
+            rel = Path(path_str).relative_to(plugin_cache.resolve(strict=False))
+        except ValueError:
+            return None
+        parts = rel.parts
+        if len(parts) >= 5 and parts[-3] == "skills":
+            return f"{parts[1]}@{parts[0]}"
+        return None
+
     active = []
     disabled = []
     seen: set[str] = set()
@@ -5957,7 +6339,8 @@ def _collect_codex_skill_inventory(cfg: dict, *, project: Path) -> dict[str, lis
             "disable_cmd": f"TOKEN_OPTIMIZER_RUNTIME=codex python3 {mp_cmd} codex-skill disable --path {shlex.quote(resolved)}",
             "enable_cmd": f"TOKEN_OPTIMIZER_RUNTIME=codex python3 {mp_cmd} codex-skill enable --path {shlex.quote(resolved)}",
         }
-        if resolved in disabled_paths:
+        _pkey = _plugin_key_for(resolved)
+        if resolved in disabled_paths or (_pkey is not None and _pkey in disabled_plugin_keys):
             disabled.append(item)
         else:
             active.append(item)
@@ -7610,8 +7993,17 @@ def _spawn_detached_dashboard_selfheal(days=30, force=False):
             creationflags=(getattr(subprocess, "DETACHED_PROCESS", 0) | _NO_WINDOW),
             **popen_kw,
         )
-    except Exception:
-        pass
+    except Exception as _e:
+        # Fire-and-forget: never raise (a failed self-heal must not break the
+        # hook). But DO leave a breadcrumb — every other spawn site calls
+        # _log_spawn_failure; this was the only one that swallowed silently,
+        # leaving the dashboard stale forever with no diagnostic trail.
+        try:
+            _log_spawn_failure(
+                "dashboard self-heal spawn failed: %s: %s" % (type(_e).__name__, _e)
+            )
+        except Exception:
+            pass
 
 
 # Thundering-herd guard for the version-bump dashboard self-heal. The marker is
@@ -7839,18 +8231,14 @@ def _generate_codex_auto_recommendations(components, trends=None, days=30):
             "Start with plugin bundles outside your daily work; they are reversible."
         )
     verbose = components.get("skill_frontmatter_quality", {}).get("verbose_skills", [])
-    codex_truncated = [s for s in verbose if s.get("truncated")]
-    very_verbose = [s for s in verbose if not s.get("truncated")]
-    if codex_truncated:
-        names = ", ".join(s["name"] for s in codex_truncated[:8])
-        quick.append(
-            f"**{len(codex_truncated)} Codex skill descriptions exceed 1,536 chars (truncated)**: "
-            f"{names}{'...' if len(codex_truncated) > 8 else ''}. "
-            "The overflow loads every session but is silently cut from the skill listing. "
-            "Move detailed usage instructions into the SKILL.md body."
-        )
+    # The shared scan's `truncated` flag marks >1,536-char descriptions — a
+    # Claude Code listing behavior. Codex does not cut descriptions at that
+    # limit (the coach's W6 invariant), so those entries are simply very long
+    # descriptions here, not a silent-truncation claim.
+    very_verbose = verbose
     if very_verbose:
-        names = ", ".join(s["name"] for s in very_verbose[:8])
+        # Frontmatter names are attacker-influenceable — strip escapes.
+        names = ", ".join(_strip_ansi(str(s["name"])) for s in very_verbose[:8])
         quick.append(
             f"**Tighten {len(very_verbose)} Codex skill descriptions (>200 chars)**: "
             f"{names}{'...' if len(very_verbose) > 8 else ''}. "
@@ -7907,6 +8295,121 @@ def _generate_codex_auto_recommendations(components, trends=None, days=30):
         "**Start fresh between unrelated Codex tasks**: "
         "Session continuity is valuable inside a task, but stale tool outputs and old plans hurt quality. Use a new thread or compact/checkpoint when the objective changes."
     )
+
+    sections = []
+    if quick:
+        sections.append("## Quick Wins\n\n" + "\n\n".join(f"- [ ] {item}" for item in quick))
+    if medium:
+        sections.append("## Medium Effort\n\n" + "\n\n".join(f"- [ ] {item}" for item in medium))
+    if deep:
+        sections.append("## Deep Optimization\n\n" + "\n\n".join(f"- [ ] {item}" for item in deep))
+    if habits:
+        sections.append("## Behavioral Habits\n\n" + "\n\n".join(f"- [ ] {item}" for item in habits))
+
+    plan_md = "\n\n".join(sections) if sections else ""
+    total_count = len(quick) + len(medium) + len(deep) + len(habits)
+    return plan_md, total_count
+
+
+def _generate_foreign_auto_recommendations(components, trends=None, days=30):
+    """Optimization plan for runtimes with no Claude/Codex instruction-file
+    surface (cursor, antigravity, grok, opencode, copilot, hermes).
+
+    The Claude rules (CLAUDE.md/MEMORY.md trimming, ~/.claude paths, Anthropic
+    line guidance) must never reach these users, and we do not fabricate
+    runtime-specific knobs we cannot verify. Only runtime-neutral advice is
+    emitted; when no measurable surface exists, the plan says so plainly.
+    """
+    quick = []
+    medium = []
+    deep = []
+    habits = []
+
+    rt_label = runtime_name_for_humans()
+
+    skills = components.get("skills", {})
+    if skills.get("count", 0) > 0 and skills.get("tokens", 0) > 0:
+        medium.append(
+            f"**Audit the installed skill surface ({skills['count']} skills, ~{skills['tokens']:,} metadata tokens)**: "
+            f"Skill names and descriptions shape tool discovery before the first prompt. "
+            f"Disable or remove skills you do not use via {rt_label}'s own configuration."
+        )
+    verbose = components.get("skill_frontmatter_quality", {}).get("verbose_skills", [])
+    if verbose:
+        names = ", ".join(_strip_ansi(str(s["name"])) for s in verbose[:8])
+        medium.append(
+            f"**Tighten {len(verbose)} verbose skill descriptions (>200 chars)**: "
+            f"{names}{'...' if len(verbose) > 8 else ''}. "
+            "Descriptions should be trigger text, not documentation; keep usage detail in the skill body."
+        )
+
+    mcp = components.get("mcp_tools", {})
+    mcp_servers = int(mcp.get("server_count", 0) or 0)
+    if mcp_servers > 8:
+        medium.append(
+            f"**Audit MCP servers ({mcp_servers} configured)**: "
+            "Each server can expand the active tool surface with names, descriptions, and schemas. "
+            f"Disable duplicate or rarely used servers in {rt_label}'s MCP configuration."
+        )
+
+    # Unused skills — same review shape as the Claude rule but with
+    # runtime-neutral grep/archive wording and the runtime's own slim clause
+    # (no name-only / disable-model-invocation claims outside Claude Code).
+    if trends:
+        never_used = [
+            s for s in trends.get("skills", {}).get("never_used", [])
+            if not _is_own_tool_skill(s)
+        ]
+        _si = components.get("skills", {})
+        _actual_avg = (_si.get("tokens", 0) // max(_si.get("count", 1), 1)
+                       if _si.get("count", 0) > 0 else TOKENS_PER_SKILL_APPROX)
+        installed_count = trends.get("skills", {}).get("installed_count", 0)
+        if len(never_used) >= 5:
+            overhead = len(never_used) * _actual_avg
+            show_count = min(len(never_used), 8)
+            skill_list = ", ".join(_strip_ansi(str(s)) for s in sorted(never_used)[:show_count])
+            remaining = len(never_used) - show_count
+            quick.append(
+                f"**Review {show_count} skills not invoked in {days} days ({len(never_used)} of {installed_count})**: "
+                f"Each installed skill can cost ~{_actual_avg} tokens in the startup listing, every session, whether you use it or not.\n"
+                f"  Start with these: {skill_list}"
+                + (f"\n  ({remaining} more will surface after you archive these and re-run.)" if remaining > 0 else "") +
+                f"\n  For each skill, ask: do I use this? Is it seasonal? Does anything depend on it? "
+                f"(grep for the skill name in {rt_label}'s instruction, rules, and skills files)"
+                + _skill_slim_clause(_actual_avg, detect_runtime()) +
+                f"  Archive (harder step, for truly-dead skills) by moving the skill directory to a backup folder OUTSIDE {rt_label}'s skills directory. "
+                f"Restore any skill by moving it back. "
+                f"~{overhead:,} tokens recoverable across all {len(never_used)}."
+            )
+        elif len(never_used) >= 2:
+            overhead = len(never_used) * _actual_avg
+            skill_list = ", ".join(_strip_ansi(str(s)) for s in sorted(never_used))
+            medium.append(
+                f"**Review {len(never_used)} skills not invoked in {days} days**: "
+                f"{skill_list}."
+                + _skill_slim_clause(_actual_avg, detect_runtime()) +
+                f"  Or archive truly-dead skills by moving them to a backup folder OUTSIDE {rt_label}'s skills directory. "
+                f"~{overhead:,} tokens recoverable."
+            )
+
+    habits.append(
+        "**Scope sessions to one task**: Every runtime degrades as transcripts grow — "
+        "start a fresh session between unrelated tasks rather than letting one "
+        "conversation accumulate stale context."
+    )
+    habits.append(
+        "**Keep the stable prompt prefix stable**: Prompt caching across runtimes "
+        "rewards an unchanged instruction/tool prefix — avoid churning enabled "
+        "skills, servers, or instructions mid-session."
+    )
+
+    if not (quick or medium or deep):
+        quick.append(
+            f"**No locally measurable startup overhead for {rt_label}**: "
+            "This runtime does not expose a Claude/Codex-style instruction file or "
+            "skill manifest to Token Optimizer, so there is nothing to trim. The "
+            "habits below still apply."
+        )
 
     sections = []
     if quick:
@@ -8005,8 +8508,15 @@ def generate_auto_recommendations(components, trends=None, days=30):
 
     Returns (plan_markdown_string, recommendation_count).
     """
-    if detect_runtime() == "codex":
+    _rec_rt = detect_runtime()
+    if _rec_rt == "codex":
         return _generate_codex_auto_recommendations(components, trends=trends, days=days)
+    if _rec_rt != "claude":
+        # Foreign runtimes (hermes, cursor, antigravity, grok, opencode,
+        # copilot): the rules below emit Claude-only content — CLAUDE.md,
+        # MEMORY.md, ~/.claude paths, Anthropic line guidance — so they get a
+        # runtime-neutral plan instead of the Claude rule set.
+        return _generate_foreign_auto_recommendations(components, trends=trends, days=days)
 
     quick = []
     medium = []
@@ -8107,7 +8617,7 @@ def generate_auto_recommendations(components, trends=None, days=30):
         if len(never_used) >= 5:
             overhead = len(never_used) * _actual_avg
             show_count = min(len(never_used), 8)
-            skill_list = ", ".join(sorted(never_used)[:show_count])
+            skill_list = ", ".join(_strip_ansi(str(s)) for s in sorted(never_used)[:show_count])
             remaining = len(never_used) - show_count
             quick.append(
                 f"**Review {show_count} skills not invoked in {days} days ({len(never_used)} of {installed_count}, counting Skill calls and slash commands)**: "
@@ -8123,7 +8633,7 @@ def generate_auto_recommendations(components, trends=None, days=30):
             )
         elif len(never_used) >= 2:
             overhead = len(never_used) * _actual_avg
-            skill_list = ", ".join(sorted(never_used))
+            skill_list = ", ".join(_strip_ansi(str(s)) for s in sorted(never_used))
             medium.append(
                 f"**Review {len(never_used)} skills not invoked in {days} days**: "
                 f"No Skill call or slash command for these in {days} days: {skill_list}."
@@ -8185,7 +8695,7 @@ def generate_auto_recommendations(components, trends=None, days=30):
     very_verbose = [s for s in verbose if not s.get("truncated")]
     moderate_verbose = [s for s in verbose if 120 < s.get("description_chars", 0) <= 200]
     if truncated:
-        names = [s["name"] for s in truncated[:10]]
+        names = [_strip_ansi(str(s["name"])) for s in truncated[:10]]
         est_waste = sum(int((s["description_chars"] - _SKILL_DESC_TRUNCATION_LIMIT) / CHARS_PER_TOKEN) for s in truncated)
         quick.append(
             f"**{len(truncated)} skill descriptions TRUNCATED by Claude Code (>1,536 chars)**: "
@@ -8196,7 +8706,7 @@ def generate_auto_recommendations(components, trends=None, days=30):
             f"~{est_waste:,} tokens wasted."
         )
     if very_verbose:
-        names = [s["name"] for s in very_verbose[:10]]
+        names = [_strip_ansi(str(s["name"])) for s in very_verbose[:10]]
         est_waste = sum(int((s["description_chars"] - 80) / CHARS_PER_TOKEN) for s in very_verbose)
         quick.append(
             f"**Tighten {len(very_verbose)} verbose skill descriptions (>200 chars)**: "
@@ -8206,7 +8716,7 @@ def generate_auto_recommendations(components, trends=None, days=30):
             f"~{est_waste:,} tokens recoverable."
         )
     if moderate_verbose:
-        names = [s["name"] for s in moderate_verbose[:10]]
+        names = [_strip_ansi(str(s["name"])) for s in moderate_verbose[:10]]
         est_waste = sum(int((s["description_chars"] - 80) / CHARS_PER_TOKEN) for s in moderate_verbose)
         medium.append(
             f"**Tighten {len(moderate_verbose)} verbose skill descriptions (120-200 chars, target 80)**: "
@@ -8307,7 +8817,7 @@ def generate_auto_recommendations(components, trends=None, days=30):
     plugin_suspicious = components.get("plugin_skills", {}).get("suspicious_paths", [])
     if plugin_dupes:
         dupe_count = sum(len(v) - 1 for v in plugin_dupes.values())
-        dupe_names = list(plugin_dupes.keys())
+        dupe_names = [_strip_ansi(str(n)) for n in plugin_dupes.keys()]
         # Estimate wasted tokens: each duplicate copy loads the same skill frontmatter again
         avg_tokens = TOKENS_PER_SKILL_APPROX
         ps_data = components.get("plugin_skills", {})
@@ -8507,9 +9017,24 @@ def generate_coach_data(focus=None, components=None, trends=None):
         components = measure_components()
     totals = calculate_totals(components)
     context_window = detect_context_window()[0]
-    is_codex = detect_runtime() == "codex"
-    instruction_label = "AGENTS.md" if is_codex else "CLAUDE.md"
-    memory_label = "Codex memories" if is_codex else "MEMORY.md"
+    _rt = detect_runtime()
+    is_codex = _rt == "codex"
+    is_claude = _rt == "claude"
+    # Claude-family = Claude-model runtimes where Sonnet/Haiku routing advice
+    # is valid. File surfaces (CLAUDE.md, ~/.claude paths) are Claude-only —
+    # hermes runs Claude models but has no CLAUDE.md.
+    is_claude_family = _rt in ("claude", "hermes")
+    if is_codex:
+        instruction_label = "AGENTS.md"
+        memory_label = "Codex memories"
+    elif is_claude:
+        instruction_label = "CLAUDE.md"
+        memory_label = "MEMORY.md"
+    else:
+        # Foreign runtimes (cursor, antigravity, grok, opencode, copilot,
+        # hermes) have no CLAUDE.md/MEMORY.md surface — label generically.
+        instruction_label = "agent instructions"
+        memory_label = "agent memory"
 
     # Collect trends if not provided
     if trends is None:
@@ -8534,10 +9059,47 @@ def generate_coach_data(focus=None, components=None, trends=None):
     skills = components.get("skills", {})
     skill_count = skills.get("count", 0)
     skill_tokens = skills.get("tokens", 0)
+    if is_codex:
+        # The Codex scan splits plugin-delivered skills into plugin_skills, but
+        # their name+description metadata is advertised to the model exactly
+        # like user skills — the headline must count both or it under-reports
+        # the real startup surface.
+        plugin_skills = components.get("plugin_skills", {})
+        skill_count += plugin_skills.get("count", 0)
+        skill_tokens += plugin_skills.get("tokens", 0)
     # context_window already set above via detect_context_window() — don't overwrite with stale snapshot value
     skill_pct = skill_tokens / context_window * 100 if context_window else 0
     unused_skills = trends.get("skills", {}).get("never_used", []) if trends else []
-    unused_count = len(unused_skills) if unused_skills else 0
+    active_names = set(skills.get("names", []))
+    if is_codex:
+        active_names.update(components.get("plugin_skills", {}).get("names", []))
+    unused_skills = sorted({name for name in unused_skills
+                            if name in active_names and not _is_own_tool_skill(name)})
+    unused_count = len(unused_skills)
+    # Savings come from per-skill measurement only: sum the unused candidates'
+    # own measured frontmatter tokens. Unmeasured names are reported as such —
+    # never an inventory-wide upper bound and never count x a flat constant.
+    skills_detail = components.get("skills_detail", {})
+    unused_measured_tokens = 0
+    unused_unmeasured = 0
+    for _name in unused_skills:
+        _raw_toks = (skills_detail.get(_name) or {}).get("frontmatter_tokens")
+        try:
+            _toks = int(_raw_toks)
+        except (TypeError, ValueError, OverflowError):
+            # NaN/inf/non-numeric entries are unmeasured, not a coach crash.
+            _toks = 0
+        if _toks > 0:
+            unused_measured_tokens += _toks
+        else:
+            unused_unmeasured += 1
+    if unused_measured_tokens > 0 and unused_unmeasured == 0:
+        unused_savings = f"~{unused_measured_tokens:,} tokens (measured descriptions of the {unused_count} unused skills)"
+    elif unused_measured_tokens > 0:
+        unused_savings = (f"~{unused_measured_tokens:,} tokens measured for the unused set "
+                          f"({unused_unmeasured} of {unused_count} lack per-skill measurement)")
+    else:
+        unused_savings = "Unknown: per-skill token measurements unavailable for the unused set"
     unused_ratio = unused_count / skill_count if skill_count > 0 else 0
     if unused_count > 20 and skill_pct > 2 and unused_ratio > 0.8:
         skill_fix = (
@@ -8552,7 +9114,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
             "severity": "high",
             "detail": f"{unused_count} of {skill_count} skills unused in 30 days ({skill_tokens:,} tokens, {skill_pct:.1f}% of context)",
             "fix": skill_fix,
-            "savings": f"~{unused_count * TOKENS_PER_SKILL_APPROX:,} tokens from unused skills",
+            "savings": unused_savings,
         })
         score -= 7
     elif unused_count > 15 and unused_ratio > 0.6:
@@ -8562,12 +9124,12 @@ def generate_coach_data(focus=None, components=None, trends=None):
             "severity": "low",
             "detail": f"{unused_count} of {skill_count} skills unused in 30 days. Some may be seasonal.",
             "fix": "Review for skills you've truly abandoned vs. ones you use occasionally",
-            "savings": f"~{unused_count * TOKENS_PER_SKILL_APPROX:,} tokens if archived",
+            "savings": unused_savings,
         })
         score -= 3
     elif skill_count > 0:
         patterns_good.append({
-            "name": "Active Skill Set",
+            "name": "Installed Skill Set",
             "detail": f"{skill_count} skills ({skill_tokens:,} tokens, {skill_pct:.1f}% of context)",
         })
 
@@ -8576,7 +9138,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
     claude_lines = 0
     for key in components:
         if (
-            (not is_codex and key.startswith("claude_md"))
+            (is_claude and key.startswith("claude_md"))
             or (is_codex and key.startswith("agents_md"))
         ) and components[key].get("exists"):
             claude_tokens += components[key].get("tokens", 0)
@@ -8617,8 +9179,10 @@ def generate_coach_data(focus=None, components=None, trends=None):
         })
         score += 5
 
-    # Check MEMORY.md
-    mem = components.get("memory_md", {})
+    # Check MEMORY.md — a Claude/Codex-only surface. Foreign runtimes have no
+    # auto-load memory file and never produce this component; do not evaluate
+    # an injected/foreign one under a Claude label.
+    mem = components.get("memory_md", {}) if (is_claude or is_codex) else {}
     mem_lines = mem.get("lines", 0)
     if mem_lines > 200:
         patterns_bad.append({
@@ -8651,7 +9215,9 @@ def generate_coach_data(focus=None, components=None, trends=None):
             "name": "MCP Sprawl",
             "severity": "medium",
             "detail": f"{mcp_servers} MCP servers ({mcp_tokens:,} tokens, {mcp_pct:.1f}% of context)",
-            "fix": "Disable unused servers in settings.json",
+            "fix": ("Disable unused servers in ~/.codex/config.toml ([mcp_servers] sections)"
+                    if is_codex else
+                    "Disable unused servers in settings.json"),
             "savings": "~50-100 tokens per disabled server",
         })
         score -= 5
@@ -8661,9 +9227,10 @@ def generate_coach_data(focus=None, components=None, trends=None):
             "detail": f"{mcp_servers} servers ({mcp_tokens:,} tokens, {mcp_pct:.1f}% of context)",
         })
 
-    # Check file exclusion rules (permissions.deny)
+    # Check file exclusion rules (permissions.deny) — .claude/settings.json is
+    # a Claude-only config surface, so the advice is Claude-only too.
     exclusion = components.get("file_exclusion", {})
-    if not is_codex and not exclusion.get("has_rules"):
+    if is_claude and not exclusion.get("has_rules"):
         patterns_bad.append({
             "name": "Missing file exclusion rules",
             "severity": "medium",
@@ -8708,14 +9275,16 @@ def generate_coach_data(focus=None, components=None, trends=None):
             "earned": True,
         })
         score += 5
-    elif hooks.get("configured") and "SessionEnd" in hooks.get("names", []):
+    elif is_claude and hooks.get("configured") and "SessionEnd" in hooks.get("names", []):
         patterns_good.append({
             "name": "SessionEnd Hook Installed",
             "detail": "Usage tracking active",
             "earned": True,
         })
         score += 5
-    else:
+    elif is_claude or is_codex:
+        # Hook-install advice exists only for runtimes TO can install into;
+        # foreign runtimes get no hook pattern at all.
         patterns_bad.append({
             "name": "No Codex Stop Hook" if is_codex else "No SessionEnd Hook",
             "severity": "low",
@@ -8735,7 +9304,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
             opus_pct = model_mix.get("opus", 0) / total_model_tokens * 100
             haiku_pct = model_mix.get("haiku", 0) / total_model_tokens * 100
             _opus_addiction_fired = False
-            if not is_codex and opus_pct > 85:
+            if is_claude_family and opus_pct > 85:
                 fix_msg = "Route data-gathering agents to Haiku, analysis to Sonnet"
                 if default_model and "opus" in str(default_model).lower():
                     fix_msg += f". Root cause: settings.json has \"model\": \"{default_model}\" which may override routing"
@@ -8753,11 +9322,24 @@ def generate_coach_data(focus=None, components=None, trends=None):
         # proportional "Unused Skill Overhead" / "Some Unused Skills" patterns.
         # Removed duplicate check here to prevent double-penalty.
 
-    # Check verbose skill descriptions
+    # Check verbose skill descriptions. The warning claims ">200 chars", so the
+    # filter applies that stated threshold (the Codex scan also flags a 120-200
+    # band for its own medium-tier nudge — those are not "over 200").
     quality = components.get("skill_frontmatter_quality", {})
-    verbose = quality.get("verbose_skills", [])
-    truncated_skills = [s for s in verbose if s.get("truncated")]
-    verbose_only = [s for s in verbose if not s.get("truncated")]
+    verbose = [s for s in quality.get("verbose_skills", [])
+               if not _is_own_tool_skill(s.get("name"))
+               and s.get("description_chars", 0) > 200]
+    if is_claude:
+        truncated_skills = [s for s in verbose if s.get("truncated")]
+        verbose_only = [s for s in verbose if not s.get("truncated")]
+    else:
+        # The 1,536-char silent truncation is a Claude Code behavior — Codex
+        # and every other runtime do not cut descriptions at that limit. A
+        # truncated-flagged entry off-Claude is simply a very long
+        # description: keep it in the verbose set so it still surfaces instead
+        # of vanishing from every warning.
+        verbose_only = verbose
+        truncated_skills = []
     if truncated_skills:
         patterns_bad.append({
             "name": "Truncated Skill Descriptions",
@@ -8788,7 +9370,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
     # Check settings env vars for optimization opportunities. Resolve across
     # process env + all settings files so a project-level opt-out is honoured.
     claudeai_val = _resolve_feature_env("ENABLE_CLAUDEAI_MCP_SERVERS") or ""
-    if not is_codex and str(claudeai_val).lower() != "false" and mcp_servers > 3:
+    if is_claude and str(claudeai_val).lower() != "false" and mcp_servers > 3:
         questions.append("Cloud-synced MCP servers from claude.ai may be adding overhead. Have you reviewed which servers are cloud-synced vs local?")
 
     # WebSearch routing nudge (post-hoc detector)
@@ -8822,7 +9404,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
             if md_comp.get("exists") and md_comp.get("content"):
                 _claude_md_content = md_comp["content"]
                 break
-        if not _claude_md_content:
+        if not _claude_md_content and is_claude:
             for path in (CLAUDE_DIR / "CLAUDE.md", Path.home() / "CLAUDE.md", Path.cwd() / "CLAUDE.md"):
                 if path.exists():
                     try:
@@ -8872,9 +9454,14 @@ def generate_coach_data(focus=None, components=None, trends=None):
             if f["name"] == "overpowered" and _opus_addiction_fired:
                 continue
 
-            # Enrich overpowered findings with counterfactual
-            detail = f["evidence"]
-            if f["name"] == "overpowered" and recent_files:
+            # Enrich overpowered findings with counterfactual (Claude model
+            # ladder only — under Codex a "switch to Sonnet" estimate would be
+            # foreign-runtime advice). Detector evidence interpolates raw
+            # session-log strings (e.g. a model_usage key), which are
+            # attacker-influenceable — strip terminal escapes before the text
+            # reaches patterns_bad detail/fix and the coach print.
+            detail = _strip_ansi(str(f["evidence"]))
+            if f["name"] == "overpowered" and recent_files and is_claude_family:
                 try:
                     latest = _parse_session_jsonl(str(recent_files[0][0]))
                     if latest:
@@ -8891,10 +9478,10 @@ def generate_coach_data(focus=None, components=None, trends=None):
                 else f"~{f.get('savings_tokens', 0):,} tokens"
             )
             patterns_bad.append({
-                "name": f["name"].replace("_", " ").title(),
+                "name": _strip_ansi(str(f["name"].replace("_", " ").title())),
                 "severity": severity,
                 "detail": detail,
-                "fix": f["suggestion"],
+                "fix": _strip_ansi(str(f["suggestion"])),
                 "savings": savings,
             })
             score -= 3
@@ -8911,7 +9498,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
         recent_sessions = []
         older_sessions = []
         for i, d in enumerate(daily):
-            details = d.get("session_details", [])
+            details = [sd for sd in d.get("session_details", []) if not sd.get("continuation")]
             if i < 7:
                 recent_sessions.extend(details)
             else:
@@ -8932,7 +9519,7 @@ def generate_coach_data(focus=None, components=None, trends=None):
                         "name": "Quality Declining",
                         "severity": "high",
                         "detail": f"Average quality dropped from {prior_avg_q:.0f} to {recent_avg_q:.0f} over the last week",
-                        "fix": "Check for new MCP servers, growing CLAUDE.md, or longer sessions causing context fill",
+                        "fix": f"Check for new MCP servers, growing {instruction_label}, or longer sessions causing context fill",
                         "savings": "Quality recovery prevents retry waste (typically 5,000-20,000 tokens per failed turn)",
                     })
                     score -= 8
@@ -8956,14 +9543,32 @@ def generate_coach_data(focus=None, components=None, trends=None):
                 history["duration_recent_avg"] = round(recent_avg_dur, 1)
                 history["duration_prior_avg"] = round(older_avg_dur, 1)
                 if recent_avg_dur > older_avg_dur * 1.5 and recent_avg_dur > 60:
-                    patterns_bad.append({
-                        "name": "Session Duration Creep",
-                        "severity": "medium",
-                        "detail": f"Sessions averaging {recent_avg_dur:.0f} min (was {older_avg_dur:.0f} min). Longer sessions fill context faster",
-                        "fix": "Use /compact proactively around the midpoint. Break large tasks into focused sessions",
-                        "savings": f"~{int(recent_avg_dur - older_avg_dur) * 200:,} fewer tokens of context bloat per session",
-                    })
-                    score -= 5
+                    # Elapsed minutes include idle time — duration alone is NOT
+                    # evidence of token waste. The score only moves when real
+                    # per-session token volume grew alongside the duration.
+                    recent_toks = [s.get("input_tokens", 0) for s in recent_sessions if s.get("input_tokens")]
+                    older_toks = [s.get("input_tokens", 0) for s in older_sessions if s.get("input_tokens")]
+                    tokens_grew = (
+                        bool(recent_toks) and bool(older_toks)
+                        and (sum(recent_toks) / len(recent_toks)) > (sum(older_toks) / len(older_toks)) * 1.25
+                    )
+                    if tokens_grew:
+                        patterns_bad.append({
+                            "name": "Session Duration Creep",
+                            "severity": "medium",
+                            "detail": f"Sessions averaging {recent_avg_dur:.0f} min (was {older_avg_dur:.0f} min) with per-session input volume up {((sum(recent_toks) / len(recent_toks)) / (sum(older_toks) / len(older_toks)) - 1) * 100:.0f}% — real context growth, not idle time",
+                            "fix": "Use /compact proactively around the midpoint. Break large tasks into focused sessions",
+                            "savings": "Not estimated: duration is not a token measure; compacting earlier reduces context fill",
+                        })
+                        score -= 5
+                    else:
+                        patterns_bad.append({
+                            "name": "Session Duration Creep",
+                            "severity": "low",
+                            "detail": f"Elapsed sessions averaging {recent_avg_dur:.0f} min (was {older_avg_dur:.0f} min); may include idle time and does not by itself indicate token waste",
+                            "fix": "If sessions are genuinely busier (not just idle), compact proactively around the midpoint",
+                            "savings": "Not estimated: elapsed session duration includes idle time and does not measure token waste",
+                        })
 
         # 3. Cache hit rate degradation (model-switch aware)
         multi_model_recent = sum(1 for s in recent_sessions if s.get("model_count", 1) > 1)
@@ -8983,7 +9588,11 @@ def generate_coach_data(focus=None, components=None, trends=None):
                             "name": "Cache Hit Rate Dropping (Model Switches)",
                             "severity": "low",
                             "detail": f"Cache hit rate fell from {older_avg_chr:.0%} to {recent_avg_chr:.0%}, but {multi_model_pct:.0f}% of recent sessions switched models mid-session. Model switches invalidate the prompt cache (expected behavior)",
-                            "fix": "Pick one model per session when possible. Use /model at session start, not mid-conversation. Subagent model routing (Haiku/Sonnet) is fine, it runs in separate contexts",
+                            "fix": ("Set the session model up front (config.toml `model`) instead of switching mid-session. Codex subagents run in separate contexts, so a smaller model for them does not disturb the main session's cache"
+                                    if is_codex else
+                                    "Pick one model per session when possible. Use /model at session start, not mid-conversation. Subagent model routing (Haiku/Sonnet) is fine, it runs in separate contexts"
+                                    if is_claude_family else
+                                    "Pick one model per session when possible — mid-session switches invalidate the cached prefix"),
                             "savings": "Avoiding mid-session model switches can recover 10-20% cache hit rate",
                         })
                         score -= 2
@@ -8992,8 +9601,8 @@ def generate_coach_data(focus=None, components=None, trends=None):
                             "name": "Cache Hit Rate Dropping",
                             "severity": "medium",
                             "detail": f"Cache hit rate fell from {older_avg_chr:.0%} to {recent_avg_chr:.0%}. Lower cache = higher cost per turn",
-                            "fix": "Check for new MCP servers or CLAUDE.md changes that shift the stable prefix. Avoid tools that rewrite existing context",
-                            "savings": "Each 10% cache drop costs ~$0.50/session at Opus rates",
+                            "fix": f"Check for new MCP servers or {instruction_label} changes that shift the stable prefix. Avoid tools that rewrite existing context",
+                            "savings": "Cost impact depends on the session model and uncached input volume",
                         })
                         score -= 5
 
@@ -9011,7 +9620,11 @@ def generate_coach_data(focus=None, components=None, trends=None):
                     "name": "Majority Low-Grade Sessions",
                     "severity": "high",
                     "detail": f"{d_pct:.0f}% of recent sessions scored D or below",
-                    "fix": "Run /token-optimizer for a full audit. Common causes: bloated tool outputs, stale reads, long sessions without compaction",
+                    "fix": ("Run a full audit (token-optimizer skill or `measure.py coach --json`). Common causes: bloated tool outputs, stale reads, long sessions without compaction"
+                            if is_codex else
+                            "Run /token-optimizer for a full audit. Common causes: bloated tool outputs, stale reads, long sessions without compaction"
+                            if is_claude_family else
+                            "Run a full audit (`measure.py coach --json`). Common causes: bloated tool outputs, stale reads, long sessions without compaction"),
                     "savings": "Improving average grade from D to B typically saves 15-30% of session cost",
                 })
                 score -= 8
@@ -9038,9 +9651,13 @@ def generate_coach_data(focus=None, components=None, trends=None):
                 patterns_bad.append({
                     "name": "High Cost Per Session",
                     "severity": "medium",
-                    "detail": f"${cost_per_session:.2f}/session average (${total_cost:.2f} across {session_count_t} sessions in {period} days)",
-                    "fix": "Route simple tasks to Sonnet/Haiku. Use /compact in long sessions. Archive unused skills",
-                    "savings": f"~${cost_per_session * 0.3:.2f}/session with routing + compression",
+                    "detail": f"Estimated API-equivalent cost: ${cost_per_session:.2f}/session (${total_cost:.2f} across {session_count_t} sessions in {period} days); not a billing statement",
+                    "fix": ("Choose a lower reasoning effort or a smaller Codex model for simple tasks. Compact long sessions when needed"
+                            if is_codex else
+                            "Route simple tasks to Sonnet/Haiku. Use /compact in long sessions. Review unused skills"
+                            if is_claude_family else
+                            "Route simple tasks to a cheaper model tier. Restart or compact long sessions. Review unused skills"),
+                    "savings": "Not estimated: requires a measured model-routing or compression comparison",
                 })
                 score -= 3
 
@@ -9089,13 +9706,26 @@ def generate_coach_data(focus=None, components=None, trends=None):
                 "name": "Frequent Model Switching",
                 "severity": "medium",
                 "detail": f"{multi_model_pct:.0f}% of recent sessions used multiple models. Each switch invalidates the prompt cache and can cause context quality drops",
-                "fix": "Set your preferred model at session start with /model. Route subagents to cheaper models via agent() opts instead of switching the main session model",
+                "fix": ("Set the session model up front (config.toml `model`) instead of switching mid-session; each switch invalidates the cached prefix"
+                        if is_codex else
+                        "Set your preferred model at session start with /model. Route subagents to cheaper models via agent() opts instead of switching the main session model"
+                        if is_claude_family else
+                        "Set the session model up front instead of switching mid-session; each switch invalidates the cached prefix"),
                 "savings": "Consistent model usage improves cache hit rate by 10-20% and avoids quality grade drops",
             })
             score -= 4
 
     # Clamp score
     score = max(0, min(100, score))
+
+    # Session logs, skill frontmatter, and detector evidence are all
+    # attacker-influenceable; nothing carrying terminal control sequences may
+    # reach the coach's printed output or the --json payload.
+    for _p in patterns_bad + patterns_good:
+        for _k in ("name", "detail", "fix", "savings"):
+            if isinstance(_p.get(_k), str):
+                _p[_k] = _strip_ansi(_p[_k])
+    questions = [_strip_ansi(str(q)) for q in questions]
 
     # Build result
     overhead_pct = (totals["estimated_total"] / context_window * 100) if context_window else 0
@@ -9128,6 +9758,20 @@ def generate_coach_data(focus=None, components=None, trends=None):
         "focus_area": focus,
         "history": history,
     }
+
+    if is_codex:
+        # The skill figures above count the installed inventory Codex
+        # advertises to the model (user skills + skills of enabled plugins;
+        # skills under config-disabled plugins are excluded by the scan). What
+        # a given session's prompt actually receives is not directly observed —
+        # the count is the advertised surface, labeled as such.
+        result["snapshot"]["skills_basis"] = (
+            "installed inventory advertised to the model (user skills + enabled-plugin "
+            "skills); per-session prompt inclusion not directly observed"
+        )
+        # claude_md_tokens holds AGENTS.md-chain tokens under Codex; keep the
+        # legacy key for existing consumers and add a correctly named alias.
+        result["snapshot"]["agents_md_tokens"] = claude_tokens
 
     # Add compaction timing guide when relevant
     has_compaction_patterns = (
@@ -9166,7 +9810,9 @@ def generate_coach_data(focus=None, components=None, trends=None):
         dom_model = max(parsed["model_usage"], key=parsed["model_usage"].get) if parsed["model_usage"] else "unknown"
         total_input = parsed["total_input_tokens"]
         chr_val = parsed.get("cache_hit_rate", 0)
-        cache_read = int(total_input * chr_val)
+        # _safe_int: a non-finite product (corrupt cache_hit_rate) degrades to
+        # 0 instead of raising ValueError/OverflowError and killing the coach.
+        cache_read = _safe_int(total_input * chr_val)
         session_cost = _get_model_cost(dom_model, max(0, total_input - cache_read),
                                         parsed["total_output_tokens"], cache_read, 0, tier=tier)
         total_session_cost += session_cost
@@ -9197,8 +9843,12 @@ def generate_coach_data(focus=None, components=None, trends=None):
                 "name": "Heavy Subagent Spend",
                 "severity": "medium",
                 "detail": f"Subagents consumed ${total_subagent_cost:.2f} ({sub_pct}% of recent spend)",
-                "fix": "Route data-gathering subagents to Haiku. Reserve Opus for synthesis.",
-                "savings": f"~${total_subagent_cost * 0.6:.2f} with Haiku routing",
+                "fix": ("Route data-gathering subagents to a smaller Codex model or lower reasoning effort. Reserve the frontier model for synthesis."
+                        if is_codex else
+                        "Route data-gathering subagents to Haiku. Reserve Opus for synthesis."),
+                "savings": ("Not estimated: requires a measured model-routing comparison"
+                            if is_codex else
+                            f"~${total_subagent_cost * 0.6:.2f} with Haiku routing"),
             })
             score = max(0, result["health_score"] - 5)
             result["health_score"] = score
@@ -9269,15 +9919,24 @@ def _cmd_route(args):
         # Positional task: keep every token except the recognized --json flag so
         # task words that happen to start with "--" are not silently dropped.
         task = " ".join(a for a in args[1:] if a != "--json")
+    _rt = detect_runtime()
     try:
         import routing_advisor
-        _rt = detect_runtime()
         rec = routing_advisor.recommend(task, _rt, models=_resolve_platform_models(_rt))
     except Exception as _e:
         # Router module unavailable: a real, non-cheap default with the same
         # keys as a normal recommendation so JSON consumers never KeyError.
+        # Model name comes from the platform's own ladder, never a hardcoded
+        # Claude tier under a non-Claude runtime.
+        _mid = "sonnet"
+        try:
+            _row = routing_advisor.ROUTING_TABLES.get(_rt) or routing_advisor._GENERIC_ROW
+            _mid = _row["models"]["mid"]
+        except Exception:
+            if _rt == "codex":
+                _mid = "gpt-5.6-terra"
         rec = {
-            "model": "sonnet", "effort": "medium", "significance": "standard",
+            "model": _mid, "effort": "medium", "significance": "standard",
             "confidence": "low", "category": "simple", "tier": "mid",
             "effort_kind": "advisory", "effort_knob": "effort",
             "floor": {"min_tier": "mid", "min_effort": "medium"},
@@ -9383,7 +10042,8 @@ def generate_coach_block(components=None, trends=None):
         if daily:
             recent_sessions = []
             for d in daily[:7]:
-                recent_sessions.extend(d.get("session_details", []))
+                recent_sessions.extend(
+                    sd for sd in d.get("session_details", []) if not sd.get("continuation"))
             if recent_sessions:
                 avg_chr = sum(s.get("cache_hit_rate", 0) for s in recent_sessions) / len(recent_sessions)
                 avg_chr_pct = round(avg_chr * 100)
@@ -9474,15 +10134,27 @@ def _extract_skills_and_agents_from_subagent(filepath):
     skills = {}
     subagents = {}
     try:
+        if os.stat(filepath).st_size > codex_session.MAX_PARSE_FILE_BYTES:
+            return skills, subagents
+    except OSError:
+        return skills, subagents
+    try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if len(line) > codex_session.MAX_JSONL_LINE_CHARS:
+                    continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(record, dict):
+                    continue
                 if record.get("type") != "assistant":
                     continue
-                content = record.get("message", {}).get("content", [])
+                msg = record.get("message", {})
+                if not isinstance(msg, dict):
+                    continue
+                content = msg.get("content", [])
                 if not isinstance(content, list):
                     continue
                 for block in content:
@@ -9490,6 +10162,8 @@ def _extract_skills_and_agents_from_subagent(filepath):
                         continue
                     tool_name = block.get("name", "")
                     inp = block.get("input", {})
+                    if not isinstance(inp, dict):
+                        inp = {}
                     if tool_name == "Skill":
                         skill = inp.get("skill", "unknown")
                         skills[skill] = skills.get(skill, 0) + 1
@@ -9550,7 +10224,7 @@ def _analyze_subagent_costs(session_jsonl_path, tier=None):
         dom_model = max(parsed["model_usage"], key=parsed["model_usage"].get) if parsed["model_usage"] else "unknown"
         total_input = parsed["total_input_tokens"]
         chr_val = parsed.get("cache_hit_rate", 0)
-        cache_read = int(total_input * chr_val)
+        cache_read = _safe_int(total_input * chr_val)
         cost = _get_model_cost(dom_model, max(0, total_input - cache_read),
                                parsed["total_output_tokens"], cache_read, 0, tier=tier)
 
@@ -9595,11 +10269,21 @@ def _extract_costly_prompts(jsonl_path, tier=None, top_n=5):
     pending_prompt = None
 
     try:
+        if os.stat(jsonl_path).st_size > codex_session.MAX_PARSE_FILE_BYTES:
+            return prompts
+    except OSError:
+        return prompts
+
+    try:
         with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if len(line) > codex_session.MAX_JSONL_LINE_CHARS:
+                    continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(record, dict):
                     continue
 
                 rec_type = record.get("type")
@@ -9634,13 +10318,15 @@ def _extract_costly_prompts(jsonl_path, tier=None, top_n=5):
 
                 elif rec_type == "assistant" and pending_prompt:
                     msg = record.get("message", {})
+                    if not isinstance(msg, dict):
+                        msg = {}
                     usage = msg.get("usage", {})
-                    if usage:
-                        inp = usage.get("input_tokens", 0)
-                        out = usage.get("output_tokens", 0)
-                        cr = usage.get("cache_read_input_tokens", 0)
-                        cc = usage.get("cache_creation_input_tokens", 0)
-                        model = msg.get("model", "unknown")
+                    if usage and isinstance(usage, dict):
+                        inp = _safe_int(usage.get("input_tokens", 0))
+                        out = _safe_int(usage.get("output_tokens", 0))
+                        cr = _safe_int(usage.get("cache_read_input_tokens", 0))
+                        cc = _safe_int(usage.get("cache_creation_input_tokens", 0))
+                        model = _record_model(msg)
                         cost = _get_model_cost(model, inp, out, cr, cc, tier=tier)
                         pending_prompt["tokens_in"] = inp + cr + cc
                         pending_prompt["tokens_out"] = out
@@ -9694,6 +10380,8 @@ def _extract_topic(text):
         return None
     # Strip leading whitespace/newlines
     text = text.strip()
+    # Strip ANSI/VT escape sequences — session-log text is attacker-influenceable
+    text = _strip_ansi(text)
     # Remove common prefixes
     prefixes = [
         "Implement the following plan:",
@@ -9817,7 +10505,7 @@ def _osrc_prompt_text(record):
     return ""
 
 
-def _parse_session_jsonl(filepath):
+def _parse_session_jsonl(filepath, window_start=None, window_end=None):
     """Parse a single JSONL session file in one streaming pass.
 
     Returns a dict with extracted session metrics, or None if the file
@@ -9828,7 +10516,7 @@ def _parse_session_jsonl(filepath):
     # Memoization: skip re-parse if the file hasn't changed since we last saw it.
     try:
         st = os.stat(filepath)
-        cache_key = (str(filepath), st.st_mtime_ns, st.st_size)
+        cache_key = (str(filepath), st.st_mtime_ns, st.st_size, window_start, window_end)
         if cache_key in _parse_session_jsonl_cache:
             return _parse_session_jsonl_cache[cache_key]
     except OSError:
@@ -9843,6 +10531,8 @@ def _parse_session_jsonl(filepath):
         return result
 
     if _use_codex_session_adapter(filepath):
+        if window_start is not None or window_end is not None:
+            return None  # This adapter does not yet support activity slicing.
         result = codex_session.parse_session_jsonl(filepath)
         if cache_key is not None:
             if len(_parse_session_jsonl_cache) >= _PARSE_CACHE_MAX:
@@ -9862,6 +10552,8 @@ def _parse_session_jsonl(filepath):
     total_cache_create_5m = 0
     model_usage = {}              # v5.4.8: billable tokens (fresh_input + cache_create + output)
     model_usage_breakdown = {}    # v5.4.8: per-model {fresh_input, cache_read, cache_create, output}
+    daily_usage = {}              # local date -> per-model breakdown, for per-day cost attribution
+    request_days = {}             # request key -> local date (None when untimestamped)
     reported_input = 0             # official /stats-compatible, no streaming dedup
     reported_output = 0
     reported_model_usage = {}
@@ -9879,12 +10571,25 @@ def _parse_session_jsonl(filepath):
     is_sidechain = sidechain_reason is not None
     first_user_record_seen = False
 
+    # Bound the work like the Codex adapter's _iter_json_records: a multi-GB
+    # transcript or one pathological line must not dominate a parse. st is set
+    # when the initial os.stat above succeeded; skip oversized files outright
+    # and oversized lines individually.
+    if cache_key is not None and st.st_size > codex_session.MAX_PARSE_FILE_BYTES:
+        return None
+
     try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if len(line) > codex_session.MAX_JSONL_LINE_CHARS:
+                    continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(record, dict):
+                    # Valid JSON but not an object (42, "x", true, null, [...])
+                    # — a truncated/corrupt transcript line, not a record.
                     continue
 
                 # A subagent sidechain transcript is flagged on its records; any
@@ -9933,9 +10638,24 @@ def _parse_session_jsonl(filepath):
                     if s:
                         slug = s
 
+                # Window reports must slice activity, including sessions that began
+                # before reset. Classify sidechains before filtering their records.
+                if window_start is not None or window_end is not None:
+                    try:
+                        activity_ts = datetime.fromisoformat(
+                            str(record.get("timestamp")).replace("Z", "+00:00"))
+                        if activity_ts.tzinfo is None:
+                            activity_ts = activity_ts.replace(tzinfo=timezone.utc)
+                    except (ValueError, TypeError):
+                        continue
+                    if window_start is not None and activity_ts < window_start:
+                        continue
+                    if window_end is not None and activity_ts >= window_end:
+                        continue
+
                 # Extract timestamp
                 ts_str = record.get("timestamp")
-                if ts_str:
+                if ts_str and isinstance(ts_str, str):
                     try:
                         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                         if first_ts is None:
@@ -10027,6 +10747,8 @@ def _parse_session_jsonl(filepath):
                 # Extract tool usage from assistant messages
                 if rec_type == "assistant":
                     msg = record.get("message", {})
+                    if not isinstance(msg, dict):
+                        msg = {}
                     content = msg.get("content", [])
 
                     if isinstance(content, list):
@@ -10040,6 +10762,8 @@ def _parse_session_jsonl(filepath):
                             tool_calls[tool_name] = tool_calls.get(tool_name, 0) + 1
 
                             inp = block.get("input", {})
+                            if not isinstance(inp, dict):
+                                inp = {}
                             if tool_name == "Skill":
                                 skill = inp.get("skill", "unknown")
                                 skills_used[skill] = skills_used.get(skill, 0) + 1
@@ -10063,35 +10787,37 @@ def _parse_session_jsonl(filepath):
                     # MAX usage and apply it at end of file.
                     req_id = record.get("requestId")
                     usage = msg.get("usage", {})
-                    if usage:
-                        inp_tok = usage.get("input_tokens", 0) or 0
-                        out_tok = usage.get("output_tokens", 0) or 0
-                        cr = usage.get("cache_read_input_tokens", 0) or 0
+                    if usage and isinstance(usage, dict):
+                        # _safe_int, not raw int(): json.loads accepts the
+                        # non-standard Infinity/NaN literals, and int(inf) /
+                        # int(nan) raise OverflowError/ValueError — a hostile
+                        # or corrupt transcript must degrade to 0, not crash.
+                        inp_tok = _safe_int(usage.get("input_tokens", 0))
+                        out_tok = _safe_int(usage.get("output_tokens", 0))
+                        cr = _safe_int(usage.get("cache_read_input_tokens", 0))
                         cache_creation = usage.get("cache_creation", {})
                         if not isinstance(cache_creation, dict):
                             cache_creation = {}
-                        cc_1h = (
+                        cc_1h = _safe_int(
                             cache_creation.get("ephemeral_1h_input_tokens", 0)
                             or usage.get("ephemeral_1h_input_tokens", 0)
-                            or 0
                         )
-                        cc_5m = (
+                        cc_5m = _safe_int(
                             cache_creation.get("ephemeral_5m_input_tokens", 0)
                             or usage.get("ephemeral_5m_input_tokens", 0)
-                            or 0
                         )
-                        cc = usage.get("cache_creation_input_tokens", 0) or (cc_1h + cc_5m)
-                        model = msg.get("model", "unknown")
+                        cc = _safe_int(usage.get("cache_creation_input_tokens", 0)) or (cc_1h + cc_5m)
+                        model = _record_model(msg)
                         # Claude Code's /stats basis sums every assistant usage
                         # record, including streamed chunks, and excludes cache
                         # read/write classes. Keep it beside the deduped billed
                         # basis used for pricing and cost analysis.
-                        reported_input += int(inp_tok)
-                        reported_output += int(out_tok)
+                        reported_input += inp_tok
+                        reported_output += out_tok
                         reported_model_usage[model] = (
                             reported_model_usage.get(model, 0)
-                            + int(inp_tok)
-                            + int(out_tok)
+                            + inp_tok
+                            + out_tok
                         )
                         # Records without requestId must never collapse with
                         # each other — use the map's own size as a monotonic
@@ -10145,7 +10871,7 @@ def _parse_session_jsonl(filepath):
         total_cache_create_5m += u["cc_5m"]
         api_calls += 1
         ts_s = u.get("ts")
-        if ts_s:
+        if ts_s and isinstance(ts_s, str):
             try:
                 api_call_timestamps.append(datetime.fromisoformat(ts_s.replace("Z", "+00:00")))
             except (ValueError, TypeError):
@@ -10163,6 +10889,29 @@ def _parse_session_jsonl(filepath):
         bd["cache_create_1h"] += u["cc_1h"]
         bd["cache_create_5m"] += u["cc_5m"]
         bd["output"] += u["out"]
+        # Bucket each request by the LOCAL date it ran, so a session that spans
+        # midnight bills each day for its own requests instead of dumping the
+        # whole session onto its last-active day (#200). Records without a
+        # parseable timestamp are left out here; callers fall back to the
+        # session date for the unbucketed remainder.
+        _day = None
+        if ts_s and isinstance(ts_s, str):
+            try:
+                _day = datetime.fromisoformat(ts_s.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d")
+            except (ValueError, TypeError, OverflowError, OSError):
+                _day = None
+        request_days[key] = _day
+        if _day:
+            dbd = daily_usage.setdefault(_day, {}).setdefault(
+                model,
+                {"fresh_input": 0, "cache_read": 0, "cache_create": 0, "cache_create_1h": 0, "cache_create_5m": 0, "output": 0},
+            )
+            dbd["fresh_input"] += u["inp"]
+            dbd["cache_read"] += u["cr"]
+            dbd["cache_create"] += u["cc"]
+            dbd["cache_create_1h"] += u["cc_1h"]
+            dbd["cache_create_5m"] += u["cc_5m"]
+            dbd["output"] += u["out"]
 
     # Calculate duration
     duration_minutes = 0
@@ -10196,6 +10945,12 @@ def _parse_session_jsonl(filepath):
         "p95_call_gap_seconds": gap_stats["p95"],
         "model_usage": model_usage,
         "model_usage_breakdown": model_usage_breakdown,
+        "daily_usage": daily_usage,
+        # Per-request usage (streaming-deduped) so a caller can dedupe requests
+        # that Claude Code writes into more than one transcript of a session.
+        "request_usage": {
+            k: dict(u, day=request_days.get(k)) for k, u in request_usage_map.items()
+        },
         "reported_input_tokens": reported_input,
         "reported_output_tokens": reported_output,
         "reported_model_usage": reported_model_usage,
@@ -10246,12 +11001,25 @@ def parse_session_turns(filepath):
     tier = _load_pricing_tier()
     prev_call_ts = None
 
+    # Bound the work like the Codex adapter's _iter_json_records (see
+    # _parse_session_jsonl): skip oversized files and oversized lines.
+    try:
+        if os.stat(filepath).st_size > codex_session.MAX_PARSE_FILE_BYTES:
+            return turns
+    except OSError:
+        return turns
+
     try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if len(line) > codex_session.MAX_JSONL_LINE_CHARS:
+                    continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(record, dict):
+                    # Valid JSON but not an object — corrupt transcript line.
                     continue
 
                 rec_type = record.get("type")
@@ -10259,28 +11027,30 @@ def parse_session_turns(filepath):
                     continue
 
                 msg = record.get("message", {})
+                if not isinstance(msg, dict):
+                    continue
                 usage = msg.get("usage", {})
-                if not usage:
+                if not usage or not isinstance(usage, dict):
                     continue
 
-                inp_tok = usage.get("input_tokens", 0)
-                out_tok = usage.get("output_tokens", 0)
-                cr = usage.get("cache_read_input_tokens", 0)
+                # _safe_int: Infinity/NaN usage literals degrade to 0 instead of
+                # raising OverflowError/ValueError out of _get_model_cost's int().
+                inp_tok = _safe_int(usage.get("input_tokens", 0))
+                out_tok = _safe_int(usage.get("output_tokens", 0))
+                cr = _safe_int(usage.get("cache_read_input_tokens", 0))
                 cache_creation = usage.get("cache_creation", {})
                 if not isinstance(cache_creation, dict):
                     cache_creation = {}
-                cc_1h = (
+                cc_1h = _safe_int(
                     cache_creation.get("ephemeral_1h_input_tokens", 0)
                     or usage.get("ephemeral_1h_input_tokens", 0)
-                    or 0
                 )
-                cc_5m = (
+                cc_5m = _safe_int(
                     cache_creation.get("ephemeral_5m_input_tokens", 0)
                     or usage.get("ephemeral_5m_input_tokens", 0)
-                    or 0
                 )
-                cc = usage.get("cache_creation_input_tokens", 0) or (cc_1h + cc_5m)
-                model = msg.get("model", "unknown")
+                cc = _safe_int(usage.get("cache_creation_input_tokens", 0)) or (cc_1h + cc_5m)
+                model = _record_model(msg)
 
                 # Extract tools used in this turn
                 tools = []
@@ -10292,7 +11062,7 @@ def parse_session_turns(filepath):
 
                 ts_str = record.get("timestamp")
                 gap_since_prev_seconds = None
-                if ts_str:
+                if ts_str and isinstance(ts_str, str):
                     try:
                         call_ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                         if prev_call_ts is not None:
@@ -10435,12 +11205,20 @@ def score_session_quality(session_data):
 _SONNET_LEGACY_RE = re.compile(r"(?:^|[^0-9])(?:4[-._]?6|4[-._]?5|4[-._]?0|4|3[-._]?7|3[-._]?5|3)(?:[^0-9]|$)")
 
 
+def _record_model(msg):
+    """A transcript record's model id as text. A hand-edited or foreign
+    record can carry a number or an object there, and one such record must not
+    crash the whole collect; it is simply an unknown model."""
+    model = msg.get("model") if isinstance(msg, dict) else None
+    return model if isinstance(model, str) and model else "unknown"
+
+
 def _normalize_model_name(model_id):
     """Collapse model IDs like 'claude-sonnet-4-6' into 'sonnet'.
 
     Returns None for synthetic/internal model IDs that should be skipped.
     """
-    if not model_id or model_id.startswith("<"):
+    if not isinstance(model_id, str) or not model_id or model_id.startswith("<"):
         return None
     m = model_id.lower()
     if "fable" in m:
@@ -10460,6 +11238,46 @@ def _normalize_model_name(model_id):
     if "haiku" in m:
         return "haiku"
     return model_id
+
+
+_CLAUDE_GENERATION_RE = re.compile(
+    r"(fable|mythos|opus|sonnet|haiku)[-._]?(\d+)(?:[-._](\d{1,2}))?(?![0-9])")
+# Claude 3-era ids put the version before the family ("claude-3-5-sonnet-20241022").
+_CLAUDE_LEGACY_ID_RE = re.compile(r"claude-(\d)(?:[-.](\d))?-(opus|sonnet|haiku)(?![a-z])")
+
+
+def _claude_price_key(model_id, claude_models):
+    """Rate-card key for a Claude model id, finer than _normalize_model_name.
+
+    Display labels and savings mixes stay on the family buckets ("opus",
+    "fable"), but generations are priced differently (Opus 5.5 is $4/$20,
+    Opus 4.1 is $15/$75, Fable 5.1 reads cache at $0.25), so pricing looks for
+    a generation card first ("opus_5_5", then "opus_5"), then the family.
+    Generation cards come from pricing/prices.json, so a new model is priced
+    the day the table has it. Mythos shares the Fable cards when it has none.
+    """
+    if not model_id or not isinstance(model_id, str):
+        return None
+    legacy = _CLAUDE_LEGACY_ID_RE.search(model_id.lower())
+    if legacy:
+        major, minor, family = legacy.groups()
+        for key in ((f"{family}_{major}_{minor}", f"{family}_{major}") if minor else (f"{family}_{major}",)):
+            if key in claude_models:
+                return key
+        return _normalize_model_name(model_id)  # Sonnet 3.x lands on sonnet_legacy
+    m = _CLAUDE_GENERATION_RE.search(model_id.lower())
+    if m:
+        family, major, minor = m.groups()
+        families = (family, "fable") if family == "mythos" else (family,)
+        for fam in families:
+            for key in ((f"{fam}_{major}_{minor}", f"{fam}_{major}") if minor else (f"{fam}_{major}",)):
+                if key in claude_models:
+                    return key
+        if family == "mythos" and "fable" in claude_models:
+            return "fable"
+    elif "mythos" in str(model_id).lower() and "fable" in claude_models:
+        return "fable"
+    return _normalize_model_name(model_id)
 
 
 def _load_overhead_snapshots():
@@ -10550,7 +11368,17 @@ CREATE TABLE IF NOT EXISTS session_log (
     sidechain_reason TEXT,
     reported_input_tokens INTEGER,
     reported_output_tokens INTEGER,
-    reported_model_usage_json TEXT
+    reported_model_usage_json TEXT,
+    daily_usage_json TEXT
+);
+
+-- Transcript copies of a session that lost dedupe to a more complete copy
+-- (#200). Tracked so an unchanged losing copy is not re-parsed every flush,
+-- while a copy that grows is re-checked and can take over.
+CREATE TABLE IF NOT EXISTS session_log_aliases (
+    jsonl_path TEXT PRIMARY KEY,
+    session_uuid TEXT,
+    collected_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS daily_stats (
@@ -10615,6 +11443,10 @@ CREATE TABLE IF NOT EXISTS compression_events (
     model TEXT,
     tier TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_session_log_date ON session_log (date);
+CREATE INDEX IF NOT EXISTS idx_session_log_date_collected ON session_log (date DESC, collected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_savings_events_ts ON savings_events (timestamp);
+CREATE INDEX IF NOT EXISTS idx_compression_events_ts ON compression_events (timestamp);
 """
 
 
@@ -10662,13 +11494,18 @@ def _scan_jsonl_is_sidechain(filepath, max_lines=200):
     return verdict
 
 
-def _backfill_is_sidechain(conn):
+def _backfill_is_sidechain(conn, batch_limit=500):
     """Reclassify legacy rows once with the corrected classifier.
 
     The persistent gate is required because ``sidechain_reason`` is NULL for a
     legitimate human row after repair, so NULL alone cannot be a durable
     unclassified sentinel. Missing transcripts remain unchanged and are counted
     rather than guessed.
+
+    Batched with a resume cursor: if the process is killed mid-backfill (hook
+    timeout), the next _init_trends_db resumes from the last-processed id
+    instead of re-reading every row from scratch. The done-marker is only
+    written when the cursor reaches the end.
     """
     conn.execute(
         "CREATE TABLE IF NOT EXISTS token_optimizer_meta "
@@ -10681,13 +11518,34 @@ def _backfill_is_sidechain(conn):
 
     cols = {r[1] for r in conn.execute("PRAGMA table_info(session_log)").fetchall()}
     has_reason = "sidechain_reason" in cols
+    # Resume from the last-processed id if a prior pass was interrupted.
+    cursor_row = conn.execute(
+        "SELECT value FROM token_optimizer_meta WHERE key = 'sidechain_classifier_v2_cursor'"
+    ).fetchone()
+    cursor_id = int(cursor_row[0]) if cursor_row else 0
     rows = conn.execute(
-        "SELECT id, jsonl_path FROM session_log WHERE jsonl_path IS NOT NULL"
+        "SELECT id, jsonl_path FROM session_log "
+        "WHERE jsonl_path IS NOT NULL AND id > ? "
+        "ORDER BY id LIMIT ?",
+        (cursor_id, batch_limit),
     ).fetchall()
+    if not rows:
+        # No more rows to process: mark done and clear the cursor.
+        conn.execute(
+            "INSERT OR REPLACE INTO token_optimizer_meta (key, value) "
+            "VALUES ('sidechain_classifier_v2_done', datetime('now'))"
+        )
+        conn.execute(
+            "DELETE FROM token_optimizer_meta WHERE key = 'sidechain_classifier_v2_cursor'"
+        )
+        conn.commit()
+        return (0, 0)
     updates = []
     missing = 0
+    last_id = cursor_id
     for row_id, jpath in rows:
         verdict, reason = _classify_jsonl_is_sidechain(jpath)
+        last_id = row_id
         if verdict is None:
             missing += 1
             continue
@@ -10705,16 +11563,30 @@ def _backfill_is_sidechain(conn):
             conn.executemany(
                 "UPDATE session_log SET is_sidechain = ? WHERE id = ?", updates
             )
+    # Persist the cursor so a killed process resumes here next time.
     conn.execute(
         "INSERT OR REPLACE INTO token_optimizer_meta (key, value) "
-        "VALUES ('sidechain_classifier_v2_done', datetime('now'))"
+        "VALUES ('sidechain_classifier_v2_cursor', ?)",
+        (str(last_id),),
     )
+    # If we processed fewer than batch_limit rows, we've reached the end.
+    if len(rows) < batch_limit:
+        conn.execute(
+            "INSERT OR REPLACE INTO token_optimizer_meta (key, value) "
+            "VALUES ('sidechain_classifier_v2_done', datetime('now'))"
+        )
+        conn.execute(
+            "DELETE FROM token_optimizer_meta WHERE key = 'sidechain_classifier_v2_cursor'"
+        )
     conn.commit()
     return (len(updates), missing)
 
 
-def _backfill_reported_token_usage(conn):
-    """Persist the official-compatible, non-deduped usage basis for old rows."""
+def _backfill_reported_token_usage(conn, batch_limit=500):
+    """Persist the official-compatible, non-deduped usage basis for old rows.
+
+    Batched with a resume cursor (see _backfill_is_sidechain for rationale).
+    """
     conn.execute(
         "CREATE TABLE IF NOT EXISTS token_optimizer_meta "
         "(key TEXT PRIMARY KEY, value TEXT)"
@@ -10724,12 +11596,31 @@ def _backfill_reported_token_usage(conn):
     ).fetchone() is not None:
         return 0
 
+    cursor_row = conn.execute(
+        "SELECT value FROM token_optimizer_meta WHERE key = 'reported_token_backfill_cursor'"
+    ).fetchone()
+    cursor_id = int(cursor_row[0]) if cursor_row else 0
     rows = conn.execute(
-        "SELECT id, jsonl_path FROM session_log WHERE jsonl_path IS NOT NULL"
+        "SELECT id, jsonl_path FROM session_log "
+        "WHERE jsonl_path IS NOT NULL AND id > ? "
+        "ORDER BY id LIMIT ?",
+        (cursor_id, batch_limit),
     ).fetchall()
+    if not rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO token_optimizer_meta (key, value) "
+            "VALUES ('reported_token_backfill_done', datetime('now'))"
+        )
+        conn.execute(
+            "DELETE FROM token_optimizer_meta WHERE key = 'reported_token_backfill_cursor'"
+        )
+        conn.commit()
+        return 0
     updates = []
+    last_id = cursor_id
     for row_id, jpath in rows:
         parsed = _parse_session_jsonl(jpath)
+        last_id = row_id
         if not parsed:
             continue
         updates.append((
@@ -10746,8 +11637,17 @@ def _backfill_reported_token_usage(conn):
         )
     conn.execute(
         "INSERT OR REPLACE INTO token_optimizer_meta (key, value) "
-        "VALUES ('reported_token_backfill_done', datetime('now'))"
+        "VALUES ('reported_token_backfill_cursor', ?)",
+        (str(last_id),),
     )
+    if len(rows) < batch_limit:
+        conn.execute(
+            "INSERT OR REPLACE INTO token_optimizer_meta (key, value) "
+            "VALUES ('reported_token_backfill_done', datetime('now'))"
+        )
+        conn.execute(
+            "DELETE FROM token_optimizer_meta WHERE key = 'reported_token_backfill_cursor'"
+        )
     conn.commit()
     return len(updates)
 
@@ -10937,6 +11837,36 @@ def _recompute_session_tokens(conn, rel_tol=0.1, limit=None):
     return (refreshed, checked, missing)
 
 
+def _log_migration_error(step, exc):
+    """Log a trends-DB migration error, suppressing benign 'duplicate column' /
+    'table already exists' cases that are expected under concurrent init.
+
+    The migration blocks in _init_trends_db are guarded by PRAGMA table_info
+    checks, so a 'duplicate column name' error means a concurrent process won
+    the race — benign and idempotent. Any other sqlite3.Error (disk full,
+    corruption, I/O error) would otherwise be silently swallowed, leaving the
+    column missing and causing confusing downstream crashes far from the root
+    cause. Log those to stderr so they are discoverable.
+    """
+    msg = str(exc)
+    benign = (
+        "duplicate column" in msg
+        or "already exists" in msg
+    )
+    if not benign:
+        try:
+            sys.stderr.write(
+                "[Token Optimizer] trends DB migration '%s' failed: %s\n"
+                % (step, msg)
+            )
+        except Exception:
+            pass
+
+
+class _SkipMigration(Exception):
+    """Nothing to migrate; leave the step without touching the write lock."""
+
+
 def _init_trends_db():
     """Initialize the trends SQLite DB. Returns a connection.
     
@@ -10946,7 +11876,12 @@ def _init_trends_db():
     conn = sqlite3.connect(str(TRENDS_DB))
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA wal_autocheckpoint=1000")
+    # Auto-checkpoint every 100 pages (~400 KiB) instead of 1000 (~4 MiB).
+    # A single large transaction (e.g. _rebuild_aggregate_tables) cannot
+    # checkpoint mid-flight, so a smaller threshold bounds the WAL growth
+    # between transactions to ~400 KiB instead of ~4 MiB, keeping the
+    # post-checkpoint WAL closer to the 64 MiB journal_size_limit.
+    conn.execute("PRAGMA wal_autocheckpoint=100")
     conn.execute("PRAGMA journal_size_limit=67108864")
     conn.executescript(_SCHEMA)
     # Migrate existing DBs: add slug/topic columns if missing
@@ -11020,9 +11955,14 @@ def _init_trends_db():
             conn.execute("ALTER TABLE session_log ADD COLUMN reported_output_tokens INTEGER")
         if "reported_model_usage_json" not in cols:
             conn.execute("ALTER TABLE session_log ADD COLUMN reported_model_usage_json TEXT")
+        # Per-local-day, per-model token buckets for the whole session INCLUDING
+        # its subagents. The daily cost rollup prices from this so each day bills
+        # its own requests and delegated work is not dropped (#200).
+        if "daily_usage_json" not in cols:
+            conn.execute("ALTER TABLE session_log ADD COLUMN daily_usage_json TEXT")
         conn.commit()
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as _e:
+        _log_migration_error("session_log columns", _e)
     # Backfill session_uuid from jsonl_path basename stem for existing rows,
     # then create an index so joins are O(log n) instead of full-table LIKE scans.
     # Done in Python (not a single SQL UPDATE) because SQLite lacks a basename
@@ -11033,47 +11973,63 @@ def _init_trends_db():
         )
         rows = conn.execute(
             "SELECT id, jsonl_path FROM session_log "
-            "WHERE session_uuid IS NULL AND jsonl_path IS NOT NULL"
+            "WHERE (session_uuid IS NULL OR session_uuid LIKE 'rollout-%') AND jsonl_path IS NOT NULL"
         ).fetchall()
         if rows:
             updates = []
             for row_id, jpath in rows:
                 stem = Path(jpath).stem  # strips directory and .jsonl suffix
                 if stem and stem != "unknown":
-                    updates.append((stem, row_id))
+                    canonical, _ = _extract_session_uuid(stem)
+                    updates.append((canonical or stem, row_id))
             if updates:
                 conn.executemany(
                     "UPDATE session_log SET session_uuid = ? WHERE id = ?", updates
                 )
         conn.commit()
-    except (sqlite3.Error, OSError, ValueError):
-        pass
+    except (sqlite3.Error, OSError, ValueError) as _e:
+        _log_migration_error("session_uuid backfill", _e)
     # One-time backfill of the corrected sidechain classifier. It revisits old
     # rows, including the 1-valued rows the broad marker test misclassified.
     sidechain_changed = 0
     try:
         sidechain_changed, _sidechain_missing = _backfill_is_sidechain(conn)
-    except (sqlite3.Error, OSError):
-        pass
+    except (sqlite3.Error, OSError) as _e:
+        _log_migration_error("sidechain backfill", _e)
     # One-time backfill of official-compatible usage for existing rows. New
     # collection writes these fields directly from every assistant record.
     try:
         _backfill_reported_token_usage(conn)
-    except (sqlite3.Error, OSError):
-        pass
+    except (sqlite3.Error, OSError) as _e:
+        _log_migration_error("reported token backfill", _e)
     if sidechain_changed:
         try:
             _rebuild_aggregate_tables(conn)
             conn.commit()
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as _e:
+            _log_migration_error("aggregate rebuild", _e)
     # Backfill platform for rows collected before the column was wired into the
     # INSERT paths. The jsonl_path discriminator is definitive: Claude sessions
     # live under ~/.claude/projects/, Codex under ~/.codex/sessions/, Hermes
     # uses "hermes:" dedup keys, and Copilot uses "copilot:" dedup keys. Only
     # infer when the path unambiguously identifies one platform; anything else
-    # stays NULL. Idempotent (gated by platform IS NULL).
+    # stays NULL. Idempotent (gated by platform IS NULL). An UPDATE takes the
+    # write lock even when it matches nothing, so check with a read first: on
+    # every dashboard open this would otherwise wait out busy_timeout behind a
+    # running collector.
+    _platform_patterns = ("%/.claude/projects/%", "%/.codex/sessions/%", "%/.codex/archived_sessions/%",
+                          "hermes:%", "copilot:%", "cursor:%", "antigravity:%")
     try:
+        _needs_platform = conn.execute(
+            "SELECT 1 FROM session_log WHERE platform IS NULL AND ("
+            + " OR ".join(["jsonl_path LIKE ?"] * len(_platform_patterns)) + ") LIMIT 1",
+            _platform_patterns,
+        ).fetchone()
+    except sqlite3.Error:
+        _needs_platform = True
+    try:
+        if not _needs_platform:
+            raise _SkipMigration
         conn.execute(
             "UPDATE session_log SET platform = 'claude' "
             "WHERE platform IS NULL "
@@ -11110,8 +12066,10 @@ def _init_trends_db():
             "AND jsonl_path LIKE 'antigravity:%'"
         )
         conn.commit()
-    except sqlite3.Error:
+    except _SkipMigration:
         pass
+    except sqlite3.Error as _e:
+        _log_migration_error("platform backfill", _e)
     # Migrate: add quality columns to daily_stats for existing DBs
     try:
         ds_cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_stats)").fetchall()}
@@ -11120,8 +12078,8 @@ def _init_trends_db():
         if "worst_grade" not in ds_cols:
             conn.execute("ALTER TABLE daily_stats ADD COLUMN worst_grade TEXT")
         conn.commit()
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as _e:
+        _log_migration_error("daily_stats columns", _e)
     # Migrate: add per-event model column to savings_events (v5.9+). Lets the
     # savings view reprice historical events at the rate that was actually in
     # effect when they were logged, instead of today's active-model rate.
@@ -11152,8 +12110,8 @@ def _init_trends_db():
             "ON savings_events (pause_key) WHERE pause_key IS NOT NULL"
         )
         conn.commit()
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as _e:
+        _log_migration_error("savings_events columns", _e)
     # Backfill session_uuid on savings_events from session_id where it looks
     # like a UUID (8-4-4-4-12 hex pattern). Short agent_ids (<=17 chars without
     # dashes) are flagged unjoinable=1 rather than silently treated as Sonnet.
@@ -11171,8 +12129,9 @@ def _init_trends_db():
             uuid_updates = []
             unjoinable_updates = []
             for row_id, sid in rows:
-                if sid and _UUID_PAT.match(sid):
-                    uuid_updates.append((sid, row_id))
+                canonical, _ = _extract_session_uuid(sid)
+                if canonical:
+                    uuid_updates.append((canonical, row_id))
                 elif sid and len(sid) <= 20 and "-" not in sid and sid not in (
                     "unknown", "test-123", "perf_test", "regtest", "demo"
                 ):
@@ -11189,8 +12148,8 @@ def _init_trends_db():
                     unjoinable_updates,
                 )
         conn.commit()
-    except (sqlite3.Error, OSError):
-        pass
+    except (sqlite3.Error, OSError) as _e:
+        _log_migration_error("savings_events uuid backfill", _e)
     # Migrate: ensure compression_events table exists for upgrades from v4.x
     try:
         conn.execute("SELECT 1 FROM compression_events LIMIT 1")
@@ -11214,8 +12173,8 @@ def _init_trends_db():
                 );
             """)
             conn.commit()
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as _e:
+            _log_migration_error("compression_events table", _e)
     # Idempotent migrations for session_uuid + model on compression_events.
     # These columns enable per-event session joins and correct model attribution.
     try:
@@ -11241,8 +12200,8 @@ def _init_trends_db():
             "ON compression_events (feature, tier)"
         )
         conn.commit()
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as _e:
+        _log_migration_error("compression_events columns", _e)
     # Backfill session_uuid on compression_events from session_id where UUID pattern.
     try:
         import re as _re
@@ -11256,9 +12215,9 @@ def _init_trends_db():
         ).fetchall()
         if ce_rows:
             ce_updates = [
-                (sid, row_id)
+                (_extract_session_uuid(sid)[0], row_id)
                 for row_id, sid in ce_rows
-                if sid and _UUID_PAT2.match(sid)
+                if _extract_session_uuid(sid)[0]
             ]
             if ce_updates:
                 conn.executemany(
@@ -11266,8 +12225,8 @@ def _init_trends_db():
                     ce_updates,
                 )
         conn.commit()
-    except (sqlite3.Error, OSError):
-        pass
+    except (sqlite3.Error, OSError) as _e:
+        _log_migration_error("compression_events uuid backfill", _e)
     return conn
 
 
@@ -11410,6 +12369,69 @@ def _backfill_session_metrics(conn, days=30, limit=50):
     return result if result is not None else 0
 
 
+def _backfill_daily_usage(conn, days=30, budget_seconds=20.0):
+    """Fill daily_usage_json for rows collected before per-day attribution.
+
+    Time-boxed rather than count-capped: parses are memoized and most rows are
+    small, so the window usually converges in one pass, and a huge history
+    simply finishes on later flushes. Rows that are not JSONL transcripts
+    (hook-rollup adapters) get '{}' so they are never retried; the rollup
+    prices those, and rows whose transcript is missing, from session totals.
+    """
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    # Only the window: a row's stored date is its transcript's mtime day at
+    # collect time, so a session with any activity in the window has a date in
+    # it, and a resumed one is re-collected with a newer date. Selecting the
+    # whole table would re-scan every old or missing-transcript row forever.
+    rows = _retry_db_operation(conn, lambda: conn.execute(
+        """SELECT jsonl_path, date FROM session_log
+           WHERE daily_usage_json IS NULL AND date >= ?
+           ORDER BY date DESC""", (cutoff,)
+    ).fetchall())
+    if not rows:
+        return 0
+    deadline = time.monotonic() + budget_seconds
+    updates = []
+    for jsonl_path, stored_date in rows:
+        if time.monotonic() > deadline:
+            break
+        if not (jsonl_path and str(jsonl_path).endswith(".jsonl")):
+            # A hook-rollup adapter row has no transcript to split by day:
+            # settle it now so it is never rescanned.
+            updates.append(("{}", None, None, None, jsonl_path))
+            continue
+        if not os.path.exists(jsonl_path):
+            # Transcript missing, maybe only for now (a synced folder not yet
+            # downloaded, an unmounted drive): stay NULL so it fills in when the
+            # file returns, even with an old mtime that collect would skip.
+            continue
+        try:
+            usage = _session_daily_usage(jsonl_path)
+        except Exception:
+            usage = {}
+        dated = [d for d in usage if d != UNDATED_USAGE_KEY]
+        last_day = max(dated) if dated else None
+        updates.append((json.dumps(usage), _canonical_session_uuid(jsonl_path) if jsonl_path else None,
+                        last_day, last_day, jsonl_path))
+    if not updates:
+        return 0
+
+    def batch_update():
+        conn.executemany(
+            """UPDATE session_log
+               SET daily_usage_json = ?,
+                   session_uuid = COALESCE(session_uuid, ?),
+                   date = CASE WHEN ? > date THEN ? ELSE date END
+               WHERE jsonl_path = ?""",
+            updates,
+        )
+        conn.commit()
+        return len(updates)
+
+    result = _retry_db_operation(conn, batch_update)
+    return result if result is not None else 0
+
+
 def _extract_session_uuid(session_id):
     """Return (session_uuid, unjoinable) for a session_id string.
 
@@ -11430,6 +12452,10 @@ def _extract_session_uuid(session_id):
     )
     if not session_id or session_id in ("unknown", "test-123", "perf_test", "regtest", "demo"):
         return None, False
+    if session_id.startswith('rollout-'):
+        match = re.search(r'([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$', session_id, re.I)
+        if match:
+            return match.group(1), False
     if _UUID_PAT.match(session_id):
         return session_id, False
     # Short opaque hex without dashes (17-char agent_ids from Claude Code)
@@ -11447,6 +12473,7 @@ def _log_spawn_failure(msg):
     """
     try:
         DAEMON_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        _cap_append_log(DAEMON_LOG_DIR / "spawn-failures.log")
         with open(DAEMON_LOG_DIR / "spawn-failures.log", "a", encoding="utf-8") as f:
             f.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), msg))
     except OSError:
@@ -11481,14 +12508,20 @@ def _log_savings_event(event_type, tokens_saved, session_id=None, detail=None, m
         # aggregation layer not to use the stored model for reprice attribution.
         tier = _load_pricing_tier()
         tier_data = PRICING_TIERS.get(tier, PRICING_TIERS["anthropic"])
-        if model:
-            normalized = _normalize_model_name(model) or "sonnet"
+        if detect_runtime() == 'codex':
+            normalized = model or _resolve_session_model(session_id)
+            rates = _input_and_cached_read_rates(normalized)
+            if cost_per_mtok is None:
+                cost_per_mtok = rates[0] if rates else None
+        elif model:
+            normalized = _claude_price_key(model, tier_data["claude_models"]) or "sonnet"
         else:
             normalized = _resolve_session_model(session_id)
-        rates = tier_data["claude_models"].get(normalized, tier_data["claude_models"].get("sonnet", {}))
-        if cost_per_mtok is None:
-            cost_per_mtok = rates.get("input", 3.0)
-        cost_saved = tokens_saved * cost_per_mtok / 1e6
+        if detect_runtime() != 'codex':
+            rates = tier_data["claude_models"].get(normalized, tier_data["claude_models"].get("sonnet", {}))
+            if cost_per_mtok is None:
+                cost_per_mtok = rates.get("input", 3.0)
+        cost_saved = tokens_saved * cost_per_mtok / 1e6 if cost_per_mtok is not None else None
 
         conn = _init_trends_db()
         try:
@@ -11626,8 +12659,11 @@ def _get_compression_summary(days=30, since=None):
             comp = comp or 0
             cnt = cnt or 0
             # Per-model rate: use stored model if available, else current-session fallback.
-            if model:
-                norm_m = _normalize_model_name(model) or "sonnet"
+            if detect_runtime() == 'codex':
+                model_rates = _input_and_cached_read_rates(model)
+                rate = model_rates[0] if model_rates else 0.0
+            elif model:
+                norm_m = _claude_price_key(model, tier_data["claude_models"]) or "sonnet"
                 rate = (
                     tier_data["claude_models"]
                     .get(norm_m, tier_data["claude_models"].get("sonnet", {}))
@@ -12419,8 +13455,8 @@ def _claude_rates_for_model(model, tier_data):
     """
     if _normalize_openai_model_name(model) or _normalize_gemini_model_name(model):
         return None
-    normalized = _normalize_model_name(model) if model else None
     claude_models = tier_data.get("claude_models", {})
+    normalized = _claude_price_key(model, claude_models) if model else None
     if normalized and normalized in claude_models:
         return claude_models[normalized]
     return None
@@ -13537,242 +14573,6 @@ def keepwarm_consent_status(env=None, claude_json_path=None, settings_path=None)
     }
 
 
-# ---------------------------------------------------------------------------
-# Star-ask: a respectful, once-ever offer to star the repo on GitHub.
-# Reuses the config-flag consent surface (same atomic config.json) rather than
-# inventing a new sentinel. Starring is an external action on the user's GitHub
-# account, so it follows the same opt-in discipline as keep-warm: explicit,
-# default-respectful, easy no, never repeated. gh-gated: a silent no-op when gh
-# is absent or unauthenticated, and value-gated so a brand-new install is not
-# asked before it has seen value.
-# ---------------------------------------------------------------------------
-_STAR_REPO_SLUG = "alexgreensh/token-optimizer"
-_STAR_CONSENT_KEY = "star_consent"
-_STAR_CONSENT_STATES = ("unasked", "asked", "starred", "declined")
-# Env override is read at call time (in _star_has_value_history) because _int_env
-# is defined further down the module than this top-level assignment runs.
-_STAR_VALUE_MIN_SESSIONS_DEFAULT = 3
-
-
-def _star_kill_switch_on():
-    """True when TOKEN_OPTIMIZER_STAR_ASK is set falsey (0/false/no/off)."""
-    return os.environ.get("TOKEN_OPTIMIZER_STAR_ASK", "1").strip().lower() in (
-        "0", "false", "no", "off")
-
-
-def star_consent():
-    """Read the sticky consent record: 'unasked'|'asked'|'starred'|'declined'.
-
-    Absent key or any corruption reads as 'unasked' — the ask path is itself
-    gated (gh + value history), so 'unasked' never means "ask unconditionally".
-    """
-    val = _read_config_flag(_STAR_CONSENT_KEY, "unasked")
-    if isinstance(val, str) and val in _STAR_CONSENT_STATES:
-        return val
-    return "unasked"
-
-
-def _star_set_consent(value):
-    """Persist consent via _write_config_flag. Rejects unknown states (no-op)."""
-    if value not in _STAR_CONSENT_STATES:
-        return None
-    _write_config_flag(_STAR_CONSENT_KEY, value)
-    return value
-
-
-def star_mark_asked():
-    """Idempotently record that the one-time pitch was shown ('unasked'->'asked').
-
-    Terminal states ('asked', 'starred', 'declined') are left untouched so the
-    pitch is shown exactly once and a final answer is never reverted to a re-ask.
-    """
-    if star_consent() == "unasked":
-        _star_set_consent("asked")
-        return "asked"
-    return star_consent()
-
-
-def _gh_available():
-    """True if the gh CLI is installed AND authenticated. Never raises."""
-    import shutil
-    if not shutil.which("gh"):
-        return False
-    try:
-        # Short timeout: this runs inside ensure-health's SessionStart budget.
-        # Two gate calls (this + the starred check) must fit well under it.
-        r = subprocess.run(
-            ["gh", "auth", "status"], capture_output=True, timeout=3, creationflags=_NO_WINDOW)
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def _gh_repo_is_starred(slug=_STAR_REPO_SLUG):
-    """True/False if the authed gh user has starred slug, None if unknown.
-
-    `gh api /user/starred/<slug>`: HTTP 204 -> starred, 404 -> not starred.
-    Auth errors, network failures, and rate limits return None (unknown) so the
-    caller fails closed rather than re-asking. Never raises.
-    """
-    import shutil
-    if not shutil.which("gh"):
-        return None
-    try:
-        # Short timeout: runs inside ensure-health's SessionStart budget.
-        r = subprocess.run(
-            ["gh", "api", "/user/starred/%s" % slug],
-            capture_output=True, timeout=3, creationflags=_NO_WINDOW)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if r.returncode == 0:
-        return True
-    err = (r.stderr or b"").decode("utf-8", "replace")
-    if "404" in err or "Not Found" in err:
-        return False
-    return None
-
-
-def _star_has_value_history():
-    """True once the user has demonstrated-value history.
-
-    Satisfied by >= _STAR_VALUE_MIN_SESSIONS logged sessions OR any realized
-    savings event. A brand-new install has neither, so the first ask waits until
-    value has been seen; existing users clear it immediately. Never raises.
-    """
-    if not TRENDS_DB.exists():
-        return False
-    try:
-        import sqlite3
-        conn = sqlite3.connect(str(TRENDS_DB))
-        try:
-            # Fail-fast reader on the SessionStart path: a write-locked DB should
-            # not stall the hook, and the gate fails closed (no value) on timeout.
-            conn.execute("PRAGMA busy_timeout=1000")
-            min_sessions = _int_env(
-                "TOKEN_OPTIMIZER_STAR_MIN_SESSIONS", _STAR_VALUE_MIN_SESSIONS_DEFAULT)
-            sessions = conn.execute(
-                "SELECT COUNT(*) FROM session_log").fetchone()[0]
-            if sessions >= min_sessions:
-                return True
-            # A pre-savings_events schema is a valid state (session_log only):
-            # a missing table means no savings events, not an error.
-            try:
-                row = conn.execute(
-                    "SELECT 1 FROM savings_events LIMIT 1").fetchone()
-            except sqlite3.OperationalError:
-                row = None
-            return bool(row)
-        finally:
-            conn.close()
-    except (sqlite3.Error, OSError):
-        return False
-
-
-def star_consent_status():
-    """Machine-readable gate inputs for the first-run star ASK surface.
-
-    Returns {consent, gh_available, already_starred, has_value, should_ask}.
-    should_ask is True ONLY when ALL hold: kill switch off, consent == 'unasked',
-    gh available + authenticated, repo not already starred, and value history
-    exists. Any unknown (gh absent, star-state None) fails closed (no ask). The
-    surface must transition unasked->asked (star_mark_asked) right after showing
-    the pitch so it appears exactly once.
-    """
-    if _star_kill_switch_on():
-        return {
-            "consent": star_consent(), "gh_available": None,
-            "already_starred": None, "has_value": None, "should_ask": False,
-        }
-    consent = star_consent()
-    # Cheapest gate first. ensure-health runs this on every SessionStart, so a
-    # terminal consent (asked/starred/declined) must cost only a single config
-    # read — no value-history DB query, no gh subprocesses. Only an 'unasked'
-    # user proceeds, and only a candidate (value seen) ever touches gh.
-    if consent != "unasked":
-        return {
-            "consent": consent, "gh_available": None,
-            "already_starred": None, "has_value": None, "should_ask": False,
-        }
-    has_value = _star_has_value_history()
-    if not has_value:
-        return {
-            "consent": consent, "gh_available": None,
-            "already_starred": None, "has_value": False, "should_ask": False,
-        }
-    gh_ok = _gh_available()
-    starred = _gh_repo_is_starred() if gh_ok else None
-    should_ask = bool(gh_ok and starred is False)
-    return {
-        "consent": consent, "gh_available": gh_ok,
-        "already_starred": starred, "has_value": has_value,
-        "should_ask": should_ask,
-    }
-
-
-def star_now(slug=_STAR_REPO_SLUG):
-    """Star the repo (gh api -X PUT /user/starred/<slug>). Returns (ok, message).
-
-    Sets consent='starred' on success. Never raises — a failed star reports the
-    reason and leaves consent unchanged so the surface can decide what to do.
-    """
-    if not _gh_available():
-        return (False, "GitHub CLI (gh) is not available or not authenticated; "
-                       "cannot star automatically.")
-    try:
-        r = subprocess.run(
-            ["gh", "api", "-X", "PUT", "/user/starred/%s" % slug],
-            capture_output=True, timeout=10, creationflags=_NO_WINDOW)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return (False, "Star request failed: %s." % type(exc).__name__)
-    if r.returncode == 0:
-        _star_set_consent("starred")
-        return (True, "Starred %s — thank you for supporting the project!" % slug)
-    err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
-    # Bound the echoed line so a verbose/auth-ish gh error can't dump a long
-    # payload into output the assistant surfaces.
-    head = err[0][:140] if err else "unknown error"
-    return (False, "Could not star %s: %s" % (slug, head))
-
-
-def star_decline():
-    """Terminal opt-out. Sets consent='declined' so the pitch never returns.
-
-    Always succeeds. Returns (True, message).
-    """
-    _star_set_consent("declined")
-    return (True, "No problem — I won't ask again. You can star anytime at "
-                  "https://github.com/%s if you change your mind." % _STAR_REPO_SLUG)
-
-
-def _star_session_pitch():
-    """One-time star offer for the SessionStart surface.
-
-    Returns a short, Claude-directed instruction when should_ask is True, else
-    None. The assistant turns it into a warm, easy-to-decline offer and records
-    the outcome (star-now / star-decline / star-consent-asked), mirroring the
-    keep-warm flow. This deliberately does NOT mark the pitch shown itself:
-    recording only after the assistant has actually presented the offer means a
-    lost or unread hook output can never silently lock a user out of ever being
-    asked (the keep-warm "record the answer, not the attempt" axiom). Never
-    raises.
-    """
-    try:
-        if not star_consent_status().get("should_ask"):
-            return None
-    except Exception:
-        return None
-    # Strip control chars so an unusual install path can't inject extra lines
-    # into the instruction that lands in the model's context.
-    me = str(Path(__file__).resolve()).replace("\n", "").replace("\r", "")
-    return (
-        "[Token Optimizer] (one-time) Briefly offer to star "
-        "https://github.com/%s. If yes: python3 \"%s\" star-now. "
-        "If no: python3 \"%s\" star-decline. If no response: "
-        "python3 \"%s\" star-consent-asked. Record one."
-        % (_STAR_REPO_SLUG, me, me, me)
-    )
-
-
 def keepwarm_gate(env=None, claude_json_path=None, settings_path=None):
     """THE pre-ping gate the tick loop calls. Returns (allowed, reason).
 
@@ -14102,6 +14902,29 @@ def _keepwarm_scheduler_install_lock(soft_fail=False):
                     pass
 
     return _locked()
+
+
+_APPEND_LOG_MAX_BYTES = 1024 * 1024
+
+
+def _cap_append_log(path, max_bytes=_APPEND_LOG_MAX_BYTES):
+    """Keep an append-only diagnostic log under max_bytes by dropping its older
+    half (newest lines kept, truncated in place). Never raises."""
+    try:
+        path = Path(path)
+        if not path.exists() or path.stat().st_size <= max_bytes:
+            return
+        with open(path, "rb") as fh:
+            fh.seek(-(max_bytes // 2), os.SEEK_END)
+            tail = fh.read()
+        nl = tail.find(b"\n")
+        if 0 <= nl < len(tail) - 1:
+            tail = tail[nl + 1:]
+        with open(path, "r+b") as fh:
+            fh.write(tail)
+            fh.truncate()
+    except OSError:
+        pass
 
 
 def _keepwarm_rotate_log(max_bytes=_KEEPWARM_SCHEDULER_LOG_MAX_BYTES):
@@ -15025,11 +15848,13 @@ def _keepwarm_extract_cwd(transcript_path):
 # Charset gate for values placed after `claude` flags (security M1). Model IDs and
 # session IDs are both [A-Za-z0-9._-]; anything else (whitespace, leading-dash flag
 # spoofing, shell metacharacters, control bytes) is rejected before the subprocess.
-_KEEPWARM_ARG_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+# First character must NOT be a dash: a leading `-` would let `--model`, `-h`,
+# `--resume`, `-p` etc. pass as a value and shift the downstream flag positions.
+_KEEPWARM_ARG_RE = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$")
 
 
 def _keepwarm_valid_arg(value):
-    """True iff `value` is a safe post-flag subprocess arg (^[A-Za-z0-9._-]{1,128}$)."""
+    """True iff `value` is a safe post-flag subprocess arg (no leading dash, ^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$)."""
     return isinstance(value, str) and bool(_KEEPWARM_ARG_RE.match(value))
 
 
@@ -16879,17 +17704,11 @@ def _keepwarm_rate_limits_path():
     divergence: RUNTIME_DIR (= claude_home() for the Claude runtime) is stable
     across Cowork, matching where the statusline writes in the common case.
 
-    KNOWN GAP (pre-existing, not introduced here, tracked separately): RUNTIME_DIR
-    resolves through claude_home(), which HONORS CLAUDE_CONFIG_DIR, but statusline.js
-    (and the VS Code extension) hardcode os.homedir()/.claude and IGNORE
-    CLAUDE_CONFIG_DIR. So a user who relocates their Claude config via
-    CLAUDE_CONFIG_DIR reads the meter from claude_home() while the statusline writes
-    it under os.homedir()/.claude -- they diverge and the runway card empties, the
-    same symptom by a different trigger. The old QUALITY_CACHE_DIR base had the
-    identical divergence on desktop, so this is unchanged by the fix. The complete
-    cure is to make the JS/TS writers honor CLAUDE_CONFIG_DIR too (hot-path change,
-    separate follow-up). With CLAUDE_CONFIG_DIR unset (the common case) all three
-    resolve to ~/.claude/token-optimizer and agree.
+    RUNTIME_DIR resolves through claude_home(), which honors CLAUDE_CONFIG_DIR.
+    statusline.js and the VS Code companion resolve the same dir with the same
+    rules (#198), so a relocated config reads and writes the meter in one place.
+    Keep all three resolvers in step; tests/test_statusline_claude_config_dir.py
+    holds them to parity.
 
     Foreign runtimes (codex/copilot/hermes) have no meter writer, so their
     runtime-scoped RUNTIME_DIR path stays empty. runway_snapshot then returns a card
@@ -18087,6 +18906,7 @@ _COUNTED_SE_EVENT_TYPES = (
 _COUNTED_CE_EXCLUDED_FEATURES = (
     "quality_nudge", "loop_detection", "cohort_demoted", "fresh_session_nudge",
     "cache_drop_warning", "first_read_edit_followup",
+    "delta_read",  # read_cache emits both ledgers; savings_events owns this key
 )
 # Ledger events count from here; earlier months use transcript markers instead
 # (the Mar-Apr ledger logged 4+13 events against 73+232 physical markers).
@@ -18108,7 +18928,7 @@ def _counted_event_utc(ts):
     timestamps are UTC. Convert local-naive -> UTC-naive (DST-correct for the
     event's own date via the system tz database). Never raises."""
     try:
-        dt = datetime.fromisoformat(str(ts)[:26])
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     except (ValueError, TypeError, OSError):
         return None
@@ -18118,7 +18938,7 @@ def _counted_walk_transcript(path, collect_markers=False):
     """One pass over a transcript for the counted-cumulative engine.
 
     Returns (turns, compacts, markers):
-      turns   = [(utc-naive datetime, model_norm)] -- parent API calls, deduped
+      turns   = [(utc-naive datetime, raw model id)] -- parent API calls, deduped
                 on requestId/message.id (Claude Code writes one assistant line
                 per content block, all sharing the same usage);
       compacts= [utc-naive datetime] of real compact_boundary system lines;
@@ -18171,7 +18991,11 @@ def _counted_walk_transcript(path, collect_markers=False):
                 seen.add(rid)
                 if dt is None:
                     continue
-                turns.append((dt, _normalize_model_name(msg.get("model"))))
+                # Raw model id: re-reads are priced by generation card
+                # (Opus 5.5 and Fable 5.1 read cache far cheaper than their family).
+                raw_model = msg.get("model")
+                turns.append((dt, raw_model if isinstance(raw_model, str)
+                              and not raw_model.startswith("<") else None))
     except (OSError, PermissionError):
         return [], [], []
     turns.sort(key=lambda x: x[0])
@@ -18190,7 +19014,8 @@ def _counted_score_event(turns, compacts, ev_dt, tokens, tier_data):
     models = tier_data.get("claude_models", {})
 
     def _rate(model, kind, default):
-        r = models.get(model or "") or models.get("sonnet") or {}
+        key = _claude_price_key(model, models) if model else None
+        r = models.get(key or "") or models.get("sonnet") or {}
         return float(r.get(kind, default))
 
     times = [t[0] for t in turns]
@@ -18314,6 +19139,32 @@ def _counted_session_path(conn, session_uuid):
     return None
 
 
+# Bump when the re-read pricing rule changes. Stored rows keep showing their old
+# value until the normal pass re-walks them, so the dashboard never dips to $0.
+# 2: re-reads priced at each turn's exact model card (Opus 5.5, Fable 5.1).
+_COUNTED_PRICING_VERSION = "2"
+_COUNTED_META_PRICING = "counted_pricing_version"
+
+
+def _reprice_counted_rows_once(conn):
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS token_optimizer_meta "
+                     "(key TEXT PRIMARY KEY, value TEXT)")
+        row = conn.execute("SELECT value FROM token_optimizer_meta WHERE key = ?",
+                           (_COUNTED_META_PRICING,)).fetchone()
+        if row and row[0] == _COUNTED_PRICING_VERSION:
+            return False
+        conn.execute("UPDATE counted_reread SET transcript_mtime = NULL")
+        conn.execute("DELETE FROM token_optimizer_meta WHERE key IN (?, ?)",
+                     (_COUNTED_META_MARKER_DONE, _COUNTED_META_MARKER_CURSOR))
+        conn.execute("INSERT OR REPLACE INTO token_optimizer_meta (key, value) VALUES (?, ?)",
+                     (_COUNTED_META_PRICING, _COUNTED_PRICING_VERSION))
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+
+
 def _update_counted_cumulative(conn, max_sessions=_COUNTED_MAX_SESSIONS_PER_PASS,
                                deadline_seconds=_COUNTED_PASS_DEADLINE_SECONDS,
                                quiet=True):
@@ -18328,6 +19179,15 @@ def _update_counted_cumulative(conn, max_sessions=_COUNTED_MAX_SESSIONS_PER_PASS
              "unmeasured_events": 0}
     try:
         started = time.monotonic()
+        # Earlier versions compounded the delta_read mirror as a second removal.
+        # Delete only those derived duplicates; keep both source telemetry rows.
+        duplicates = conn.execute(
+            "DELETE FROM counted_reread WHERE event_key IN "
+            "(SELECT 'ce:'||id FROM compression_events WHERE feature='delta_read')")
+        stats["duplicate_rows_removed"] = max(0, duplicates.rowcount)
+        if duplicates.rowcount:
+            conn.commit()
+        _reprice_counted_rows_once(conn)
         events = _counted_candidate_events(conn)
         if not events:
             return stats
@@ -18493,10 +19353,15 @@ def _counted_marker_backfill(conn, max_files=_COUNTED_MARKER_FILES_PER_PASS,
 
 
 def _purge_counted_without_transcripts(conn):
-    """Remove counted rows that have no real transcript to support them."""
+    """Remove never-verified fallback rows, preserving evidence already counted.
+
+    Transcript rotation must not erase stored savings. A recorded mtime proves
+    the row was computed from a real transcript, even if that file is now gone.
+    """
     try:
         rows = conn.execute(
-            "SELECT rowid, session_uuid FROM counted_reread"
+            "SELECT rowid, session_uuid FROM counted_reread "
+            "WHERE transcript_mtime IS NULL AND COALESCE(source, '') <> 'mk'"
         ).fetchall()
     except sqlite3.Error:
         return 0
@@ -18530,26 +19395,49 @@ def _counted_backfill_all(conn, quiet=True):
     return stats
 
 
-def _counted_cumulative_summary():
+def _counted_cumulative_summary(days=None, now=None):
     """Cheap SELECT-only rollup of counted_reread for the Counted-to-date card.
 
     NEVER walks transcripts (the collect pass owns that); a dashboard regen
-    pays one aggregate query. Fail-open to {"available": False}."""
+    pays aggregate queries only. With days, select removals made in that period;
+    their later rereads stay attributed to the removal (not to the reread date).
+    This is an event cohort, not a claim of dollars accrued inside an exact window.
+    Fail-open to {"available": False}."""
     out = {"available": False}
+    if days is not None and detect_runtime() != "claude":
+        return out
     if not TRENDS_DB.exists():
         return out
     try:
+        where, params = "", ()
+        end = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        start = end - timedelta(days=max(1, int(days))) if days is not None else None
         conn = _init_trends_db()
         try:
+            if start is not None:
+                def event_epoch(ts, source):
+                    # Pre-ledger marker timestamps were stored as UTC-naive;
+                    # hook events are local-naive, or explicitly offset-aware.
+                    if source == "mk":
+                        try:
+                            value = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                            return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).timestamp()
+                        except (ValueError, TypeError, OSError):
+                            return None
+                    value = _counted_event_utc(ts)
+                    return value.replace(tzinfo=timezone.utc).timestamp() if value else None
+                conn.create_function("counted_event_epoch", 2, event_epoch)
+                where = " WHERE counted_event_epoch(event_ts, source) >= ? AND counted_event_epoch(event_ts, source) <= ?"
+                params = (start.timestamp(), end.timestamp())
             row = conn.execute(
                 "SELECT COUNT(*), COALESCE(SUM(tokens),0), "
                 "COALESCE(SUM(oneshot_usd),0), COALESCE(SUM(reread_tokens),0), "
                 "COALESCE(SUM(reread_usd),0), MIN(event_month), MAX(computed_at) "
-                "FROM counted_reread").fetchone()
+                "FROM counted_reread" + where, params).fetchone()
             months = conn.execute(
                 "SELECT event_month, ROUND(COALESCE(SUM(oneshot_usd),0) + "
                 "COALESCE(SUM(reread_usd),0), 2) FROM counted_reread "
-                "GROUP BY event_month ORDER BY event_month").fetchall()
+                + where + " GROUP BY event_month ORDER BY event_month", params).fetchall()
             try:
                 done = conn.execute(
                     "SELECT value FROM token_optimizer_meta WHERE key = ?",
@@ -18561,11 +19449,14 @@ def _counted_cumulative_summary():
         finally:
             conn.close()
         n, tok, oneshot, rr_tok, rr_usd, first_month, computed_at = row
-        if not n:
+        if not n and days is None:
             return out
         return {
             "available": True,
             "events": int(n),
+            "attribution": "removal_time",
+            "period_start": start.isoformat() if start else None,
+            "period_end": end.isoformat(),
             "removed_tokens": int(tok),
             "oneshot_usd": round(float(oneshot), 2),
             "reread_tokens": int(rr_tok),
@@ -18618,6 +19509,10 @@ def _dashboard_savings_data(days=30, include_billing_mode=False, fail_open=False
         savings_data["counted_cumulative"] = _counted_cumulative_summary()
     except Exception:
         savings_data["counted_cumulative"] = {"available": False}
+    try:
+        savings_data["counted_period"] = _counted_cumulative_summary(days=days)
+    except Exception:
+        savings_data["counted_period"] = {"available": False}
     if include_billing_mode:
         try:
             savings_data["billing_mode"] = keepwarm_billing_mode()
@@ -18823,13 +19718,53 @@ def _get_savings_summary(days=30, since=None):
         }
 
 
-def _is_file_collected(conn, jsonl_path):
-    """Check if a JSONL file has already been collected."""
-    cur = conn.execute(
-        "SELECT 1 FROM session_log WHERE jsonl_path = ?",
+def _is_file_collected(conn, jsonl_path, check_mtime=False):
+    """Check stored IDs; file collectors also check delegated transcript changes."""
+    row = conn.execute(
+        "SELECT collected_at FROM session_log WHERE jsonl_path = ?",
         (str(jsonl_path),),
-    )
-    return cur.fetchone() is not None
+    ).fetchone()
+    if row is None and check_mtime:
+        # A copy that already lost dedupe to a more complete copy counts as
+        # collected until it changes; if it grows, it is parsed and compared again.
+        try:
+            row = conn.execute(
+                "SELECT collected_at FROM session_log_aliases WHERE jsonl_path = ?",
+                (str(jsonl_path),),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+    if row is None:
+        return False
+    if not check_mtime:
+        return True  # Other adapters use synthetic IDs, not filesystem paths.
+    try:
+        collected = datetime.fromisoformat(row[0]).timestamp()
+        path = Path(jsonl_path)
+        paths = [path, *_find_subagent_jsonl_files(path)]
+        return all(path.stat().st_mtime <= collected for path in paths)
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _adapter_activity_ts(parsed):
+    """Latest activity of an adapter session (its end/updated time, else its
+    start) as an aware datetime, or None. A resumed chat must land on the day
+    it was last used, like a Claude transcript, not the day it started."""
+    best = None
+    for field in ("last_ts", "first_ts"):
+        raw = parsed.get(field)
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(raw)
+        except (TypeError, ValueError):
+            continue
+        if dt.tzinfo is None:
+            dt = dt.astimezone()
+        if best is None or dt > best:
+            best = dt
+    return best
 
 
 def _insert_foreign_normalized_session(conn, dedup_key, parsed, platform, project_fallback, quiet=False):
@@ -18849,14 +19784,8 @@ def _insert_foreign_normalized_session(conn, dedup_key, parsed, platform, projec
     if not slug:
         return 0
 
-    first_ts = parsed.get("first_ts")
-    date = datetime.now().strftime("%Y-%m-%d")
-    if first_ts:
-        try:
-            dt = datetime.fromisoformat(first_ts)
-            date = dt.astimezone().strftime("%Y-%m-%d")
-        except (TypeError, ValueError):
-            date = datetime.now().strftime("%Y-%m-%d")
+    active = _adapter_activity_ts(parsed)
+    date = active.astimezone().strftime("%Y-%m-%d") if active else datetime.now().strftime("%Y-%m-%d")
 
     project_name = str(parsed.get("cwd") or project_fallback)
     is_incomplete = 1 if parsed.get("incomplete") else 0
@@ -18957,50 +19886,57 @@ def _safe_json_dict(raw):
 
 
 def _rebuild_aggregate_tables(conn):
-    """Recompute daily aggregate tables from session_log to avoid double counts."""
+    """Recompute daily aggregate tables from session_log to avoid double counts.
+
+    The daily_stats portion is a single SQL aggregate (94x faster than the
+    row-by-row INSERT-on-conflict loop on 50K rows, and O(1) memory instead
+    of O(N)). The skill/model/subagent daily tables still need JSON parsing
+    in Python (SQLite has no json_each for arbitrary shapes here), so those
+    are batched with executemany per date group instead of one INSERT per row.
+    """
     conn.execute("DELETE FROM daily_stats")
     conn.execute("DELETE FROM model_daily")
     conn.execute("DELETE FROM skill_daily")
     conn.execute("DELETE FROM subagent_daily")
 
+    # daily_stats: single SQL aggregate. worst_grade uses MIN on a custom
+    # collation surrogate (INSTR('FDCBAS', grade)) computed in SQL via a
+    # subquery. The per-day worst grade is the one with the smallest INSTR
+    # (F=1 is worst, A=5, S=6, NULL excluded).
+    conn.execute(
+        """INSERT INTO daily_stats
+               (date, session_count, total_input, total_output,
+                total_duration, avg_cache_hit, avg_quality_score, worst_grade)
+           SELECT date,
+                  COUNT(*),
+                  COALESCE(SUM(input_tokens), 0),
+                  COALESCE(SUM(output_tokens), 0),
+                  COALESCE(SUM(duration_minutes), 0),
+                  COALESCE(AVG(cache_hit_rate), 0),
+                  COALESCE(AVG(quality_score), 0),
+                  (SELECT quality_grade FROM session_log g
+                   WHERE g.date = session_log.date
+                     AND g.quality_grade IS NOT NULL
+                   ORDER BY INSTR('FDCBAS', g.quality_grade) ASC
+                   LIMIT 1)
+           FROM session_log
+           GROUP BY date"""
+    )
+
+    # skill_daily / model_daily / subagent_daily: still need JSON parsing in
+    # Python. Batch with executemany per date group to avoid per-row
+    # statement overhead. Only fetch the JSON columns + date.
     rows = conn.execute(
-        """SELECT date, input_tokens, output_tokens, duration_minutes, cache_hit_rate,
-                  quality_score, quality_grade, skills_json, subagents_json,
+        """SELECT date, skills_json, subagents_json,
                   model_usage_json, all_model_usage_json
            FROM session_log"""
     ).fetchall()
-    for row in rows:
-        date, input_tokens, output_tokens, duration, cache_hit, quality_score, quality_grade, skills_json, subagents_json, model_usage_json, all_model_usage_json = row
-        conn.execute(
-            """INSERT INTO daily_stats (date, session_count, total_input, total_output, total_duration, avg_cache_hit,
-                 avg_quality_score, worst_grade)
-               VALUES (?, 1, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(date) DO UPDATE SET
-                 session_count = session_count + 1,
-                 total_input = total_input + excluded.total_input,
-                 total_output = total_output + excluded.total_output,
-                 total_duration = total_duration + excluded.total_duration,
-                 avg_cache_hit = (avg_cache_hit * session_count + excluded.avg_cache_hit) / (session_count + 1),
-                 avg_quality_score = CASE
-                   WHEN avg_quality_score IS NULL THEN excluded.avg_quality_score
-                   ELSE (avg_quality_score * session_count + excluded.avg_quality_score) / (session_count + 1)
-                 END,
-                 worst_grade = CASE
-                   WHEN worst_grade IS NULL THEN excluded.worst_grade
-                   WHEN INSTR('FDCBAS', excluded.worst_grade) < INSTR('FDCBAS', worst_grade) THEN excluded.worst_grade
-                   ELSE worst_grade
-                 END""",
-            (date, input_tokens or 0, output_tokens or 0, duration or 0, cache_hit or 0, quality_score, quality_grade),
-        )
+    skill_batch = []
+    model_batch = []
+    subagent_batch = []
+    for date, skills_json, subagents_json, model_usage_json, all_model_usage_json in rows:
         for skill, invocations in _safe_json_dict(skills_json).items():
-            conn.execute(
-                """INSERT INTO skill_daily (date, skill, session_count, invocations)
-                   VALUES (?, ?, 1, ?)
-                   ON CONFLICT(date, skill) DO UPDATE SET
-                     session_count = session_count + 1,
-                     invocations = invocations + excluded.invocations""",
-                (date, skill, int(invocations or 0)),
-            )
+            skill_batch.append((date, skill, 1, int(invocations or 0)))
         model_usage_for_daily = _safe_json_dict(all_model_usage_json)
         if not model_usage_for_daily:
             model_usage_for_daily = _safe_json_dict(model_usage_json)
@@ -19008,21 +19944,34 @@ def _rebuild_aggregate_tables(conn):
             normalized = _normalize_model_name(model_id)
             if normalized is None:
                 continue
-            conn.execute(
-                """INSERT INTO model_daily (date, model, total_tokens)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(date, model) DO UPDATE SET
-                     total_tokens = total_tokens + excluded.total_tokens""",
-                (date, normalized, int(tokens or 0)),
-            )
+            model_batch.append((date, normalized, int(tokens or 0)))
         for agent_type, count in _safe_json_dict(subagents_json).items():
-            conn.execute(
-                """INSERT INTO subagent_daily (date, agent_type, spawn_count)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(date, agent_type) DO UPDATE SET
-                     spawn_count = spawn_count + excluded.spawn_count""",
-                (date, agent_type, int(count or 0)),
-            )
+            subagent_batch.append((date, agent_type, int(count or 0)))
+    if skill_batch:
+        conn.executemany(
+            """INSERT INTO skill_daily (date, skill, session_count, invocations)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(date, skill) DO UPDATE SET
+                 session_count = session_count + excluded.session_count,
+                 invocations = invocations + excluded.invocations""",
+            skill_batch,
+        )
+    if model_batch:
+        conn.executemany(
+            """INSERT INTO model_daily (date, model, total_tokens)
+               VALUES (?, ?, ?)
+               ON CONFLICT(date, model) DO UPDATE SET
+                 total_tokens = total_tokens + excluded.total_tokens""",
+            model_batch,
+        )
+    if subagent_batch:
+        conn.executemany(
+            """INSERT INTO subagent_daily (date, agent_type, spawn_count)
+               VALUES (?, ?, ?)
+               ON CONFLICT(date, agent_type) DO UPDATE SET
+                 spawn_count = spawn_count + excluded.spawn_count""",
+            subagent_batch,
+        )
 
 
 def _needs_model_daily_rebuild(conn):
@@ -19085,10 +20034,16 @@ def _migrate_streaming_dedup(conn, quiet=False):
         conn.execute("PRAGMA user_version = 3")
         conn.commit()
         conn.execute("DELETE FROM session_log")
+        conn.execute("DELETE FROM session_log_aliases")
         conn.execute("DELETE FROM daily_stats")
         conn.execute("DELETE FROM model_daily")
         conn.execute("DELETE FROM skill_daily")
         conn.execute("DELETE FROM subagent_daily")
+        # Drop event tables too: their session_id/session_uuid references would
+        # otherwise dangle (no FK constraints) and silently inflate savings.
+        conn.execute("DELETE FROM savings_events")
+        conn.execute("DELETE FROM compression_events")
+        conn.execute("DELETE FROM counted_reread")
         conn.commit()
         if not quiet:
             print("[Token Optimizer] Migrated to v5.4.9 streaming-aware token counting.")
@@ -19113,10 +20068,16 @@ def _collect_hermes_sessions(days=90, quiet=False, rebuild=False):
                 print("[Token Optimizer] Rebuilding Hermes trends DB...")
             conn.execute("PRAGMA user_version = 3")
             conn.execute("DELETE FROM session_log")
+            conn.execute("DELETE FROM session_log_aliases")
             conn.execute("DELETE FROM daily_stats")
             conn.execute("DELETE FROM model_daily")
             conn.execute("DELETE FROM skill_daily")
             conn.execute("DELETE FROM subagent_daily")
+            # Drop event tables too: their session_id/session_uuid references would
+            # otherwise dangle (no FK constraints) and silently inflate savings.
+            conn.execute("DELETE FROM savings_events")
+            conn.execute("DELETE FROM compression_events")
+            conn.execute("DELETE FROM counted_reread")
             conn.commit()
 
         rows = _hs.recent_sessions(days=days)
@@ -19126,8 +20087,11 @@ def _collect_hermes_sessions(days=90, quiet=False, rebuild=False):
             return 0
 
         new_count = 0
+        updated_count = 0
         for row in rows:
-            parsed = hermes_session.normalize_session(row)
+            session_id = str(row.get("id") or "")
+            live_context_tokens = globals().get("_HERMES_ROLLUP_CONTEXT", {}).get(session_id)
+            parsed = hermes_session.normalize_session(row, context_tokens=live_context_tokens)
             if not parsed:
                 continue
 
@@ -19137,6 +20101,23 @@ def _collect_hermes_sessions(days=90, quiet=False, rebuild=False):
                 continue
 
             if _is_file_collected(conn, dedup_key):
+                # A rollup carries the session's live occupancy, which an
+                # earlier mid-session collect could not see. Refresh the stored
+                # grade in place so the first write does not freeze a
+                # fill-blind score for the life of the DB. Non-rollup
+                # collections (no live reading) keep the dedup's first write.
+                if live_context_tokens is not None:
+                    conn.execute(
+                        """UPDATE session_log
+                           SET quality_score = ?, quality_grade = ?
+                           WHERE jsonl_path = ?""",
+                        (
+                            parsed.get("quality_score", 0),
+                            parsed.get("quality_grade", "F"),
+                            dedup_key,
+                        ),
+                    )
+                    updated_count += 1
                 continue
 
             started_at = row.get("started_at")
@@ -19194,8 +20175,9 @@ def _collect_hermes_sessions(days=90, quiet=False, rebuild=False):
                 continue
             new_count += 1
 
-        # Q2: only rebuild aggregates when new rows were actually inserted.
-        if new_count > 0:
+        # Q2: only rebuild aggregates when rows were actually inserted or
+        # refreshed (daily_stats carries avg_quality_score / worst_grade).
+        if new_count > 0 or updated_count > 0:
             _rebuild_aggregate_tables(conn)
         conn.commit()
         conn.execute("PRAGMA user_version = 3")
@@ -19207,6 +20189,37 @@ def _collect_hermes_sessions(days=90, quiet=False, rebuild=False):
         total = conn_total_sessions() if TRENDS_DB.exists() else new_count
         print(f"[Token Optimizer] Collected {new_count} new Hermes sessions. Total in DB: {total}")
     return new_count
+
+
+def _parse_hermes_rollup_context(args):
+    """Parse ``--session``/``--context-tokens`` out of hermes-rollup CLI args.
+
+    Returns ``{session_id: context_tokens}`` when both are present and the
+    token count is a positive integer; ``{}`` otherwise. A zero, negative, or
+    non-numeric value is not a real occupancy reading — it degrades to
+    "unavailable" so the collected row omits fill instead of storing a fake
+    0% fill. ``--platform``/``--reason`` are accepted and skipped so the
+    bridge's exact call signature never causes an error.
+    """
+    session = ""
+    context_tokens = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--session" and i + 1 < len(args):
+            session = args[i + 1]
+            i += 2
+        elif args[i] == "--context-tokens" and i + 1 < len(args):
+            try:
+                value = int(args[i + 1])
+            except ValueError:
+                value = 0
+            context_tokens = value if value > 0 else None
+            i += 2
+        elif args[i] in ("--platform", "--reason") and i + 1 < len(args):
+            i += 2
+        else:
+            i += 1
+    return {session: context_tokens} if session and context_tokens is not None else {}
 
 
 def _resolve_copilot_home_wsl_aware(mnt_root=None):
@@ -19346,7 +20359,7 @@ def _grok_summary():
         print("    Cost: no authoritative billing data recorded (costUsdTicks scrubbed)")
     print(f"    Tokens: {total_in:,} in / {total_out:,} out")
     if top_models:
-        print("    Models: " + ", ".join(f"{m} ({v:,})" for m, v in top_models))
+        print("    Models: " + ", ".join(f"{_strip_ansi(str(m))} ({v:,})" for m, v in top_models))
     if incomplete:
         print(f"    {incomplete} session(s) ended without clean shutdown (usageIsIncomplete)")
     if estimated:
@@ -19437,18 +20450,10 @@ def _collect_grok_sessions(days=90, quiet=False, rebuild=False):
                                 print(f"[Token Optimizer] could not upgrade a Grok session: {exc}")
                 continue
 
-            first_ts = parsed.get("first_ts")
-            date = None
-            if first_ts:
-                try:
-                    dt = datetime.fromisoformat(first_ts)
-                    if dt.timestamp() < cutoff:
-                        continue
-                    date = dt.astimezone().strftime("%Y-%m-%d")
-                except (TypeError, ValueError):
-                    date = None
-            if date is None:
-                date = datetime.now().strftime("%Y-%m-%d")
+            active = _adapter_activity_ts(parsed)
+            if active and active.timestamp() < cutoff:
+                continue
+            date = active.astimezone().strftime("%Y-%m-%d") if active else datetime.now().strftime("%Y-%m-%d")
             project_name = str(parsed.get("cwd") or "grok")
 
             try:
@@ -19565,7 +20570,7 @@ def _copilot_summary():
             print("    Cost: no billing data recorded by Copilot for these sessions")
         print(f"    Tokens: {total_in:,} in / {total_out:,} out")
         if top_models:
-            print("    Models: " + ", ".join(f"{m} ({v:,})" for m, v in top_models))
+            print("    Models: " + ", ".join(f"{_strip_ansi(str(m))} ({v:,})" for m, v in top_models))
         if incomplete:
             print(f"    {incomplete} session(s) ended without clean shutdown (partial data)")
         if estimated:
@@ -19686,22 +20691,12 @@ def _collect_copilot_sessions(days=90, quiet=False, rebuild=False):
                                 print(f"[Token Optimizer] could not upgrade a Copilot session: {exc}")
                 continue
 
-            first_ts = parsed.get("first_ts")
-            date = None
-            if first_ts:
-                try:
-                    dt = datetime.fromisoformat(first_ts)
-                    if dt.timestamp() < cutoff:
-                        continue
-                    # first_ts is UTC (+00:00); convert to local before taking
-                    # the calendar day so it buckets like the JSONL collectors
-                    # (which use local mtime) — otherwise a late-evening session
-                    # lands on the wrong day in non-UTC zones.
-                    date = dt.astimezone().strftime("%Y-%m-%d")
-                except (TypeError, ValueError):
-                    date = None
-            if date is None:
-                date = datetime.now().strftime("%Y-%m-%d")
+            active = _adapter_activity_ts(parsed)
+            if active and active.timestamp() < cutoff:
+                continue
+            # Timestamps are UTC; the local calendar day buckets like the JSONL
+            # collectors (local mtime), so a late-evening session is not a day off.
+            date = active.astimezone().strftime("%Y-%m-%d") if active else datetime.now().strftime("%Y-%m-%d")
             project_name = str(parsed.get("cwd") or "copilot")
 
             try:
@@ -19965,14 +20960,9 @@ def _collect_cursor_sessions(days=90, quiet=False, rebuild=False):
                 continue
             normalized.append(parsed)
 
-            first_ts = parsed.get("first_ts")
-            if first_ts:
-                try:
-                    dt = datetime.fromisoformat(first_ts)
-                    if dt.timestamp() < cutoff:
-                        continue
-                except (TypeError, ValueError):
-                    pass
+            active = _adapter_activity_ts(parsed)
+            if active and active.timestamp() < cutoff:
+                continue
 
             dedup_key = f"cursor:{cid}"
             if _insert_foreign_normalized_session(conn, dedup_key, parsed, "cursor", "cursor", quiet=quiet):
@@ -20109,7 +21099,7 @@ def _antigravity_summary():
             print("    Cost: unavailable (no model with a known Gemini rate card)")
         print(f"    Tokens: {total_in:,} in / {total_out:,} out / {total_cache:,} cache-read")
         if top_models:
-            print("    Models: " + ", ".join(f"{m} ({v:,})" for m, v in top_models))
+            print("    Models: " + ", ".join(f"{_strip_ansi(str(m))} ({v:,})" for m, v in top_models))
         if incomplete:
             print(f"    {incomplete} session(s) ended without clean shutdown (partial data)")
     if not any_data:
@@ -20235,18 +21225,10 @@ def _collect_antigravity_sessions(days=90, quiet=False, rebuild=False):
                                 print(f"[Token Optimizer] could not upgrade an Antigravity session: {exc}")
                 continue
 
-            first_ts = parsed.get("first_ts")
-            date = None
-            if first_ts:
-                try:
-                    dt = datetime.fromisoformat(first_ts)
-                    if dt.timestamp() < cutoff:
-                        continue
-                    date = dt.astimezone().strftime("%Y-%m-%d")
-                except (TypeError, ValueError):
-                    date = None
-            if date is None:
-                date = datetime.now().strftime("%Y-%m-%d")
+            active = _adapter_activity_ts(parsed)
+            if active and active.timestamp() < cutoff:
+                continue
+            date = active.astimezone().strftime("%Y-%m-%d") if active else datetime.now().strftime("%Y-%m-%d")
             project_name = str(parsed.get("cwd") or "antigravity")
 
             try:
@@ -20439,10 +21421,256 @@ def _insert_normalized_session(
     return cur.rowcount == 1
 
 
+UNDATED_USAGE_KEY = "undated"
+
+
+def _undated_bill_day(daily_usage, fallback_date):
+    """Day that requests without a timestamp are billed to: the session's last
+    real day. The stored date comes from file mtime, which can be a day the
+    session never ran, so it is only the fallback when nothing is dated."""
+    dated = [d for d in daily_usage if d != UNDATED_USAGE_KEY]
+    return max(dated) if dated else fallback_date
+
+
+def _merge_daily_usage(into, other):
+    """Add one daily_usage map ({date: {model: buckets}}) into another in place."""
+    for day, models in (other or {}).items():
+        if not isinstance(models, dict):
+            continue
+        dst_day = into.setdefault(day, {})
+        for model, parts in models.items():
+            if not isinstance(parts, dict):
+                continue
+            dst = dst_day.setdefault(model, {})
+            for key, val in parts.items():
+                dst[key] = int(dst.get(key) or 0) + int(val or 0)
+    return into
+
+
+def _session_merged_requests(filepath, parsed, subagent_files):
+    """Every API request of a session across its parent and subagent files and
+    every other copy of it, merged by requestId (largest usage wins,
+    streaming-safe). A request Claude Code wrote into two files counts once,
+    identical copies add nothing, and copies that diverged (each holding
+    requests the other lacks) lose nothing. None for adapter output that has
+    no per-request detail."""
+    per_file = [(str(filepath), parsed)]
+    per_file += [(str(copy), _parse_session_jsonl(copy)) for copy in _session_copy_files(filepath)]
+    per_file += [(str(sub_jf), _parse_session_jsonl(sub_jf)) for sub_jf in subagent_files]
+    if not all(p is None or "request_usage" in p for _, p in per_file):
+        return None
+    merged = {}
+    for path, p in per_file:
+        for key, u in ((p or {}).get("request_usage") or {}).items():
+            if str(key).startswith("__noreq__"):
+                # No requestId: keyed by file name and position, so the same
+                # record in two copies of one file still counts once.
+                key = f"{Path(path).name}:{key}"
+            prev = merged.get(key)
+            if prev is None:
+                merged[key] = dict(u)
+                continue
+            for field in ("inp", "out", "cr", "cc", "cc_1h", "cc_5m"):
+                prev[field] = max(int(prev.get(field) or 0), int(u.get(field) or 0))
+            # Same request seen twice: attributes must not depend on file order.
+            # A real model beats "unknown"; the earliest dated day wins.
+            days = [d for d in (prev.get("day"), u.get("day")) if d]
+            prev["day"] = min(days) if days else None
+            models = sorted(m for m in (prev.get("model"), u.get("model")) if m and m != "unknown")
+            prev["model"] = models[0] if models else (prev.get("model") or u.get("model"))
+    return merged
+
+
+def _session_daily_usage(filepath, parsed=None, subagent_files=None):
+    """Daily usage for a session transcript plus all of its subagent transcripts.
+
+    Claude Code sometimes writes the same API request into more than one of a
+    session's files (the parent and a subagent, or two subagents). Requests are
+    therefore merged by requestId across every file first, keeping the largest
+    usage seen (streaming-safe), so a shared request is billed once.
+    """
+    parsed = parsed if parsed is not None else _parse_session_jsonl(filepath)
+    if subagent_files is None:
+        subagent_files = _session_subagent_files(filepath)
+    merged = _session_merged_requests(filepath, parsed, subagent_files)
+    if merged is None:
+        # Adapter output without per-request detail: sum the per-file buckets.
+        combined = {}
+        for p in [parsed] + [_parse_session_jsonl(sub_jf) for sub_jf in subagent_files]:
+            _merge_daily_usage(combined, (p or {}).get("daily_usage") or {})
+        return combined
+
+    combined = {}
+    for u in merged.values():
+        # Requests without a usable timestamp land in UNDATED_USAGE_KEY; the
+        # rollup bills them to the session's own date instead of dropping them.
+        day = u.get("day") or UNDATED_USAGE_KEY
+        bucket = combined.setdefault(day, {}).setdefault(
+            u.get("model") or "unknown",
+            {"fresh_input": 0, "cache_read": 0, "cache_create": 0, "cache_create_1h": 0, "cache_create_5m": 0, "output": 0},
+        )
+        bucket["fresh_input"] += int(u.get("inp") or 0)
+        bucket["cache_read"] += int(u.get("cr") or 0)
+        bucket["cache_create"] += int(u.get("cc") or 0)
+        bucket["cache_create_1h"] += int(u.get("cc_1h") or 0)
+        bucket["cache_create_5m"] += int(u.get("cc_5m") or 0)
+        bucket["output"] += int(u.get("out") or 0)
+    return combined
+
+
+def _session_rank(message_count, input_tokens, output_tokens):
+    """How complete a copy of a session is. Copies are prefixes of the live file,
+    so the larger one is the superset. Shared by both dedupe paths so they always
+    pick the same winner."""
+    return (int(message_count or 0), int(input_tokens or 0), int(output_tokens or 0))
+
+
+_SESSION_DIR_INDEX = {}
+_SESSION_DIR_INDEX_TTL = 60.0
+
+
+def _session_dir_index(projects_dir):
+    """Map session stem -> project dirs holding a copy of that session (its
+    transcript, its folder of subagents, or both).
+
+    One directory listing per project, cached for a minute, so looking up a
+    session's copies elsewhere costs a dict hit instead of a stat of every
+    project dir for every session (1.6M stats on a large history).
+    """
+    key = str(projects_dir)
+    now = time.monotonic()
+    cached = _SESSION_DIR_INDEX.get(key)
+    if cached and now - cached[0] < _SESSION_DIR_INDEX_TTL:
+        return cached[1]
+    index = {}
+    try:
+        projects = [e for e in os.scandir(projects_dir) if e.is_dir()]
+    except OSError:
+        projects = []
+    for proj in projects:
+        try:
+            with os.scandir(proj.path) as entries:
+                found = set()
+                for e in entries:
+                    name = e.name[:-6] if e.name.endswith(".jsonl") else e.name
+                    if name not in found and _canonical_session_uuid(name):
+                        found.add(name)
+                        index.setdefault(name, []).append(Path(proj.path))
+        except OSError:
+            continue
+    _SESSION_DIR_INDEX.clear()
+    _SESSION_DIR_INDEX[key] = (now, index)
+    return index
+
+
+def _session_copy_files(filepath):
+    """Other transcripts of the same session under sibling project dirs
+    (worktree dir, sandboxed-config mirror, synced folder)."""
+    filepath = Path(filepath)
+    projects_dir = filepath.parent.parent
+    if not (_canonical_session_uuid(filepath) and projects_dir.name == "projects"):
+        return []
+    copies = []
+    for sib in _session_dir_index(projects_dir).get(filepath.stem, ()):
+        copy_path = sib / filepath.name
+        if sib != filepath.parent and copy_path.is_file():
+            copies.append(copy_path)
+    return copies
+
+
+def _session_subagent_files(filepath):
+    """Subagent transcripts for a session across every copy of it.
+
+    A session resumed in a git worktree keeps writing subagents under that
+    worktree's project dir, so after deduping to one row the winner must still
+    see the other copies' subagents. Requests are merged by requestId
+    downstream, so a subagent file present in two copies is never billed twice.
+    """
+    filepath = Path(filepath)
+    files = list(_find_subagent_jsonl_files(filepath))
+    seen = {f.name for f in files}
+    projects_dir = filepath.parent.parent
+    if _canonical_session_uuid(filepath) and projects_dir.name == "projects":
+        siblings = [d for d in _session_dir_index(projects_dir).get(filepath.stem, ()) if d != filepath.parent]
+        for sib in siblings:
+            sub_dir = sib / filepath.stem / "subagents"
+            if not sub_dir.is_dir():
+                continue
+            for jf in sub_dir.glob("*.jsonl"):
+                try:
+                    if jf.name not in seen and jf.stat().st_size > 0:
+                        files.append(jf)
+                        seen.add(jf.name)
+                except OSError:
+                    continue
+    return files
+
+
+def _canonical_session_uuid(filepath):
+    """Session UUID for a transcript path, or None when the stem is not one."""
+    try:
+        return _extract_session_uuid(Path(filepath).stem)[0]
+    except Exception:
+        return None
+
+
+def _dedupe_session_rows(conn):
+    """Collapse session_log rows that are copies of the same session (#200).
+
+    session_log is keyed by jsonl_path, but one session can sit under several
+    paths: a git-worktree project dir, a mirror under a sandboxed
+    CLAUDE_CONFIG_DIR, a resumed copy. Each copy used to count as its own
+    session, inflating every total 2-3x. Keep the most complete row per
+    session_uuid (a copy is a prefix of the live file, so the larger one is the
+    superset). Rows are derived from transcripts on disk, so nothing is lost.
+    """
+    try:
+        rows = conn.execute(
+            """SELECT id, session_uuid, message_count, input_tokens, output_tokens, jsonl_path, collected_at
+               FROM session_log
+               WHERE session_uuid IN (
+                   SELECT session_uuid FROM session_log
+                   WHERE session_uuid IS NOT NULL AND session_uuid != ''
+                   GROUP BY session_uuid HAVING COUNT(*) > 1)"""
+        ).fetchall()
+    except sqlite3.Error:
+        return 0
+    best = {}
+    for rid, uuid, msgs, inp, out, path, _collected in rows:
+        if _extract_session_uuid(uuid or "")[0] is None:
+            continue
+        on_disk = bool(path) and os.path.exists(path)
+        # Most complete copy wins; on a tie, the one whose transcript still
+        # exists (its per-day data can be rebuilt), then the newest row.
+        rank = (*_session_rank(msgs, inp, out), on_disk, int(rid))
+        if uuid not in best or rank > best[uuid][0]:
+            best[uuid] = (rank, rid, on_disk)
+    losers = [
+        (rid,) for rid, uuid, *_ in rows
+        if uuid in best and rid != best[uuid][1]
+    ]
+    if not losers:
+        return 0
+    # Recompute the winner's per-day data so it includes the losers' subagents
+    # (_session_subagent_files) -- only when its transcript can be re-read.
+    winners = [(b[1],) for b in best.values() if b[2]]
+    loser_ids = {rid for (rid,) in losers}
+    aliases = [(path, uuid, collected) for rid, uuid, _m, _i, _o, path, collected in rows if rid in loser_ids]
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO session_log_aliases (jsonl_path, session_uuid, collected_at) VALUES (?, ?, ?)",
+            aliases)
+        conn.executemany("DELETE FROM session_log WHERE id = ?", losers)
+        conn.executemany("UPDATE session_log SET daily_usage_json = NULL WHERE id = ?", winners)
+    except sqlite3.Error:
+        return 0
+    return len(losers)
+
+
 def collect_sessions(days=90, quiet=False, rebuild=False):
     """Parse new JSONL files and insert into SQLite. Zero token cost.
 
-    Skips files already collected. Safe to run repeatedly.
+    Refreshes changed files in place. Safe to run repeatedly.
     With rebuild=True, drops and re-collects all data (e.g., after a
     measurement fix such as model attribution).
     """
@@ -20463,6 +21691,12 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
 
     conn = _init_trends_db()
 
+    # Capture the existing comparison before refreshing historical session rows.
+    # The user's baseline must not move as collection catches up.
+    if not rebuild and not (SNAPSHOT_DIR / "workload_anchor.json").exists():
+        _session_weight_pool_savings(
+            (datetime.now() - timedelta(days=30)).date().isoformat())
+
     # One-time migration for the model attribution fix: wipe model_daily (safe, fast, no data loss)
     if _needs_model_daily_rebuild(conn):
         _migrate_model_daily(conn, quiet=quiet)
@@ -20481,10 +21715,16 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
         # Mark version FIRST so a killed process doesn't re-trigger
         conn.execute("PRAGMA user_version = 3")
         conn.execute("DELETE FROM session_log")
+        conn.execute("DELETE FROM session_log_aliases")
         conn.execute("DELETE FROM daily_stats")
         conn.execute("DELETE FROM model_daily")
         conn.execute("DELETE FROM skill_daily")
         conn.execute("DELETE FROM subagent_daily")
+        # Drop event tables too: their session_id/session_uuid references would
+        # otherwise dangle (no FK constraints) and silently inflate savings.
+        conn.execute("DELETE FROM savings_events")
+        conn.execute("DELETE FROM compression_events")
+        conn.execute("DELETE FROM counted_reread")
         conn.commit()
     files = _find_all_jsonl_files(days)
     if not files:
@@ -20493,9 +21733,14 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
         conn.close()
         return 0
 
+    try:
+        _dedupe_session_rows(conn)
+    except sqlite3.Error:
+        pass
+
     new_count = 0
     for filepath, mtime, project_name in files:
-        if _is_file_collected(conn, filepath):
+        if _is_file_collected(conn, filepath, check_mtime=True):
             continue
 
         # Bounded per-run collection: never parse more than _COLLECT_MAX_PER_RUN new
@@ -20505,13 +21750,16 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
         if _COLLECT_MAX_PER_RUN and not rebuild and new_count >= _COLLECT_MAX_PER_RUN:
             break
 
-        parsed = _parse_session_jsonl(filepath)
+        collection_started = datetime.now().isoformat()
+        # Rollups must not mutate the parser cache when only a child grows.
+        parsed = copy.deepcopy(_parse_session_jsonl(filepath))
         if not parsed:
             continue
 
         # Scan subagent JSONL files for skills, agents, and model usage.
-        # Single pass over subagent files to avoid duplicate glob.
-        subagent_files = _find_subagent_jsonl_files(filepath)
+        # Single pass over subagent files to avoid duplicate glob. Includes
+        # subagents stored under other copies of this session (worktrees).
+        subagent_files = _session_subagent_files(filepath)
         for sub_jf in subagent_files:
             sub_skills, sub_agents = _extract_skills_and_agents_from_subagent(sub_jf)
             for sk, cnt in sub_skills.items():
@@ -20553,9 +21801,56 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
             # but the stored cache_hit_rate is parent-only. Leave as-is (parent-derived)
             # since mixing subagent hit rates isn't meaningful for per-session display.
 
+        daily_usage = _session_daily_usage(filepath, parsed=parsed, subagent_files=subagent_files)
+        if subagent_files or _session_copy_files(filepath):
+            # The per-file sums above count a request written into both the
+            # parent and a subagent file twice; restate the stored token totals
+            # from the same requestId-merged set the cost uses.
+            merged = _session_merged_requests(filepath, parsed, subagent_files)
+            if merged is not None:
+                parsed["total_input_tokens"] = sum(int(u.get("inp") or 0) + int(u.get("cr") or 0) + int(u.get("cc") or 0)
+                                                   for u in merged.values())
+                parsed["total_output_tokens"] = sum(int(u.get("out") or 0) for u in merged.values())
+                parsed["total_cache_create_1h"] = sum(int(u.get("cc_1h") or 0) for u in merged.values())
+                parsed["total_cache_create_5m"] = sum(int(u.get("cc_5m") or 0) for u in merged.values())
+                all_model_usage = {}
+                for u in merged.values():
+                    model_id = u.get("model") or "unknown"
+                    if model_id.startswith("<"):
+                        continue
+                    all_model_usage[model_id] = all_model_usage.get(model_id, 0) + (
+                        int(u.get("inp") or 0) + int(u.get("cc") or 0) + int(u.get("out") or 0))
+
         date = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
         skills_used = parsed["skills_used"]
         subagents_used = parsed["subagents_used"]
+
+        # One row per session (#200): if this session is already stored under
+        # another path (worktree dir, sandboxed-config mirror), keep whichever
+        # copy is more complete instead of counting the session twice.
+        session_uuid = _canonical_session_uuid(filepath)
+        if session_uuid:
+            other = conn.execute(
+                "SELECT id, message_count, input_tokens, output_tokens FROM session_log "
+                "WHERE session_uuid = ? AND jsonl_path != ?",
+                (session_uuid, str(filepath)),
+            ).fetchall()
+            mine = _session_rank(parsed.get("message_count"), parsed.get("total_input_tokens"),
+                                 parsed.get("total_output_tokens"))
+            # A tie keeps the stored copy, matching _dedupe_session_rows.
+            if any(_session_rank(r[1], r[2], r[3]) >= mine for r in other):
+                conn.execute(
+                    "INSERT OR REPLACE INTO session_log_aliases (jsonl_path, session_uuid, collected_at) "
+                    "VALUES (?, ?, ?)", (str(filepath), session_uuid, collection_started))
+                # This copy changed since last seen and may hold requests the
+                # stored copy lacks; its per-day usage (merged across copies) is
+                # recomputed by the next backfill.
+                conn.execute(
+                    "UPDATE session_log SET daily_usage_json = NULL WHERE session_uuid = ? AND jsonl_path != ?",
+                    (session_uuid, str(filepath)))
+                continue
+        else:
+            other = []
 
         # Compute quality score at collection time for persistence
         sq = score_session_quality(parsed)
@@ -20570,7 +21865,7 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
 
         # Insert session_log
         cur = conn.execute(
-            """INSERT OR IGNORE INTO session_log
+            """INSERT INTO session_log
                (jsonl_path, date, project, duration_minutes, input_tokens,
                 output_tokens, message_count, api_calls, cache_hit_rate,
                 cache_create_1h_tokens, cache_create_5m_tokens, cache_ttl_scanned,
@@ -20579,8 +21874,46 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
                     all_model_usage_json, model_usage_breakdown_json, version, slug, topic, collected_at,
                     quality_score, quality_grade, stale_waste_tokens, is_sidechain,
                     sidechain_reason, reported_input_tokens, reported_output_tokens,
-                    reported_model_usage_json, platform)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    reported_model_usage_json, platform, session_uuid, daily_usage_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(jsonl_path) DO UPDATE SET
+               date=MAX(session_log.date, excluded.date),
+               project=excluded.project,
+               duration_minutes=excluded.duration_minutes,
+               input_tokens=excluded.input_tokens,
+               output_tokens=excluded.output_tokens,
+               message_count=excluded.message_count,
+               api_calls=excluded.api_calls,
+               cache_hit_rate=excluded.cache_hit_rate,
+               cache_create_1h_tokens=excluded.cache_create_1h_tokens,
+               cache_create_5m_tokens=excluded.cache_create_5m_tokens,
+               cache_ttl_scanned=excluded.cache_ttl_scanned,
+               avg_call_gap_seconds=excluded.avg_call_gap_seconds,
+               max_call_gap_seconds=excluded.max_call_gap_seconds,
+               p95_call_gap_seconds=excluded.p95_call_gap_seconds,
+               skills_json=excluded.skills_json,
+               subagents_json=excluded.subagents_json,
+               tool_calls_json=excluded.tool_calls_json,
+               model_usage_json=excluded.model_usage_json,
+               all_model_usage_json=excluded.all_model_usage_json,
+               model_usage_breakdown_json=excluded.model_usage_breakdown_json,
+               version=excluded.version,
+               slug=excluded.slug,
+               topic=excluded.topic,
+               collected_at=excluded.collected_at,
+               quality_score=excluded.quality_score,
+               quality_grade=excluded.quality_grade,
+               stale_waste_tokens=excluded.stale_waste_tokens,
+               is_sidechain=excluded.is_sidechain,
+               sidechain_reason=excluded.sidechain_reason,
+               reported_input_tokens=excluded.reported_input_tokens,
+               reported_output_tokens=excluded.reported_output_tokens,
+               reported_model_usage_json=excluded.reported_model_usage_json,
+               platform=excluded.platform,
+               session_uuid=COALESCE(excluded.session_uuid, session_log.session_uuid),
+               daily_usage_json=excluded.daily_usage_json
+               WHERE session_log.collected_at IS NULL
+                  OR excluded.collected_at >= session_log.collected_at""",
             (
                 str(filepath), date, project_name,
                 parsed["duration_minutes"],
@@ -20604,7 +21937,7 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
                 parsed["version"],
                 parsed.get("slug"),
                 parsed.get("topic"),
-                datetime.now().isoformat(),
+                collection_started,
                 sq["score"],
                 sq["grade"],
                 int(stale_waste or 0),
@@ -20614,10 +21947,26 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
                 int(parsed.get("reported_output_tokens", 0) or 0),
                 json.dumps(parsed.get("reported_model_usage", {})),
                 session_platform,
+                session_uuid,
+                json.dumps(daily_usage),
             ),
         )
         if cur.rowcount != 1:
             continue
+        if session_uuid:
+            # Retire the older copies only now that this row has landed; an
+            # upsert the WHERE guard rejected must not leave the session with
+            # no current row.
+            if other:
+                losers = conn.execute(
+                    "SELECT jsonl_path, collected_at FROM session_log WHERE session_uuid = ? AND jsonl_path != ?",
+                    (session_uuid, str(filepath)),
+                ).fetchall()
+                conn.executemany(
+                    "INSERT OR REPLACE INTO session_log_aliases (jsonl_path, session_uuid, collected_at) "
+                    "VALUES (?, ?, ?)", [(r[0], session_uuid, r[1]) for r in losers])
+                conn.executemany("DELETE FROM session_log WHERE id = ?", [(r[0],) for r in other])
+            conn.execute("DELETE FROM session_log_aliases WHERE jsonl_path = ?", (str(filepath),))
 
         new_count += 1
         # Bank progress every batch so an interrupted deep backfill (a hook timeout
@@ -20637,6 +21986,14 @@ def collect_sessions(days=90, quiet=False, rebuild=False):
     # over a few flushes instead of blocking turn-end for minutes.
     try:
         _backfill_session_metrics(conn, days=days, limit=50)
+    except Exception:
+        pass
+    try:
+        _backfill_daily_usage(conn, days=min(days, 90), budget_seconds=10.0)
+    except Exception:
+        pass
+    try:
+        _pretool_anchor_step(budget_seconds=5.0)
     except Exception:
         pass
 
@@ -20687,6 +22044,36 @@ def conn_total_sessions():
         return 0
 
 
+def _read_path_upkeep(conn, days):
+    """Best-effort catch-up writes before a dashboard read.
+
+    Each step waits at most ~200ms for the write lock and the rest are skipped
+    once one is contended, so a render never stalls behind a running collector;
+    the collector does the same work on its next flush.
+    """
+    conn.execute("PRAGMA busy_timeout=200")
+    try:
+        # Collapse duplicate sessions left by older versions and rebuild the
+        # per-day summary tables if any went, so this render never mixes
+        # deduped rows with still-doubled aggregates. Dedupe first, so the
+        # backfill never spends its budget on rows about to be deleted.
+        if _dedupe_session_rows(conn):
+            _rebuild_aggregate_tables(conn)
+        conn.commit()
+        _backfill_session_metrics(conn, days=days)
+        _backfill_daily_usage(conn, days=days, budget_seconds=3.0)
+    except sqlite3.Error:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+    finally:
+        try:
+            conn.execute("PRAGMA busy_timeout=5000")
+        except sqlite3.Error:
+            pass
+
+
 def _collect_trends_from_db(days=30):
     """Query SQLite trends DB for aggregated usage data.
 
@@ -20711,7 +22098,7 @@ def _collect_trends_from_db(days=30):
     try:
         if detect_runtime() == "pi":
             return _query_trends_db(conn, days)
-        _backfill_session_metrics(conn, days=days)
+        _read_path_upkeep(conn, days)
         return _query_trends_db(conn, days)
     except (sqlite3.Error, sqlite3.DatabaseError):
         return None
@@ -20881,13 +22268,31 @@ def _query_trends_db(conn, days):
                   cache_create_1h_tokens, cache_create_5m_tokens,
                   avg_call_gap_seconds, max_call_gap_seconds, p95_call_gap_seconds, skills_json,
                   subagents_json, model_usage_json, slug, topic, project,
-                  model_usage_breakdown_json,
+                  model_usage_breakdown_json, daily_usage_json,
                   quality_score, quality_grade, cost_usd, cost_source, platform
            FROM session_log WHERE date >= ? ORDER BY date DESC""",
         (cutoff,),
     ).fetchall()
-    for sr in session_rows:
-        date = sr["date"]
+
+    def _price_buckets(mb):
+        """(priced_tokens, unpriced_tokens) for a per-model breakdown."""
+        priced = unpriced = 0
+        for model_name, parts in (mb or {}).items():
+            if not isinstance(parts, dict):
+                continue
+            model_tokens = (
+                int(parts.get("fresh_input") or 0)
+                + int(parts.get("cache_read") or 0)
+                + int(parts.get("cache_create") or 0)
+                + int(parts.get("output") or 0)
+            )
+            if _is_priced_model(model_name, tier=pricing_tier):
+                priced += model_tokens
+            else:
+                unpriced += model_tokens
+        return priced, unpriced
+
+    def _day_entry(date):
         if date not in daily:
             daily[date] = {
                 "date": date,
@@ -20897,18 +22302,13 @@ def _query_trends_db(conn, days):
                 "skills_used": {},
                 "session_details": [],
             }
-        d = daily[date]
-        d["sessions"] += 1
-        d["total_input"] += sr["input_tokens"] or 0
-        d["total_output"] += sr["output_tokens"] or 0
+        return daily[date]
 
+    for sr in session_rows:
         try:
             skills = json.loads(sr["skills_json"]) if sr["skills_json"] else {}
         except (json.JSONDecodeError, TypeError):
             skills = {}
-        for skill, cnt in skills.items():
-            d["skills_used"][skill] = d["skills_used"].get(skill, 0) + cnt
-
         try:
             subagents = json.loads(sr["subagents_json"]) if sr["subagents_json"] else {}
         except (json.JSONDecodeError, TypeError):
@@ -20918,7 +22318,7 @@ def _query_trends_db(conn, days):
         inp_total = sr["input_tokens"] or 0
         out_total = sr["output_tokens"] or 0
         chr_val = sr["cache_hit_rate"] or 0
-        cache_read_est = int(inp_total * chr_val)
+        cache_read_est = _safe_int(inp_total * chr_val)
         cache_create_1h = sr["cache_create_1h_tokens"] or 0
         cache_create_5m = sr["cache_create_5m_tokens"] or 0
         cache_create_total = cache_create_1h + cache_create_5m
@@ -20936,40 +22336,34 @@ def _query_trends_db(conn, days):
             mb = json.loads(mb_raw) if mb_raw else {}
         except (json.JSONDecodeError, TypeError, KeyError):
             mb = {}
-        session_priced_tokens = 0
-        session_unpriced_tokens = 0
+        try:
+            du_raw = sr["daily_usage_json"]
+            du = json.loads(du_raw) if du_raw else {}
+        except (json.JSONDecodeError, TypeError, KeyError):
+            du = {}
+        if not isinstance(du, dict):
+            du = {}
+
         exact_pi_cost = sr["platform"] == "pi" and sr["cost_source"] == "pi_usage"
         if pi_runtime:
+            du = {}
             session_cost = float(sr["cost_usd"] or 0.0) if exact_pi_cost else 0.0
             session_priced_tokens = inp_total + out_total if exact_pi_cost else 0
             session_unpriced_tokens = 0 if exact_pi_cost else inp_total + out_total
         else:
             if isinstance(mb, dict) and mb:
-                for model_name, parts in mb.items():
-                    if not isinstance(parts, dict):
-                        continue
-                    model_tokens = (
-                        int(parts.get("fresh_input") or 0)
-                        + int(parts.get("cache_read") or 0)
-                        + int(parts.get("cache_create") or 0)
-                        + int(parts.get("output") or 0)
-                    )
-                    if _is_priced_model(model_name, tier=pricing_tier):
-                        session_priced_tokens += model_tokens
-                    else:
-                        session_unpriced_tokens += model_tokens
+                session_priced_tokens, session_unpriced_tokens = _price_buckets(mb)
             else:
                 model_tokens = inp_total + out_total
                 if _is_priced_model(dom_model, tier=pricing_tier):
-                    session_priced_tokens = model_tokens
+                    session_priced_tokens, session_unpriced_tokens = model_tokens, 0
                 else:
-                    session_unpriced_tokens = model_tokens
-            session_cost = _cost_from_model_breakdown(
-                mb,
-                tier=pricing_tier,
-                cache_create_1h=cache_create_1h if cache_create_1h or cache_create_5m else None,
-                cache_create_5m=cache_create_5m if cache_create_1h or cache_create_5m else None,
-            )
+                    session_priced_tokens, session_unpriced_tokens = 0, model_tokens
+            # Main-thread cost from the stored session breakdown. Used as-is for rows
+            # without per-day data (non-JSONL adapters, transcript gone).
+            session_cost = _cost_from_model_breakdown(mb, tier=pricing_tier,
+                                                       cache_create_1h=cache_create_1h if cache_create_1h or cache_create_5m else None,
+                                                       cache_create_5m=cache_create_5m if cache_create_1h or cache_create_5m else None)
             if session_cost == 0.0:
                 # Use the stored 1h/5m split when available; fall back to 5m-only rate otherwise.
                 if cache_create_1h or cache_create_5m:
@@ -20979,50 +22373,101 @@ def _query_trends_db(conn, days):
                     session_cost = _get_model_cost(dom_model, uncached_est, out_total, cache_read_est, cache_create_total, tier=pricing_tier)
             if session_cost == 0.0 and session_priced_tokens == 0 and session_unpriced_tokens == 0 and (inp_total or out_total):
                 session_unpriced_tokens = inp_total + out_total
-        total_cost_usd += session_cost
-        total_cost_priced_tokens += session_priced_tokens
-        total_cost_unpriced_tokens += session_unpriced_tokens
-        if session_unpriced_tokens > 0:
-            total_unpriced_sessions += 1
-        jsonl_path = sr["jsonl_path"]
 
-        sd = {
-            "duration_minutes": round(sr["duration_minutes"] or 0, 1),
-            "input_tokens": inp_total,
-            "output_tokens": out_total,
-            "message_count": sr["message_count"] or 0,
-            "api_calls": sr["api_calls"] or 0,
-            "skills": list(skills.keys()),
-            "subagents": list(subagents.keys()),
-            "cache_hit_rate": round(chr_val, 3),
-            "cache_create_1h_tokens": cache_create_1h,
-            "cache_create_5m_tokens": cache_create_5m,
-            "avg_call_gap_seconds": sr["avg_call_gap_seconds"],
-            "max_call_gap_seconds": sr["max_call_gap_seconds"],
-            "p95_call_gap_seconds": sr["p95_call_gap_seconds"],
-            "slug": sr["slug"],
-            "session_key": _make_session_key(jsonl_path),
-            "jsonl_path": jsonl_path,
-            "topic": sr["topic"],
-            "project": _clean_project_name(sr["project"]),
-            "cost_usd": round(session_cost, 4),
-            "cost_source": sr["cost_source"],
-            "cost_priced_tokens": session_priced_tokens,
-            "cost_unpriced_tokens": session_unpriced_tokens,
-            "model": _normalize_model_name(dom_model) or dom_model,
-            "model_count": len(mu) if mu else 1,
-        }
-        # Prefer stored quality score (persisted during collect), fall back to recomputation
-        if sr["quality_score"] is not None:
-            sd["quality_score"] = sr["quality_score"]
-            sd["quality_grade"] = sr["quality_grade"] or score_to_grade(round(sr["quality_score"]))
-            sd["quality_band"] = score_to_band(sr["quality_score"])
+        # Per-day slices (#200). With per-day data, each calendar day is billed for
+        # the requests that ran on it, subagents included; a day before the window
+        # is dropped. Without it, the whole session lands on its stored date.
+        slices = []  # (date, cost, priced, unpriced, input_tokens, output_tokens)
+        if du:
+            by_day = {}
+            undated_day = _undated_bill_day(du, sr["date"])
+            for day, day_mb in du.items():
+                if not isinstance(day_mb, dict):
+                    continue
+                day = undated_day if day == UNDATED_USAGE_KEY else day
+                _merge_daily_usage(by_day.setdefault(day, {}), {"_": day_mb})
+            for day in sorted(by_day):
+                day_mb = by_day[day].get("_", {})
+                day_cost = _cost_from_model_breakdown(day_mb, tier=pricing_tier)
+                day_priced, day_unpriced = _price_buckets(day_mb)
+                day_in = sum(
+                    int(p.get("fresh_input") or 0) + int(p.get("cache_read") or 0) + int(p.get("cache_create") or 0)
+                    for p in day_mb.values() if isinstance(p, dict))
+                day_out = sum(int(p.get("output") or 0) for p in day_mb.values() if isinstance(p, dict))
+                slices.append([day, day_cost, day_priced, day_unpriced, day_in, day_out])
+            session_total_cost = sum(sl[1] for sl in slices)
+            slices = [sl for sl in slices if sl[0] >= cutoff]
         else:
-            sq = score_session_quality(sd)
-            sd["quality_score"] = sq["score"]
-            sd["quality_grade"] = sq["grade"]
-            sd["quality_band"] = sq["band"]
-        d["session_details"].append(sd)
+            session_total_cost = session_cost
+            slices = [[sr["date"], session_cost, session_priced_tokens, session_unpriced_tokens, inp_total, out_total]]
+
+        window_unpriced = 0
+        jsonl_path = sr["jsonl_path"]
+        # A session active on several days is listed on each; its latest day is
+        # the primary entry. Per-session stats (skills, cache/TTL mix, coaching)
+        # must read only primary entries or a multi-day session counts twice.
+        primary_date = max((sl[0] for sl in slices), default=None)
+        for date, day_cost, day_priced, day_unpriced, day_in, day_out in slices:
+            d = _day_entry(date)
+            d["sessions"] += 1
+            d["total_input"] += day_in
+            d["total_output"] += day_out
+            if date == primary_date:
+                for skill, cnt in skills.items():
+                    d["skills_used"][skill] = d["skills_used"].get(skill, 0) + cnt
+            total_cost_usd += day_cost
+            total_cost_priced_tokens += day_priced
+            total_cost_unpriced_tokens += day_unpriced
+            window_unpriced += day_unpriced
+
+            sd = {
+                "duration_minutes": round(sr["duration_minutes"] or 0, 1),
+                "input_tokens": inp_total,
+                "output_tokens": out_total,
+                "message_count": sr["message_count"] or 0,
+                "api_calls": sr["api_calls"] or 0,
+                "skills": list(skills.keys()),
+                "subagents": list(subagents.keys()),
+                "cache_hit_rate": round(chr_val, 3),
+                "cache_create_1h_tokens": cache_create_1h,
+                "cache_create_5m_tokens": cache_create_5m,
+                "avg_call_gap_seconds": sr["avg_call_gap_seconds"],
+                "max_call_gap_seconds": sr["max_call_gap_seconds"],
+                "p95_call_gap_seconds": sr["p95_call_gap_seconds"],
+                "slug": sr["slug"],
+                "session_key": _make_session_key(jsonl_path),
+                "jsonl_path": jsonl_path,
+                "topic": sr["topic"],
+                "project": _clean_project_name(sr["project"]),
+                # cost_usd is THIS day's share; session_cost_usd is the whole session.
+                "cost_usd": round(day_cost, 4),
+                "session_cost_usd": round(session_total_cost, 4),
+                "cost_source": sr["cost_source"],
+                # input/output_tokens above are whole-session totals (the row
+                # describes the session); these are this day's share, the same
+                # numbers the day's total_input/total_output add up.
+                "day_input_tokens": day_in,
+                "day_output_tokens": day_out,
+                "spans_days": len(du) > 1,
+                "continuation": date != primary_date,
+                "cost_priced_tokens": day_priced,
+                "cost_unpriced_tokens": day_unpriced,
+                "model": _normalize_model_name(dom_model) or dom_model,
+                "model_count": len(mu) if mu else 1,
+            }
+            # Prefer stored quality score (persisted during collect), fall back to recomputation
+            if sr["quality_score"] is not None:
+                sd["quality_score"] = sr["quality_score"]
+                sd["quality_grade"] = sr["quality_grade"] or score_to_grade(round(sr["quality_score"]))
+                sd["quality_band"] = score_to_band(sr["quality_score"])
+            else:
+                sq = score_session_quality(sd)
+                sd["quality_score"] = sq["score"]
+                sd["quality_grade"] = sq["grade"]
+                sd["quality_band"] = sq["band"]
+            d["session_details"].append(sd)
+        if window_unpriced > 0:
+            total_unpriced_sessions += 1
 
     daily_sorted = sorted(daily.values(), key=lambda x: x["date"], reverse=True)
     grade_rank = {grade: idx for idx, grade in enumerate(["F", "D", "C", "B", "A", "S"])}
@@ -21147,11 +22592,22 @@ def _collect_trends_from_jsonl(days=30):
         return None
 
     sessions = []
+    by_uuid = {}  # one entry per session, same rule as the DB path (#200)
     for filepath, mtime, project_name in files:
-        parsed = _parse_session_jsonl(filepath)
+        # Copy: the parser memoizes its result, and this rollup merges subagent
+        # data into it. Mutating the cached dict made a later collect in the same
+        # process merge the same subagent skills twice.
+        parsed = copy.deepcopy(_parse_session_jsonl(filepath))
         if parsed:
+            session_uuid = _canonical_session_uuid(filepath)
+            if session_uuid:
+                rank = _session_rank(parsed.get("message_count"), parsed.get("total_input_tokens"),
+                                     parsed.get("total_output_tokens"))
+                prior = by_uuid.get(session_uuid)
+                if prior is not None and prior[0] >= rank:
+                    continue
             # Scan subagent JSONL files for skills, agents, and model usage.
-            subagent_files = _find_subagent_jsonl_files(filepath)
+            subagent_files = _session_subagent_files(filepath)
             for sub_jf in subagent_files:
                 sub_skills, sub_agents = _extract_skills_and_agents_from_subagent(sub_jf)
                 for sk, cnt in sub_skills.items():
@@ -21179,6 +22635,13 @@ def _collect_trends_from_jsonl(days=30):
             parsed["project"] = project_name
             parsed["date"] = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
             parsed["jsonl_path"] = str(filepath)
+            parsed["daily_usage_combined"] = _session_daily_usage(
+                filepath, parsed=parsed, subagent_files=subagent_files)
+            if session_uuid:
+                prior = by_uuid.get(session_uuid)
+                if prior is not None:
+                    sessions.remove(prior[1])
+                by_uuid[session_uuid] = (rank, parsed)
             sessions.append(parsed)
 
     if not sessions:
@@ -21277,23 +22740,8 @@ def _collect_trends_from_jsonl(days=30):
     total_cost_priced_tokens = 0
     total_cost_unpriced_tokens = 0
     total_unpriced_sessions = 0
+    fallback_cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     for s in sessions:
-        date = s["date"]
-        if date not in daily:
-            daily[date] = {
-                "date": date,
-                "sessions": 0,
-                "total_input": 0,
-                "total_output": 0,
-                "skills_used": {},
-                "session_details": [],
-            }
-        d = daily[date]
-        d["sessions"] += 1
-        d["total_input"] += s["total_input_tokens"]
-        d["total_output"] += s["total_output_tokens"]
-        for skill in s["skills_used"]:
-            d["skills_used"][skill] = d["skills_used"].get(skill, 0) + s["skills_used"][skill]
         # Determine dominant model and compute cost
         dom_model = max(s["model_usage"], key=s["model_usage"].get) if s["model_usage"] else "unknown"
         cr = s.get("total_cache_read", 0)
@@ -21302,7 +22750,9 @@ def _collect_trends_from_jsonl(days=30):
         uncached = max(0, s["total_input_tokens"] - cr - cc)
         cc_1h = s.get("total_cache_create_1h", 0) or 0
         cc_5m = s.get("total_cache_create_5m", 0) or 0
-        if cc_1h or cc_5m:
+        if s.get('runtime') == 'codex' and s.get('model_usage_breakdown'):
+            session_cost = _cost_from_model_breakdown(s['model_usage_breakdown'], tier=pricing_tier)
+        elif cc_1h or cc_5m:
             session_cost = _get_model_cost(dom_model, uncached, s["total_output_tokens"], cr, cc,
                                            tier=pricing_tier, cache_create_1h=cc_1h, cache_create_5m=cc_5m)
         else:
@@ -21314,44 +22764,104 @@ def _collect_trends_from_jsonl(days=30):
         else:
             session_priced_tokens = 0
             session_unpriced_tokens = session_tokens_for_cost
-        total_cost_usd += session_cost
-        total_cost_priced_tokens += session_priced_tokens
-        total_cost_unpriced_tokens += session_unpriced_tokens
-        if session_unpriced_tokens > 0:
+
+        # Per-day slices, same rule as the DB rollup (#200): each day is billed
+        # for its own requests, subagents included, priced per model.
+        du = s.get("daily_usage_combined") or {}
+        if du:
+            slices = []
+            by_day = {}
+            undated_day = _undated_bill_day(du, s["date"])
+            for day, day_mb in du.items():
+                day = undated_day if day == UNDATED_USAGE_KEY else day
+                _merge_daily_usage(by_day.setdefault(day, {}), {"_": day_mb})
+            # Whole-session cost over every day, before the window cut, so both
+            # rollups report the same session_cost_usd.
+            session_total_cost = sum(_cost_from_model_breakdown(v.get("_", {}), tier=pricing_tier)
+                                     for v in by_day.values())
+            for day in sorted(by_day):
+                day_mb = by_day[day].get("_", {})
+                if day < fallback_cutoff:
+                    continue
+                priced = unpriced = 0
+                for mname, parts in day_mb.items():
+                    toks = sum(int(parts.get(k) or 0) for k in ("fresh_input", "cache_read", "cache_create", "output"))
+                    if _is_priced_model(mname, tier=pricing_tier):
+                        priced += toks
+                    else:
+                        unpriced += toks
+                slices.append((
+                    day, _cost_from_model_breakdown(day_mb, tier=pricing_tier), priced, unpriced,
+                    sum(int(p.get("fresh_input") or 0) + int(p.get("cache_read") or 0) + int(p.get("cache_create") or 0)
+                        for p in day_mb.values()),
+                    sum(int(p.get("output") or 0) for p in day_mb.values()),
+                ))
+        else:
+            session_total_cost = session_cost
+            slices = [(s["date"], session_cost, session_priced_tokens, session_unpriced_tokens,
+                       s["total_input_tokens"], s["total_output_tokens"])]
+        if any(sl[3] > 0 for sl in slices):
             total_unpriced_sessions += 1
 
         jsonl_path = s.get("jsonl_path")
-        sd = {
-            "duration_minutes": round(s["duration_minutes"], 1),
-            "input_tokens": s["total_input_tokens"],
-            "output_tokens": s["total_output_tokens"],
-            "message_count": s["message_count"],
-            "api_calls": s.get("api_calls", 0),
-            "skills": list(s["skills_used"].keys()),
-            "subagents": list(s["subagents_used"].keys()),
-            "cache_hit_rate": round(s["cache_hit_rate"], 3),
-            "cache_create_1h_tokens": s.get("total_cache_create_1h", 0),
-            "cache_create_5m_tokens": s.get("total_cache_create_5m", 0),
-            "avg_call_gap_seconds": s.get("avg_call_gap_seconds"),
-            "max_call_gap_seconds": s.get("max_call_gap_seconds"),
-            "p95_call_gap_seconds": s.get("p95_call_gap_seconds"),
-            "slug": s.get("slug"),
-            "session_key": _make_session_key(jsonl_path),
-            "jsonl_path": jsonl_path,
-            "topic": s.get("topic"),
-            "project": _clean_project_name(s.get("project")),
-            "cache_read_tokens": cr,
-            "cache_create_tokens": cc,
-            "cost_usd": round(session_cost, 4),
-            "cost_priced_tokens": session_priced_tokens,
-            "cost_unpriced_tokens": session_unpriced_tokens,
-            "model": _normalize_model_name(dom_model) or dom_model,
-        }
-        sq = score_session_quality(sd)
-        sd["quality_score"] = sq["score"]
-        sd["quality_grade"] = sq["grade"]
-        sd["quality_band"] = sq["band"]
-        d["session_details"].append(sd)
+        primary_date = max((sl[0] for sl in slices), default=None)
+        for date, day_cost, day_priced, day_unpriced, day_in, day_out in slices:
+            if date not in daily:
+                daily[date] = {
+                    "date": date,
+                    "sessions": 0,
+                    "total_input": 0,
+                    "total_output": 0,
+                    "skills_used": {},
+                    "session_details": [],
+                }
+            d = daily[date]
+            d["sessions"] += 1
+            d["total_input"] += day_in
+            d["total_output"] += day_out
+            if date == primary_date:
+                for skill in s["skills_used"]:
+                    d["skills_used"][skill] = d["skills_used"].get(skill, 0) + s["skills_used"][skill]
+            total_cost_usd += day_cost
+            total_cost_priced_tokens += day_priced
+            total_cost_unpriced_tokens += day_unpriced
+
+            sd = {
+                "duration_minutes": round(s["duration_minutes"], 1),
+                "input_tokens": s["total_input_tokens"],
+                "output_tokens": s["total_output_tokens"],
+                "message_count": s["message_count"],
+                "api_calls": s.get("api_calls", 0),
+                "skills": list(s["skills_used"].keys()),
+                "subagents": list(s["subagents_used"].keys()),
+                "cache_hit_rate": round(s["cache_hit_rate"], 3),
+                "cache_create_1h_tokens": s.get("total_cache_create_1h", 0),
+                "cache_create_5m_tokens": s.get("total_cache_create_5m", 0),
+                "avg_call_gap_seconds": s.get("avg_call_gap_seconds"),
+                "max_call_gap_seconds": s.get("max_call_gap_seconds"),
+                "p95_call_gap_seconds": s.get("p95_call_gap_seconds"),
+                "slug": s.get("slug"),
+                "session_key": _make_session_key(jsonl_path),
+                "jsonl_path": jsonl_path,
+                "topic": s.get("topic"),
+                "project": _clean_project_name(s.get("project")),
+                "cache_read_tokens": cr,
+                "cache_create_tokens": cc,
+                "cost_usd": round(day_cost, 4),
+                "session_cost_usd": round(session_total_cost, 4),
+                "day_input_tokens": day_in,
+                "day_output_tokens": day_out,
+                "spans_days": len(du) > 1,
+                "continuation": date != primary_date,
+                "cost_priced_tokens": day_priced,
+                "cost_unpriced_tokens": day_unpriced,
+                "model": _normalize_model_name(dom_model) or dom_model,
+            }
+            sq = score_session_quality(sd)
+            sd["quality_score"] = sq["score"]
+            sd["quality_grade"] = sq["grade"]
+            sd["quality_band"] = sq["band"]
+            d["session_details"].append(sd)
 
     # Sort daily by date descending
     daily_sorted = sorted(daily.values(), key=lambda x: x["date"], reverse=True)
@@ -21371,7 +22881,8 @@ def _collect_trends_from_jsonl(days=30):
     # Build quality trend from computed session scores
     quality_trend = []
     for d_entry in sorted(daily.values(), key=lambda x: x["date"]):
-        scores = [sd["quality_score"] for sd in d_entry["session_details"] if sd.get("quality_score") is not None]
+        scores = [sd["quality_score"] for sd in d_entry["session_details"]
+                  if sd.get("quality_score") is not None and not sd.get("continuation")]
         if scores:
             quality_trend.append({
                 "date": d_entry["date"],
@@ -21545,6 +23056,8 @@ def _build_ttl_period_summary(period_days):
     one_hour_only_sessions = 0
     for day in trends.get("daily", []):
         for session in day.get("session_details", []):
+            if session.get("continuation"):
+                continue
             ttl_1h = session.get("cache_create_1h_tokens", 0) or 0
             ttl_5m = session.get("cache_create_5m_tokens", 0) or 0
             if ttl_1h and ttl_5m:
@@ -21612,7 +23125,7 @@ def usage_trends(days=30, as_json=False):
         print(f"  Used ({len(skill_sessions)} of {installed_count} installed):")
         for skill, count in sorted(skill_sessions.items(), key=lambda x: -x[1])[:15]:
             dots = "." * max(2, 30 - len(skill))
-            print(f"    {skill} {dots} {count} session{'s' if count != 1 else ''}")
+            print(f"    {_strip_ansi(str(skill))} {dots} {count} session{'s' if count != 1 else ''}")
         if len(skill_sessions) > 15:
             print(f"    ... and {len(skill_sessions) - 15} more")
     else:
@@ -21639,7 +23152,7 @@ def usage_trends(days=30, as_json=False):
         print("\nSUBAGENTS")
         for agent, count in sorted(total_subagents.items(), key=lambda x: -x[1]):
             dots = "." * max(2, 30 - len(agent))
-            print(f"  {agent} {dots} {count} spawned")
+            print(f"  {_strip_ansi(str(agent))} {dots} {count} spawned")
 
     total_model_tokens = trends["model_mix"]
     if total_model_tokens:
@@ -21648,7 +23161,7 @@ def usage_trends(days=30, as_json=False):
         for model, tokens in sorted(total_model_tokens.items(), key=lambda x: -x[1]):
             pct = tokens / grand_total * 100 if grand_total else 0
             dots = "." * max(2, 26 - len(model))
-            print(f"  {model} {dots} {pct:.0f}% of tokens ({_fmt_tokens(tokens)})")
+            print(f"  {_strip_ansi(str(model))} {dots} {pct:.0f}% of tokens ({_fmt_tokens(tokens)})")
 
     trajectory = trends.get("trajectory", {})
     snapshots = trajectory.get("snapshots", [])
@@ -21825,6 +23338,18 @@ def _find_session_version_for_pid(pid):
     return None  # No confident match; don't guess (causes false OUTDATED flags)
 
 
+_CCD_CLI_LAUNCHER_SEGMENT = "/.claude/remote/ccd-cli/"
+# The remote launcher's argv[0] IS the versioned binary, whose basename is the
+# bare version (e.g. `.../ccd-cli/2.1.271`, optionally `.exe` on Windows). Anchor
+# to that version-shaped basename so a bundled/spawned binary under the version
+# dir (`.../ccd-cli/2.1.271/rg`), a non-version file (`.../ccd-cli/helper.sh`), a
+# `.download` partial, or the bare directory do NOT match. A bare-substring test
+# swept all of those in and inflated the session count. See issue #192.
+_CCD_CLI_LAUNCHER_RE = re.compile(
+    re.escape(_CCD_CLI_LAUNCHER_SEGMENT) + r"\d+(?:\.\d+)+(?:\.exe)?$"
+)
+
+
 def _command_matches_process(command, process_name):
     """True if a `ps` COMMAND field denotes a `process_name` CLI session.
 
@@ -21837,13 +23362,32 @@ def _command_matches_process(command, process_name):
     desktop app (``/Applications/Claude.app/Contents/MacOS/Claude``) is not
     mistaken for the ``claude`` CLI, and ``claude`` appearing only as an
     argument (``vim claude.py``) does not match.
+
+    Claude Desktop's "Code" tab launches Claude Code through a remote
+    launcher whose ``argv[0]`` is a VERSIONED binary under
+    ``~/.claude/remote/ccd-cli/<version>`` (e.g.
+    ``~/.claude/remote/ccd-cli/2.1.271 --output-format stream-json ...``),
+    notably under WSL 2 where ``claude`` is not on ``PATH``. The executable
+    basename is then the bare version string, so the basename comparison can
+    never match. Recognise that launcher by an anchored, version-shaped
+    ``argv[0]`` match (``.../.claude/remote/ccd-cli/<version>``): a bare
+    substring test was too loose and also swept in bundled binaries under the
+    version dir (``.../ccd-cli/<version>/rg``), helper scripts
+    (``.../ccd-cli/helper.sh``), ``.download`` partials, and the bare directory,
+    inflating the session count. Restricted to ``process_name == "claude"``
+    (Codex is not launched this way) and to ``argv[0]`` (so the path appearing
+    only as an argument does not match), which keeps the match from catching
+    unrelated processes. See issue #192.
     """
     command = (command or "").strip()
     if not command:
         return False
     if command == process_name or command.startswith(process_name + " "):
         return True
-    exe_base = os.path.basename(command.split()[0])
+    argv0 = command.split()[0]
+    if process_name == "claude" and _CCD_CLI_LAUNCHER_RE.search(argv0):
+        return True
+    exe_base = os.path.basename(argv0)
     if exe_base.endswith(".exe"):
         exe_base = exe_base[:-4]
     return exe_base == process_name
@@ -22021,8 +23565,8 @@ def _windows_process_creation(pid):
     return {}
 
 
-def _collect_windows_claude_sessions():
-    """Collect running Claude CLI sessions on Windows via PowerShell Get-Process.
+def _collect_windows_claude_sessions(process_name="claude"):
+    """Collect runtime processes on Windows via PowerShell Get-Process.
 
     Safety invariants:
     - Only matches on the process image name (claude / claude-*).
@@ -22053,13 +23597,15 @@ def _collect_windows_claude_sessions():
     import csv as _csv
     import io as _io
 
+    if process_name not in ("claude", "codex"):
+        raise ValueError("Unsupported runtime process name")
     sessions = []
     ps_cmd = (
         # -Name 'claude*' filters server-side (only candidate processes are
         # ever materialized), so the "touches only candidates" claim is real,
         # not a post-enumeration Where-Object. -ErrorAction SilentlyContinue
         # keeps a zero-match run from erroring.
-        "Get-Process -Name 'claude*' -ErrorAction SilentlyContinue | "
+        f"Get-Process -Name '{process_name}*' -ErrorAction SilentlyContinue | "
         "Select-Object Id, ProcessName, SessionId, "
         "@{N='StartTime';E={try { $_.StartTime.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } catch { '' }}} | "
         "ConvertTo-Csv -NoTypeInformation"
@@ -22088,10 +23634,12 @@ def _collect_windows_claude_sessions():
         start_time = (row.get("StartTime") or "").strip()
         image_lower = image_name.lower()
         # Strict image-name match only. See docstring invariants.
-        if not (image_lower == "claude.exe"
+        matches = image_lower in ("codex", "codex.exe") if process_name == "codex" else (
+                image_lower == "claude.exe"
                 or image_lower == "claude"
                 or image_lower.startswith("claude.")
-                or image_lower.startswith("claude-")):
+                or image_lower.startswith("claude-"))
+        if not matches:
             continue
         try:
             pid = int(pid_str.replace(",", "").strip())
@@ -22209,7 +23757,8 @@ def _collect_health_data():
         pass
 
     if system == "Windows":
-        running_sessions = _collect_windows_claude_sessions()
+        running_sessions = (_collect_windows_claude_sessions(process_name="codex")
+                            if runtime == "codex" else _collect_windows_claude_sessions())
     else:
         running_sessions = _collect_posix_claude_sessions(process_name=process_name)
         if running_sessions is None:
@@ -22245,6 +23794,11 @@ def _collect_health_data():
 
     # Flag sessions
     for s in running_sessions:
+        if runtime == "codex":
+            # Desktop app-server lifetime is not task age or evidence of an
+            # abandoned session. Never recommend killing shared Codex hosts.
+            s["flags"] = ["RUNNING"]
+            continue
         flags = []
         if s["version"] and installed_version and s["version"] != installed_version:
             flags.append("OUTDATED")
@@ -22386,12 +23940,18 @@ def health_selfcheck():
         and _m("/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude", "claude")
         and _m("/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe --resume abc", "claude")
         and _m("/opt/homebrew/bin/codex serve", "codex")
+        # Claude Desktop / WSL 2 launcher: versioned ccd-cli binary (issue #192)
+        and _m("/home/user/.claude/remote/ccd-cli/2.1.271 --output-format stream-json --verbose", "claude")
         and not _m("/Applications/Claude.app/Contents/MacOS/Claude", "claude")
         and not _m("/usr/bin/vim claude.py", "claude")
         and not _m("node /path/to/app.js", "claude")
+        # ccd-cli launcher must NOT satisfy a codex probe, and must NOT match
+        # when the path appears only as an argument.
+        and not _m("/home/user/.claude/remote/ccd-cli/2.1.271", "codex")
+        and not _m("/usr/bin/vim /home/user/.claude/remote/ccd-cli/notes.txt", "claude")
         and not _m("", "claude")
     )
-    check("process-name matcher (basename + .exe)", matcher_ok)
+    check("process-name matcher (basename + .exe + ccd-cli)", matcher_ok)
 
     # Live process-listing command
     if system == "Windows":
@@ -22532,6 +24092,9 @@ def kill_stale_sessions(threshold_hours=12, dry_run=False):
     """
     import signal
 
+    if detect_runtime() == "codex":
+        print("\n  Codex processes can host multiple active tasks. Process age cannot identify stale tasks; automatic termination is disabled.")
+        return
     health = _collect_health_data()
     if health is None:
         print("\n  Session health check is not supported on this platform.")
@@ -22858,6 +24421,7 @@ def _log_settings_lease_denied():
     )
     try:
         DAEMON_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        _cap_append_log(DAEMON_LOG_DIR / "settings-lease-denials.log")
         with open(DAEMON_LOG_DIR / "settings-lease-denials.log", "a",
                   encoding="utf-8") as f:
             f.write("%s lease denied\n" % time.strftime("%Y-%m-%dT%H:%M:%S"))
@@ -24186,6 +25750,33 @@ LOG_DIR = {log_dir_literal}
 # stdout.log / stderr.log trail the .cmd used to provide would vanish -- and a
 # silent daemon death is exactly the failure mode that once looked healthy for
 # two days. Reopen the handles onto the same log files before anything runs.
+LOG_CAP_BYTES = 1048576
+
+
+def _cap_log(path, max_bytes=LOG_CAP_BYTES):
+    """Keep a log under max_bytes by dropping its older half. Truncates in place
+    so a handle another process holds (launchd, the shell redirect) stays valid.
+    Never raises."""
+    try:
+        if os.path.getsize(path) <= max_bytes:
+            return
+        with open(path, "rb") as fh:
+            fh.seek(-(max_bytes // 2), os.SEEK_END)
+            tail = fh.read()
+        nl = tail.find(b"\\n")
+        if 0 <= nl < len(tail) - 1:
+            tail = tail[nl + 1:]
+        with open(path, "r+b") as fh:
+            fh.write(tail)
+            fh.truncate()
+    except OSError:
+        pass
+
+
+# Daemon logs used to grow forever (every traceback, with local paths).
+for _log_name in ("stdout.log", "stderr.log"):
+    _cap_log(os.path.join(LOG_DIR, _log_name))
+
 if sys.stdout is None or sys.stderr is None:
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
@@ -24239,6 +25830,7 @@ REGEN_LOG = os.path.join(os.path.dirname(DASHBOARD), "daemon-regen.log")
 
 def _log_regen(msg):
     """Append a regeneration event. Never raises; the daemon must survive a dead log."""
+    _cap_log(REGEN_LOG)
     try:
         with open(REGEN_LOG, "a", encoding="utf-8") as f:
             f.write("%s %s\\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), msg))
@@ -24310,6 +25902,7 @@ def _log_reject_regen(path):
             _stale = sorted(_REJECT_LOG_LAST_TS, key=_REJECT_LOG_LAST_TS.get)[:len(_REJECT_LOG_LAST_TS) // 2]
             for _k in _stale:
                 _REJECT_LOG_LAST_TS.pop(_k, None)
+    _cap_log(REGEN_LOG)
     try:
         with open(REGEN_LOG, "a", encoding="utf-8") as f:
             f.write("%s REJECT api/* POST token-mismatch path=%s\\n"
@@ -24639,6 +26232,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return
             # stderr is captured to a log rather than discarded. Swallowing it is what
             # let a dead regeneration look identical to a healthy one for two days.
+            _cap_log(REGEN_LOG)
             errf = open(REGEN_LOG, "a", encoding="utf-8")
             # The regen child is a transient worker (writes the new HTML and
             # exits); it does NOT need to survive the daemon, so DETACHED_PROCESS
@@ -25956,6 +27550,9 @@ def _install_launchd_daemon(dry_run=False, soft_fail=False, effective_host=None)
     overwrites the plist idempotently and bootouts any existing instance
     first so we never fight a stale PID.
     """
+    if _daemon_snapshot_sandboxed():
+        return False
+
     def _fail(msg, hint=None):
         # Under soft_fail we are inside a hook --
         # stdout is session-visible context, so route errors to stderr instead
@@ -26287,6 +27884,9 @@ def _uninstall_launchd_daemon(this_install_only=False, dry_run=False):
     side-effect-free (no bootout, no file deletion, no tombstone write) so the
     cleanup command's ``--dry-run`` is a true preview.
     """
+    if _daemon_snapshot_sandboxed():
+        return False
+
     if dry_run:
         # Dry-run: report what WOULD be removed, touch nothing.
         would_remove = []
@@ -26647,8 +28247,9 @@ def _generate_schtasks_xml(task_name, user_id, command, arguments=""):
     # No <URI> element: it is optional per the Task Scheduler 1.2 schema
     # and creates a mismatch class when enterprise GPO relocates tasks
     # into subfolders. /TN in the schtasks /Create call is sufficient.
-    # Two triggers: LogonTrigger for normal logins + BootTrigger so Fast
-    # Startup (hibernate-kernel wake) still fires the daemon.
+    # A BootTrigger requires elevated registration even with LeastPrivilege.
+    # This is a per-user service: logon is the correct boundary, including
+    # logins following Fast Startup. Keep installation non-elevated.
     return (
         '<?xml version="1.0" encoding="UTF-16"?>\n'
         '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n'
@@ -26660,9 +28261,6 @@ def _generate_schtasks_xml(task_name, user_id, command, arguments=""):
         "      <Enabled>true</Enabled>\n"
         f"      <UserId>{xml_escape(user_id)}</UserId>\n"
         "    </LogonTrigger>\n"
-        "    <BootTrigger>\n"
-        "      <Enabled>true</Enabled>\n"
-        "    </BootTrigger>\n"
         "  </Triggers>\n"
         "  <Principals>\n"
         '    <Principal id="Author">\n'
@@ -26718,6 +28316,9 @@ def _install_task_scheduler_daemon(dry_run=False, soft_fail=False, effective_hos
     Windows user to run this is the de facto smoke test. Full rollback
     is one command: `measure.py setup-daemon --uninstall`.
     """
+    if _daemon_snapshot_sandboxed():
+        return False
+
     def _fail(msg, *extra, permanent_reason=None):
         # Only DEFINITIVE, permanent failure classes
         # arm the sticky no-retry marker (MS-Store alias, schtasks missing,
@@ -26921,6 +28522,9 @@ def _uninstall_task_scheduler_daemon(this_install_only=False, dry_run=False):
     side-effect-free (no schtasks calls, no file deletion, no tombstone write)
     so the cleanup command's ``--dry-run`` is a true preview.
     """
+    if _daemon_snapshot_sandboxed():
+        return False
+
     if dry_run:
         would_remove = []
         per_identity: list[tuple[Path, list[str]]] = []
@@ -27149,6 +28753,9 @@ def _install_systemd_user_daemon(dry_run=False, soft_fail=False, effective_host=
     and kill the calling Claude Code session. Returns True on success. CLI
     callers keep the default False for the hard-failure + actionable-hint UX.
     """
+    if _daemon_snapshot_sandboxed():
+        return False
+
     def _fail(msg, *extra):
         # Under soft_fail we are inside a hook --
         # stdout is session-visible context, so route errors to stderr instead
@@ -27319,6 +28926,9 @@ def _uninstall_systemd_user_daemon(this_install_only=False, dry_run=False):
     side-effect-free (no systemctl calls, no file deletion, no tombstone write)
     so the cleanup command's ``--dry-run`` is a true preview.
     """
+    if _daemon_snapshot_sandboxed():
+        return False
+
     if dry_run:
         would_remove = []
         per_identity: list[tuple[Path, list[str]]] = []
@@ -27449,6 +29059,8 @@ def setup_daemon(dry_run=False, uninstall=False, this_install_only=False, latch_
     clean only the resolved identity, for a user intentionally running
     side-by-side installs who only wants this one gone.
     """
+    if _daemon_snapshot_sandboxed():
+        return "noop-sandbox"
     system = _normalized_platform()
     if uninstall:
         if system == "Darwin":
@@ -27917,6 +29529,10 @@ def _ensure_dashboard_daemon(force=False):
     ('restart-stale' propagates up from _restart_dashboard_daemon's
     landing-verification.) Never raises.
     """
+    # An explicit snapshot override is an isolation boundary, including when a
+    # detached daemon-revive child calls this with force=True.
+    if _daemon_snapshot_sandboxed():
+        return "noop-sandbox"
     # Cheapest gates first -- all pure/stat, no subprocess.
     if _is_foreign_runtime() or detect_runtime() != "claude":
         return "noop-foreign"
@@ -28105,6 +29721,8 @@ def _daemon_midsession_pulse():
     installer. Returns a short status string. Never raises, never blocks.
     """
     try:
+        if _daemon_snapshot_sandboxed():
+            return "noop-sandbox"
         # SAFETY gates run EVERY turn, BEFORE the probe throttle: a
         # disabled/uninstalled/thrashing daemon must NEVER be revived, not even on
         # the 59/60 throttled turns. All are cheap (a stat + a small config read +
@@ -28347,11 +29965,13 @@ def _daemon_resurrection_blocked():
     the user turned off. One helper, checked by every path that could
     (re)start a daemon, so no future call site can bypass a gate by accident.
 
-    Returns the blocking reason (``"tombstoned"`` | ``"disabled"`` |
-    ``"install-failed"``) or None when the action may proceed. The tombstone
+    Returns the blocking reason (``"sandbox"`` | ``"tombstoned"`` |
+    ``"disabled"`` | ``"install-failed"``) or None when the action may proceed. The tombstone
     stat fails open (matching ``_daemon_install_failed_marker_present``: an
     unreadable state dir is not evidence of intent). Never raises.
     """
+    if _daemon_snapshot_sandboxed():
+        return "sandbox"
     try:
         if os.path.exists(str(DAEMON_THRASH_BREADCRUMB)):
             return "tombstoned"
@@ -28651,6 +30271,8 @@ def _restart_dashboard_daemon(system):
     would SIGTERM session A's freshly-bound correct daemon, causing a restart
     flap. Checking the served version first makes the whole restart idempotent.
     """
+    if _daemon_snapshot_sandboxed():
+        return "noop-sandbox"
     try:
         # Already current (a sibling session fixed it)? Do not reap/restart.
         if _daemon_served_version() == TOKEN_OPTIMIZER_VERSION:
@@ -28984,7 +30606,14 @@ def sanitize_session_id(sid):
     """Sanitize session ID for safe use in filenames. Prevents path traversal."""
     if not sid:
         return "unknown"
+    # Coerce non-string JSON values (int, list, dict) to str before regex.
+    # Hook stdin JSON is attacker-influenceable: {"session_id": 123} or
+    # {"session_id": [1,2]} would otherwise raise TypeError in re.sub().
+    if not isinstance(sid, str):
+        sid = str(sid)
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "", sid)
+    if detect_runtime() == 'codex':
+        sanitized = codex_session._safe_session_id(sanitized)
     return sanitized if len(sanitized) >= 6 else "unknown"
 
 
@@ -29086,13 +30715,22 @@ def _parse_jsonl_for_quality(filepath):
 
     idx = 0
     try:
+        if os.stat(filepath).st_size > codex_session.MAX_PARSE_FILE_BYTES:
+            return None
+    except OSError:
+        return None
+    try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if len(line) > codex_session.MAX_JSONL_LINE_CHARS:
+                    continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     continue
 
+                if not isinstance(record, dict):
+                    continue
                 rec_type = record.get("type")
                 ts = record.get("timestamp", "")
 
@@ -29148,6 +30786,8 @@ def _parse_jsonl_for_quality(filepath):
                 # Assistant messages
                 if rec_type == "assistant":
                     msg = record.get("message", {})
+                    if not isinstance(msg, dict):
+                        msg = {}
                     content = msg.get("content", [])
                     text_length = 0
                     is_substantive = False
@@ -29158,12 +30798,9 @@ def _parse_jsonl_for_quality(filepath):
                     # raise and abort the whole parse (losing all quality data).
                     usage = msg.get("usage")
                     if isinstance(usage, dict):
-                        try:
-                            tok = (int(usage.get("input_tokens") or 0)
-                                   + int(usage.get("cache_creation_input_tokens") or 0)
-                                   + int(usage.get("cache_read_input_tokens") or 0))
-                        except (TypeError, ValueError):
-                            tok = 0
+                        tok = (_safe_int(usage.get("input_tokens"))
+                               + _safe_int(usage.get("cache_creation_input_tokens"))
+                               + _safe_int(usage.get("cache_read_input_tokens")))
                         if tok > 0:
                             context_tokens = tok
                     model_str = msg.get("model")
@@ -29851,8 +31488,7 @@ def _find_current_session_jsonl():
             current_tid = None
         if current_tid:
             resolved = codex_session.find_session_jsonl_by_id(current_tid)
-            if resolved:
-                return resolved
+            return resolved
         return codex_session.find_current_session_jsonl()
 
     # Hermes: no ~/.claude/projects JSONL to scan (sessions live in state.db).
@@ -30249,6 +31885,8 @@ def jsonl_inspect(arg=None, as_json=False):
                 except json.JSONDecodeError:
                     continue
 
+                if not isinstance(record, dict):
+                    continue
                 total_records += 1
                 category = _classify_record(record)
                 counts_by_type[category] = counts_by_type.get(category, 0) + 1
@@ -32349,6 +33987,13 @@ def _security_report(as_json=False):
     except ImportError:
         cred_count = 0
         cred_types = []
+    try:
+        from credential_patterns import custom_patterns_status
+        cred_custom = custom_patterns_status()
+    except Exception:
+        cred_custom = {"active": True, "failure": None, "count": 0, "labels": [],
+                       "source": None, "sha256": None, "errors": [],
+                       "rejected": 0, "duplicates_skipped": 0}
 
     runtime = detect_runtime()
     runtime_label = runtime_name_for_humans()
@@ -32447,7 +34092,7 @@ def _security_report(as_json=False):
             "session_store_hours": 48,
             "checkpoint_event_max": _CHECKPOINT_EVENT_MAX,
         },
-        "credential_scanning": {"pattern_count": cred_count, "types": cred_types},
+        "credential_scanning": {"pattern_count": cred_count, "types": cred_types, "custom": cred_custom},
         "hooks": {"count": len(hooks_list), "source": str(hooks_json_path) if hooks_json_path else None},
         "dashboard": {"daemon_pid": daemon_pid, "daemon_running": daemon_running, "token_file_exists": DAEMON_TOKEN_PATH.exists(), "token_file_permissions": _file_info(DAEMON_TOKEN_PATH).get("permissions"), "bind_address": (_read_dashboard_host_file() or "127.0.0.1")},  # reflect persisted host
         "transcript_preservation": {"cleanup_period_days": cleanup_period, "note": "Intentional: preserves transcripts for trend analysis. Transcripts are host platform data."},
@@ -32506,6 +34151,19 @@ def _security_report(as_json=False):
             print(f"     - {t}")
         if len(cred_types) > 5:
             print(f"     ... and {len(cred_types) - 5} more")
+    if cred_custom.get("active") is False:
+        print(f"   CUSTOM REDACTION INACTIVE: {cred_custom.get('failure') or 'pattern file failed to load'}")
+        if cred_custom.get("source"):
+            print(f"     File: {cred_custom['source']}")
+        print("     Disk writers are skipping redacted writes until this is fixed.")
+    else:
+        print(f"   Custom patterns: {cred_custom['count']}")
+        if cred_custom.get("source"):
+            print(f"     Source: {cred_custom['source']}")
+        if cred_custom.get("rejected"):
+            print(f"     {cred_custom['rejected']} patterns rejected (see below)")
+    for err in cred_custom.get("errors", [])[:5]:
+        print(f"     ! {err}")
     print()
 
     print(f"7. DASHBOARD SECURITY")
@@ -32570,8 +34228,15 @@ def _extract_session_state(filepath, tail_lines=500):
     # Use deque to only keep the tail in memory (avoids loading entire file)
     records = deque(maxlen=tail_lines)
     try:
+        if os.stat(filepath).st_size > codex_session.MAX_PARSE_FILE_BYTES:
+            return None
+    except OSError:
+        return None
+    try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                if len(line) > codex_session.MAX_JSONL_LINE_CHARS:
+                    continue
                 try:
                     records.append(json.loads(line))
                 except json.JSONDecodeError:
@@ -32589,6 +34254,8 @@ def _extract_session_state(filepath, tail_lines=500):
     file_count = 0
 
     for record in tail:
+        if not isinstance(record, dict):
+            continue
         rec_type = record.get("type")
 
         # User messages
@@ -32605,6 +34272,8 @@ def _extract_session_state(filepath, tail_lines=500):
         # Assistant messages
         if rec_type == "assistant":
             msg = record.get("message", {})
+            if not isinstance(msg, dict):
+                msg = {}
             content = msg.get("content", [])
             assistant_text = ""
 
@@ -32740,6 +34409,47 @@ def _sanitize_trigger(trigger):
     return trigger
 
 
+def _confine_transcript_path(transcript_path):
+    """Resolve a hook-supplied transcript path, confined to the active
+    runtime's session-log directory. Returns the resolved Path, or None when
+    the path must not be read.
+
+    transcript_path arrives via hook stdin JSON — attacker-influenceable.
+    Its contents flow into a checkpoint that SessionStart restores into the
+    NEXT session's context, so an arbitrary path is a prompt-injection and
+    state-tampering channel, not just an information leak. Confine the
+    resolved path to the session-log roots (Claude: ~/.claude/projects, Codex:
+    the codex_session roots) and reject symlinks outright — mirrors
+    detectors' _safe_read_text, which refuses to follow a link that could
+    point outside the tree or at a hostile file.
+    """
+    try:
+        raw = Path(transcript_path).expanduser()
+    except (TypeError, ValueError, RuntimeError):
+        return None
+    try:
+        if raw.is_symlink():
+            return None
+        resolved = raw.resolve()
+    except OSError:
+        return None
+    if detect_runtime() == "pi":
+        return resolved if pi_session.is_pi_session_path(resolved) else None
+    if _use_codex_session_adapter():
+        try:
+            roots = [r.resolve() for r in codex_session.session_roots()]
+        except Exception:
+            return None
+    else:
+        roots = [(CLAUDE_DIR / "projects").resolve()]
+    try:
+        if not any(resolved.is_relative_to(root) for root in roots):
+            return None
+    except (OSError, ValueError):
+        return None
+    return resolved
+
+
 def compact_capture(transcript_path=None, session_id=None, trigger="auto", cwd=None, fill_pct=None, quality_score=None, backfill_tools=False):
     """Capture structured session state before compaction or session end.
 
@@ -32769,7 +34479,12 @@ def compact_capture(transcript_path=None, session_id=None, trigger="auto", cwd=N
     ts_file = now.strftime("%Y%m%d-%H%M%S")
 
     if transcript_path:
-        filepath = Path(transcript_path)
+        # A supplied path that fails confinement is a forged hook input — do
+        # not checkpoint from it, and do not fall through to inference (which
+        # would let a bad pointer silently capture a different session).
+        filepath = _confine_transcript_path(transcript_path)
+        if filepath is None:
+            return None
     else:
         # Identity before inference. _find_current_session_jsonl() returns the
         # most recently active transcript, which on a new session is somebody
@@ -32804,6 +34519,12 @@ def compact_capture(transcript_path=None, session_id=None, trigger="auto", cwd=N
     # Redact credentials from checkpoint text fields (SEC-004)
     try:
         from credential_patterns import redact_credentials as _cp_redact
+        from credential_patterns import RedactionConfigError as _RedactCfgErr
+    except Exception:
+        # Without the shared redactor a checkpoint would persist transcript
+        # text unredacted. Fail closed: no checkpoint rather than a raw one.
+        return None
+    try:
         step = state.get("current_step", {})
         if step.get("last_user"):
             step["last_user"] = _cp_redact(step["last_user"])
@@ -32815,6 +34536,11 @@ def compact_capture(transcript_path=None, session_id=None, trigger="auto", cwd=N
             else _cp_redact(ec) if isinstance(ec, str) else ec
             for ec in state.get("error_context", [])
         ]
+    except _RedactCfgErr:
+        # A configured-but-broken custom pattern file makes redact_credentials
+        # refuse: writing the checkpoint anyway would persist transcript text
+        # that org-specific rules were meant to cover. Skip the write.
+        return None
     except Exception:
         pass
 
@@ -32982,6 +34708,10 @@ def compact_capture(transcript_path=None, session_id=None, trigger="auto", cwd=N
         lines.append(state["current_step"]["last_assistant"][:300])
         lines.append("")
 
+    # Strip ANSI/VT escape sequences from transcript-derived text before
+    # writing the checkpoint — session-log content is attacker-influenceable
+    # and escape sequences in a restored-context file are an injection vector.
+    lines = [_strip_ansi(ln) if isinstance(ln, str) else ln for ln in lines]
     checkpoint_content = "\n".join(lines)
     checkpoint_path = CHECKPOINT_DIR / f"{sid}-{ts_file}{trigger_suffix}.md"
     # Atomic write prevents a partial checkpoint from being surfaced as
@@ -33260,6 +34990,19 @@ def _mark_ran_this_session(tag, session_id):
         pass
 
 
+def _safe_event(event):
+    """The hookEventName to stamp on an envelope: the firing event verbatim,
+    falling back to SessionStart only when it is missing or not a string.
+
+    Every emitter path (single-object passthrough, multi-object merge,
+    _emit_additional_context) MUST agree here. An earlier inline copy forced
+    SessionStart for any non-SessionStart event, so a UserPromptSubmit envelope
+    was stamped SessionStart and Claude Code discarded the whole hook result.
+    Keeping one helper stops that divergence from recurring per-path.
+    """
+    return event if (isinstance(event, str) and event) else "SessionStart"
+
+
 def _emit_additional_context(text, event="SessionStart"):
     """Emit hook stdout as the documented ``additionalContext`` JSON envelope.
 
@@ -33298,7 +35041,7 @@ def _emit_additional_context(text, event="SessionStart"):
     print(json.dumps({
         "continue": True,
         "hookSpecificOutput": {
-            "hookEventName": event,
+            "hookEventName": _safe_event(event),
             "additionalContext": text,
         },
     }))
@@ -33355,8 +35098,7 @@ def _sanitize_hook_output_payload(obj, event):
                     out[key] = value
     hso = obj.get("hookSpecificOutput")
     if isinstance(hso, dict):
-        safe_event = "SessionStart" if event != "SessionStart" else event
-        clean = {"hookEventName": safe_event}
+        clean = {"hookEventName": _safe_event(event)}
         ctx = hso.get("additionalContext")
         if isinstance(ctx, str) and ctx.strip():
             clean["additionalContext"] = ctx
@@ -33444,7 +35186,7 @@ def _collapse_hook_stdout(text, event="SessionStart"):
         payload["systemMessage"] = "\n\n".join(system_messages)
     if contexts:
         payload["hookSpecificOutput"] = {
-            "hookEventName": event,
+            "hookEventName": _safe_event(event),
             "additionalContext": "\n\n".join(contexts),
         }
     if not payload:
@@ -35550,15 +37292,14 @@ def _transcript_last_turn(sid_safe):
             if not isinstance(d, dict) or d.get("type") != "assistant" or d.get("isSidechain"):
                 continue
             msg = d.get("message") or {}
+            if not isinstance(msg, dict):
+                continue
             u = msg.get("usage") or {}
             if not isinstance(u, dict):
                 continue
-            try:
-                ctx = (int(u.get("input_tokens") or 0)
-                       + int(u.get("cache_read_input_tokens") or 0)
-                       + int(u.get("cache_creation_input_tokens") or 0))
-            except (TypeError, ValueError):
-                continue
+            ctx = (_safe_int(u.get("input_tokens"))
+                   + _safe_int(u.get("cache_read_input_tokens"))
+                   + _safe_int(u.get("cache_creation_input_tokens")))
             if ctx <= 0:
                 continue
             model = _normalize_model_name(msg.get("model"))
@@ -36275,9 +38016,18 @@ def _prune_trends_db():
         if not trends_path.exists():
             return
         cutoff_iso = (datetime.now() - timedelta(days=_TRENDS_RETENTION_DAYS)).isoformat()
+        cutoff_date = cutoff_iso[:10]  # session_log.date is YYYY-MM-DD
         conn = sqlite3.connect(str(trends_path), timeout=5)
         try:
-            conn.execute("DELETE FROM session_log WHERE timestamp < ?", (cutoff_iso,))
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("DELETE FROM session_log WHERE date < ?", (cutoff_date,))
+            conn.execute("DELETE FROM savings_events WHERE timestamp < ?", (cutoff_iso,))
+            conn.execute("DELETE FROM compression_events WHERE timestamp < ?", (cutoff_iso,))
+            conn.execute(
+                "DELETE FROM counted_reread WHERE session_uuid NOT IN "
+                "(SELECT session_uuid FROM session_log WHERE session_uuid IS NOT NULL)"
+            )
             conn.commit()
         finally:
             conn.close()
@@ -37063,6 +38813,8 @@ def _extract_session_start_ts(filepath):
             for line in f:
                 try:
                     record = json.loads(line)
+                    if not isinstance(record, dict):
+                        continue
                     ts_str = record.get("timestamp")
                     if ts_str:
                         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
@@ -37092,6 +38844,8 @@ def _extract_active_agents(filepath):
                 except json.JSONDecodeError:
                     continue
 
+                if not isinstance(record, dict):
+                    continue
                 rec_type = record.get("type")
                 msg = record.get("message", {})
                 content = msg.get("content", []) if isinstance(msg, dict) else []
@@ -39779,7 +41533,8 @@ def _estimate_compression_cost_per_mtok(model=None):
     try:
         tier = _load_pricing_tier()
         tier_data = PRICING_TIERS.get(tier, PRICING_TIERS.get("anthropic", {}))
-        normalized = (_normalize_model_name(model) if model else None) or _resolve_session_model()
+        normalized = (_claude_price_key(model, tier_data.get("claude_models", {})) if model else None) \
+            or _resolve_session_model()
         rates = tier_data.get("claude_models", {}).get(normalized) \
                 or tier_data.get("claude_models", {}).get("sonnet", {})
         return float(rates.get("input", 3.0))
@@ -39919,6 +41674,9 @@ def runway_snapshot(days=30, now=None):
         meter_available = bool(meters.get("available"))
         meter_stale = bool(meters.get("stale")) or not meter_available
 
+        weekly_full = _weekly_full_savings(
+            resets_at=meters.get("seven_day_resets_at"), now=now)
+
         # --- context lever: measured, never estimated ---
         consumed = saved = 0
         spent_basis = None
@@ -39940,19 +41698,21 @@ def runway_snapshot(days=30, now=None):
                 conn.close()
         except Exception:
             return None
-        if consumed <= 0:
+        if consumed <= 0 and not weekly_full:
             return None
-        context_mult = (consumed + saved) / consumed
+        context_mult = (consumed + saved) / consumed if consumed > 0 else 1.0
 
         # --- routing lever: this user's own shift, priced by input rates ---
         routing_mult = _input_rate_mix_ratio(days=days)
         if routing_mult is None or routing_mult <= 0:
-            return None
+            if not weekly_full:
+                return None
+            routing_mult = 1.0
 
         mult = context_mult * routing_mult
         # Below ~1.02 there is no story worth telling and rounding noise would
         # dominate; say nothing rather than dress up a rounding artefact.
-        if mult < 1.02:
+        if mult < 1.02 and not weekly_full:
             return None
 
         # --- USD-per-window: API-credit OVERAGE over each window's OWN real span ---
@@ -40030,7 +41790,7 @@ def runway_snapshot(days=30, now=None):
                     # -- real, magnitude-metered (v5.13.1) savings that were simply
                     # unlabelled. Window-scoped already (days/since passed above).
                     _rl = wm.get("resume_lean_estimated") or {}
-                    _vs = wm.get("verbosity_steer_estimated") or {}
+                    _vs = wm.get("verbosity_steer") or wm.get("verbosity_steer_estimated") or {}
                     est_add = float(_rl.get("cost_saved_usd", 0.0) or 0.0) \
                         + float(_vs.get("cost_saved_usd", 0.0) or 0.0)
                 except Exception:
@@ -40040,16 +41800,16 @@ def runway_snapshot(days=30, now=None):
                     try:
                         end_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                         if since_iso:
-                            start_utc = datetime.fromisoformat(since_iso)
-                            if start_utc.tzinfo is not None:
-                                start_utc = start_utc.astimezone(timezone.utc).replace(tzinfo=None)
+                            start_utc = _counted_event_utc(since_iso)
                         else:
                             start_utc = end_utc - timedelta(days=wdays)
                         counted = _counted_window_summary(conn, start_utc, end_utc)
                     finally:
                         conn.close()
                     if counted.get("available"):
-                        ctx = float(counted.get("total_usd", 0.0) or 0.0)
+                        # Keep setup, output, unmatched events and other logged
+                        # savings. Their initial removals are already in merged_ctx.
+                        ctx = merged_ctx + float(counted.get("reread_usd", 0.0) or 0.0)
                         counted_window = True
                 except Exception:
                     # Older databases without counted_reread retain the legacy
@@ -40062,6 +41822,12 @@ def runway_snapshot(days=30, now=None):
                 # trigger is counterfactual even though the magnitude is metered.
                 ctx += est_add
                 est_added = est_add > 0.0
+                # The full-workload figure replaces the metered sum only when it
+                # is larger: a flat or negative workload month must never hide
+                # savings that were actually measured this week.
+                if wdays == 7 and weekly_full and float(weekly_full.get("saved_usd") or 0.0) > ctx + rt:
+                    ctx, rt = float(weekly_full["saved_usd"]), 0.0
+                    est_added = True
                 _overage_cache[cache_key] = (ctx, rt, repriced, counted_window, est_added)
             ctx, rt, repriced, counted_window, est_added = _overage_cache[cache_key]
             total = ctx + rt
@@ -40119,6 +41885,7 @@ def runway_snapshot(days=30, now=None):
                 "would_be_capped": head_cf <= 0.5,
                 "saved_usd": window_saved_usd,
                 "saved_usd_tier": window_usd_tier,
+                "full_value": weekly_full if key == "seven_day" else None,
             })
         # REGRESSION FIX (the "Your plan goes further" card vanished after a quiet
         # week): the per-window guard above drops the 5h window once the meter is
@@ -40191,7 +41958,9 @@ def runway_snapshot(days=30, now=None):
             "saved_usd_context": round(saved_context_usd, 2),
             "saved_usd_routing": round(saved_routing_usd, 2),
             "saved_usd_tier": saved_usd_tier,
+            "weekly_full_value": weekly_full,
             "window_savings_basis": (
+                "full workload, exact subscription week" if weekly_full else
                 "counted transcript window" if _wk_counted else "flat savings ledger fallback"),
             # period_days scopes the throughput MULTIPLIERS (context/routing), not
             # the per-window dollars: each window now prices overage over its OWN
@@ -40210,13 +41979,17 @@ def runway_snapshot(days=30, now=None):
             # longer repeats it. Keep the phrases "metered savings ledger" and "not
             # derived from the throughput multipliers" -- guarded by
             # test_proxy_disclosure_mentions_ledger_reuse.
-            "proxy": ("Your window usage is measured; the “without” "
+            "proxy": ("Weekly dollars use the Savings tab's full workload estimate for activity "
+                      "since the subscription reset, at constant prices. Measured and estimated "
+                      "effects overlap, so they are counted once. This is accrued API-equivalent "
+                      "value, not a forecast or an overage bill. The headline percentage covers "
+                      "30 days; window comparisons are estimates." if weekly_full else ("Your window usage is measured; the “without” "
                       "comparison and routing dollars are estimated (the provider "
                       "does not publish how it weights models inside a window, so "
                       "public input-rate ratios stand in). Per-window dollars reuse "
                       "the metered savings ledger (context tokens never sent, priced "
                       "at input rates, plus a routing estimate) and are not derived "
-                      "from the throughput multipliers."),
+                      "from the throughput multipliers.")),
         }
     except Exception:
         return None
@@ -42661,6 +44434,10 @@ def _price_parent_window(conn, where, params, tier):
         "FROM session_log WHERE input_tokens IS NOT NULL "
         "AND COALESCE(is_sidechain, 0) = 0 " + where, params
     ).fetchall()
+    return _price_parent_rows(rows, tier)
+
+
+def _price_parent_rows(rows, tier):
     if not rows:
         return None
     default_model = _default_model_for_runtime()
@@ -42699,7 +44476,158 @@ def _price_parent_window(conn, where, params, tier):
             "flat_usd": flat_usd, "api_calls": api_calls, "messages": messages}
 
 
-def _session_weight_pool_savings(cutoff, days=30, tier=None):
+_PRETOOL_ANCHOR_FILE = "workload_anchor_pretool.json"
+
+
+def _pinned_workload_anchor():
+    """This user's pinned pre-install workload anchor, or None until built.
+
+    Built once from the user's OWN baseline window (baseline_state.json, the
+    sessions before Token Optimizer was installed), so every user is compared
+    against their own starting point, never a fixed calendar month."""
+    try:
+        path = SNAPSHOT_DIR / _PRETOOL_ANCHOR_FILE
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        m = data.get("metrics") if isinstance(data, dict) else None
+        if (data.get("status") == "pinned" and isinstance(m, dict)
+                and data.get("rates") == _WEIGHT_POOL_FLAT_RATES
+                and all(isinstance(m.get(k), (int, float)) and math.isfinite(m[k]) and m[k] >= 0
+                        for k in ("sessions", "usd", "tokens", "flat_usd", "api_calls", "messages"))
+                and m["sessions"] >= _SESSION_WEIGHT_MIN_ANCHOR_SESSIONS
+                and m["api_calls"] > 0 and m["flat_usd"] > 0):
+            return {"metrics": m, "label": str(data.get("label") or "your pre-install baseline")}
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return None
+
+
+def _pretool_window():
+    """(start, end) dates of this user's frozen pre-install baseline window."""
+    try:
+        data = json.loads((SNAPSHOT_DIR / "baseline_state.json").read_text(encoding="utf-8"))
+        w = data.get("window") or {}
+        start, end = str(w.get("start") or "")[:10], str(w.get("end") or "")[:10]
+        datetime.strptime(start, "%Y-%m-%d")
+        datetime.strptime(end, "%Y-%m-%d")
+        return (start, end) if start <= end else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _pretool_anchor_step(budget_seconds=5.0, tier=None):
+    """Build the pinned pre-install anchor a few transcripts at a time.
+
+    The ledger keeps a rolling window, so the months before install age out of
+    it; their transcripts usually remain on disk. Each call prices up to
+    `budget_seconds` of them with the same ruler as the live pool and banks
+    running sums, then pins the result once the window is done. A window with
+    too few surviving transcripts is marked unavailable, so the check stops.
+    Returns the state string. Never raises.
+    """
+    path = SNAPSHOT_DIR / _PRETOOL_ANCHOR_FILE
+    try:
+        state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(state, dict):
+            state = {}
+        if state.get("status") in ("pinned", "unavailable"):
+            return state["status"]
+        window = _pretool_window()
+        if not window:
+            return "no_baseline"
+        if tier is None:
+            tier = _load_pricing_tier()
+        start, end = window
+        if state.get("window") != [start, end] or state.get("rates") != _WEIGHT_POOL_FLAT_RATES:
+            state = {"status": "building", "window": [start, end], "rates": _WEIGHT_POOL_FLAT_RATES,
+                     "cursor": 0, "seen": [],
+                     "metrics": {"sessions": 0, "usd": 0.0, "tokens": 0.0, "flat_usd": 0.0,
+                                 "api_calls": 0, "messages": 0}}
+        age_days = (datetime.now() - datetime.strptime(start, "%Y-%m-%d")).days + 1
+        files = sorted(
+            str(f) for f, mtime, _proj in _find_all_jsonl_files(days=age_days)
+            if start <= datetime.fromtimestamp(mtime).strftime("%Y-%m-%d") <= end)
+        seen = set(state["seen"])
+        deadline = time.monotonic() + budget_seconds
+        cursor = int(state.get("cursor") or 0)
+        while cursor < len(files) and time.monotonic() < deadline:
+            fp = files[cursor]
+            cursor += 1
+            uuid = _canonical_session_uuid(fp) or fp
+            if uuid in seen:
+                continue  # another copy of a session already priced
+            seen.add(uuid)
+            row = _pretool_session_row(fp)
+            priced = _price_parent_rows([row], tier) if row else None
+            if priced:
+                for k in state["metrics"]:
+                    state["metrics"][k] += priced[k]
+        state["cursor"], state["seen"] = cursor, sorted(seen)
+        if cursor >= len(files):
+            m = state["metrics"]
+            ok = m["sessions"] >= _SESSION_WEIGHT_MIN_ANCHOR_SESSIONS and m["api_calls"] > 0 and m["flat_usd"] > 0
+            state = {"status": "pinned" if ok else "unavailable", "window": [start, end],
+                     "rates": _WEIGHT_POOL_FLAT_RATES, "metrics": m,
+                     "label": f"your pre-install baseline ({start} to {end})",
+                     "pinned_at": datetime.now().isoformat()}
+        _write_baseline_state(path, state)
+        return state["status"]
+    except Exception:
+        return "error"
+
+
+def _pretool_session_row(filepath):
+    """One transcript as a session_log-shaped row for _price_parent_rows: the
+    same totals collect would store (subagents merged by requestId)."""
+    parsed = _parse_session_jsonl(filepath)
+    if not parsed or not parsed.get("api_calls"):
+        return None
+    subs = _session_subagent_files(filepath)
+    merged = _session_merged_requests(filepath, parsed, subs) if subs else None
+    if merged:
+        inp = sum(int(u.get("inp") or 0) + int(u.get("cr") or 0) + int(u.get("cc") or 0) for u in merged.values())
+        out = sum(int(u.get("out") or 0) for u in merged.values())
+        cc5 = sum(int(u.get("cc_5m") or 0) for u in merged.values())
+        cc1 = sum(int(u.get("cc_1h") or 0) for u in merged.values())
+    else:
+        inp, out = parsed.get("total_input_tokens") or 0, parsed.get("total_output_tokens") or 0
+        cc5, cc1 = parsed.get("total_cache_create_5m") or 0, parsed.get("total_cache_create_1h") or 0
+    return (inp, out, cc5, cc1, parsed.get("cache_hit_rate") or 0.0,
+            json.dumps(parsed.get("model_usage") or {}), None,
+            parsed.get("api_calls") or 0, parsed.get("message_count") or 0)
+
+
+def _stable_workload_anchor(before, month):
+    """Keep the existing workload comparison stable during session refreshes."""
+    path = SNAPSHOT_DIR / "workload_anchor.json"
+    try:
+        if path.exists():
+            frozen = json.loads(path.read_text(encoding="utf-8"))
+            metrics = frozen.get("metrics") if isinstance(frozen, dict) else None
+            # Keep the frozen month even after retention prunes it from the ledger:
+            # the earliest month left later is closer to (or after) install, so
+            # sliding forward would compare the tool against itself. Only a month
+            # EARLIER than the frozen one (a history backfill) re-anchors.
+            if (isinstance(metrics, dict) and str(frozen.get("month") or "") <= month
+                    and frozen.get("rates") == _WEIGHT_POOL_FLAT_RATES
+                    and all(isinstance(metrics.get(k), (int, float))
+                            and math.isfinite(metrics[k]) and metrics[k] >= 0
+                            for k in ("sessions", "usd", "tokens", "flat_usd", "api_calls", "messages"))
+                    and metrics["sessions"] >= _SESSION_WEIGHT_MIN_ANCHOR_SESSIONS
+                    and metrics["api_calls"] > 0 and metrics["flat_usd"] > 0):
+                return metrics, str(frozen["month"])
+        if (before and before["sessions"] >= _SESSION_WEIGHT_MIN_ANCHOR_SESSIONS
+                and before["api_calls"] > 0 and before["flat_usd"] > 0):
+            _write_baseline_state(path, {"month": month, "metrics": before,
+                                        "rates": _WEIGHT_POOL_FLAT_RATES,
+                                        "captured_at": datetime.now().isoformat()})
+        return before, month
+    except (OSError, ValueError, TypeError):
+        return None, month
+
+
+def _session_weight_pool_savings(cutoff, days=30, tier=None, activity_window=None):
     """THE volume lever: cost per UNIT OF WORK, over the whole parent population.
 
     The frozen-anchor pool holds session volume constant across both arms by
@@ -42743,7 +44671,8 @@ def _session_weight_pool_savings(cutoff, days=30, tier=None):
                     "ORDER BY ym"
                 ).fetchall() if r and r[0]
             ]
-            if len(months) < 2:
+            pinned = _pinned_workload_anchor()
+            if len(months) < 2 and not pinned:
                 return None
             first_day = conn.execute(
                 "SELECT MIN(date) FROM session_log WHERE input_tokens IS NOT NULL "
@@ -42752,7 +44681,7 @@ def _session_weight_pool_savings(cutoff, days=30, tier=None):
             first_day = str(first_day[0])[:10] if first_day and first_day[0] else None
             this_month = datetime.now().strftime("%Y-%m")
             anchor_month = None
-            for ym in months:
+            for ym in ([] if pinned else months):
                 if ym == this_month:
                     continue  # current month is still accruing
                 # Skip a first month the ledger only partially covers, or its
@@ -42761,11 +44690,17 @@ def _session_weight_pool_savings(cutoff, days=30, tier=None):
                     continue
                 anchor_month = ym
                 break
-            if not anchor_month:
-                return None
-            before = _price_parent_window(
-                conn, "AND date LIKE ?", (anchor_month + "%",), tier)
-            now = _price_parent_window(conn, "AND date >= ?", (cutoff,), tier)
+            if pinned:
+                before, anchor_month = pinned["metrics"], pinned["label"]
+            else:
+                if not anchor_month:
+                    return None
+                before = _price_parent_window(
+                    conn, "AND date LIKE ?", (anchor_month + "%",), tier)
+                before, anchor_month = _stable_workload_anchor(before, anchor_month)
+            now = (_price_parent_activity_window(conn, *activity_window, tier)
+                   if activity_window else
+                   _price_parent_window(conn, "AND date >= ?", (cutoff,), tier))
         finally:
             conn.close()
         if not before or not now:
@@ -42838,8 +44773,9 @@ def _session_weight_pool_savings(cutoff, days=30, tier=None):
             "that extra capacity is real, but it is capacity gained, not dollars saved, "
             "so it is not in the headline. Model price/mix drift worth about "
             "${drift:,.0f}/mo is also excluded: it would have happened without Token "
-            "Optimizer. The anchor month already had partial Token Optimizer coverage, "
-            "so if anything this understates the full pre-tool gap."
+            "Optimizer."
+            + ("" if pinned else " The anchor month already had partial Token Optimizer "
+               "coverage, so if anything this understates the full pre-tool gap.")
         ).format(units=n_units,
                  unit_label="API calls" if unit == "api_call" else "messages",
                  unit_singular="API call" if unit == "api_call" else "message",
@@ -42868,6 +44804,125 @@ def _session_weight_pool_savings(cutoff, days=30, tier=None):
             "capacity_assumption": capacity_note,
         }
     except (sqlite3.Error, OSError, ValueError, TypeError, ZeroDivisionError):
+        return None
+
+
+def _price_parent_activity_window(conn, start, end, tier):
+    """Use real in-window activity with the standard parent/child pricing rules.
+
+    Reading transcripts here also keeps a weekly report correct while bounded
+    background collection catches up. Missing files produce an unavailable
+    estimate instead of silently treating missing work as zero cost.
+    """
+    paths = conn.execute(
+        "SELECT jsonl_path, date FROM session_log WHERE input_tokens IS NOT NULL "
+        "AND COALESCE(is_sidechain,0)=0").fetchall()
+    # Include new sessions before bounded collection reaches them.
+    known = {str(name) for name, _ in paths}
+    for path, mtime, _ in _find_all_jsonl_files(8):
+        if str(path) not in known:
+            paths.append((str(path), datetime.fromtimestamp(mtime).date().isoformat()))
+            known.add(str(path))
+    rows = []
+    for name, recorded_date in paths:
+        path = Path(name)
+        if not path.exists():
+            if str(recorded_date) < start.date().isoformat():
+                continue
+            return None
+        children = _find_subagent_jsonl_files(path)
+        if max(p.stat().st_mtime for p in [path, *children]) < start.timestamp():
+            continue
+        parsed = _parse_session_jsonl(path, window_start=start, window_end=end)
+        if parsed and parsed.get("is_sidechain"):
+            continue
+        if not parsed:
+            parsed = {"total_input_tokens": 0, "total_output_tokens": 0,
+                      "total_cache_create_1h": 0, "total_cache_create_5m": 0,
+                      "cache_hit_rate": 0, "model_usage": {}, "api_calls": 0,
+                      "message_count": 0}
+        inp, out = parsed["total_input_tokens"], parsed["total_output_tokens"]
+        cw1, cw5 = parsed["total_cache_create_1h"], parsed["total_cache_create_5m"]
+        child_cache_read = 0
+        for child in children:
+            cp = _parse_session_jsonl(child, window_start=start, window_end=end)
+            if cp:
+                inp += cp["total_input_tokens"]
+                out += cp["total_output_tokens"]
+                cw1 += cp["total_cache_create_1h"]
+                cw5 += cp["total_cache_create_5m"]
+                child_cache_read += cp["total_cache_read"]
+        if not parsed["api_calls"] and inp + out == 0:
+            continue
+        usage = json.dumps(parsed["model_usage"])
+        hit = (parsed["cache_hit_rate"] if parsed["api_calls"] else
+               child_cache_read / inp if inp else 0)
+        rows.append((inp, out, cw5, cw1, hit, usage, usage,
+                     parsed["api_calls"], parsed["message_count"]))
+    return _price_parent_rows(rows, tier)
+
+
+def _weekly_full_savings(resets_at=None, now=None):
+    """The Savings tab's full estimate, accrued inside this subscription week.
+
+    Its before/after difference already includes overlapping measured and
+    estimated mechanisms. Never add their individual estimates on top.
+    """
+    if detect_runtime() != "claude":
+        return None
+    try:
+        end = datetime.fromtimestamp(now if now is not None else time.time(), timezone.utc)
+        start = (datetime.fromtimestamp(float(resets_at), timezone.utc) - timedelta(days=7)
+                 if resets_at is not None else end - timedelta(days=7))
+        if resets_at is None or start >= end or end.timestamp() >= float(resets_at):
+            return None
+        # Dashboard refreshes may run several times per minute in separate
+        # processes. Keep an explicitly dated result for at most 60 seconds.
+        cache_path = SNAPSHOT_DIR / "weekly_full_value.json"
+        anchor_path = SNAPSHOT_DIR / "workload_anchor.json"
+        anchor_stamp = anchor_path.stat().st_mtime_ns if anchor_path.exists() else None
+        if now is None and cache_path.exists():
+            try:
+                cached = json.loads(cache_path.read_text(encoding="utf-8"))
+                age = end.timestamp() - float(cached["computed_at"])
+                if (0 <= age < 60 and cached["start"] == start.isoformat()
+                        and cached["anchor_stamp"] == anchor_stamp
+                        and cached["version"] == TOKEN_OPTIMIZER_VERSION):
+                    return _positive_full_value(cached["value"])
+            except (OSError, ValueError, TypeError, KeyError):
+                pass
+        pool = _session_weight_pool_savings(
+            start.isoformat(), days=7, activity_window=(start, end))
+        if not pool:
+            return None
+        # Same conservative display cap as the Savings tab.
+        saving = max(0.0, min(pool["transformation_usd"], pool["actual_usd"]))
+        value = {"saved_usd": round(saving, 2), "start": start.isoformat(),
+                "end": end.isoformat(), "method": "full workload",
+                "uncapped_usd": round(pool["transformation_usd"], 2),
+                "actual_usd": round(pool["actual_usd"], 2),
+                "counterfactual_usd": round(pool["counterfactual_usd"], 2),
+                "api_calls": pool["now_units"], "anchor_month": pool["anchor_month"]}
+        if now is None:
+            try:
+                _write_baseline_state(cache_path, {
+                    "computed_at": end.timestamp(), "start": start.isoformat(),
+                    "anchor_stamp": anchor_path.stat().st_mtime_ns if anchor_path.exists() else None,
+                    "version": TOKEN_OPTIMIZER_VERSION, "value": value})
+            except OSError:
+                pass
+        return _positive_full_value(value)
+    except (OSError, sqlite3.Error, ValueError, TypeError, KeyError):
+        return None
+
+
+def _positive_full_value(value):
+    """The whole-workload weekly figure only stands in for the metered savings
+    when it found something; a flat or negative week (heavier models, bigger
+    contexts) falls back to what was actually measured instead of showing $0."""
+    try:
+        return value if float((value or {}).get("saved_usd") or 0.0) > 0 else None
+    except (TypeError, ValueError):
         return None
 
 
@@ -44037,7 +46092,7 @@ def _savings_since_install():
             float((full.get(k) or {}).get("cost_saved_usd", 0) or 0)
             for k in (
                 "behavioral_estimate", "uncaptured_runtime", "mcp_cap_estimated",
-                "contamination_exit", "handover_rerun", "resume_lean_estimated",
+                "contamination_exit", "handover_rerun", "resume_lean_estimated", "verbosity_steer",
             )
         )
         # Avoided-search: prefer the deterministic observed hint->read measure
@@ -44119,6 +46174,58 @@ def _live_savings_payload(days=30):
     }
 
 
+_HEADLINE_HISTORY_FILE = "headline_history.json"
+
+
+def _headline_tripwire(measured_usd, events, days):
+    """Flag a measured-savings collapse that activity does not explain.
+
+    Keeps one reading per day. If the measured total fell below half of the
+    most recent earlier reading while the number of savings events stayed at
+    70%+ of it, the likely cause is a calculation change, not less saving, and
+    a message is returned so the report says so instead of quietly shrinking.
+    Returns None otherwise. Never raises."""
+    try:
+        path = SNAPSHOT_DIR / _HEADLINE_HISTORY_FILE
+        hist = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(hist, dict):
+            hist = {}
+        key = f"d{int(days)}"
+        rows = [r for r in hist.get(key, []) if isinstance(r, dict)]
+        today = datetime.now().strftime("%Y-%m-%d")
+        prior = next((r for r in reversed(rows) if r.get("date") != today), None)
+        rows = [r for r in rows if r.get("date") != today]
+        rows.append({"date": today, "usd": round(float(measured_usd), 2), "events": int(events)})
+        hist[key] = rows[-14:]
+        _write_baseline_state(path, hist)
+        if (prior and float(prior.get("usd") or 0) >= 20
+                and measured_usd < 0.5 * float(prior["usd"])
+                and events >= 0.7 * int(prior.get("events") or 0)):
+            return (f"Measured savings fell from ${float(prior['usd']):,.0f} ({prior['date']}) to "
+                    f"${measured_usd:,.0f} while activity held steady. That usually means a "
+                    f"calculation change, not less saving. Please report it.")
+    except Exception:
+        pass
+    return None
+
+
+def _reread_savings_for_window(days):
+    """Re-read savings (removed context not re-read on later turns) for the last
+    `days`; {} when the counted ledger is unavailable. Never raises."""
+    try:
+        if not TRENDS_DB.exists():
+            return {}
+        conn = _init_trends_db()
+        try:
+            end = datetime.now(timezone.utc).replace(tzinfo=None)
+            out = _counted_window_summary(conn, end - timedelta(days=days), end)
+        finally:
+            conn.close()
+        return out if out.get("available") else {}
+    except Exception:
+        return {}
+
+
 def savings_report(days=30, as_json=False):
     """Display cumulative savings from Token Optimizer actions.
 
@@ -44129,6 +46236,7 @@ def savings_report(days=30, as_json=False):
     savings_events; v5 categories authoritative in compression_events.
     """
     summary = _get_merged_savings(days=days)
+    summary["reread_avoided"] = _reread_savings_for_window(days)
 
     if as_json:
         print(json.dumps(summary, indent=2))
@@ -44227,10 +46335,11 @@ def savings_report(days=30, as_json=False):
         # Silence here is what made "no savings" indistinguishable from "broke".
         print()
         print("  YOUR TRANSFORMATION: none to headline this period")
-        print(f"    Recent work costs about what the baseline would have "
+        print(f"    Each request now carries more context than at your baseline "
               f"(est. ${ba.get('actual_monthly_usd', 0):,.0f}/mo now vs "
-              f"${ba.get('counterfactual_monthly_usd', 0):,.0f}/mo the old way). "
-              f"The directly-metered savings below still counted.")
+              f"${ba.get('counterfactual_monthly_usd', 0):,.0f}/mo at the baseline's cost "
+              f"per request), so there is no whole-workload saving to headline. "
+              f"The measured savings below are real and counted.")
 
     pricing = summary.get("pricing_detail") or {}
     p_model = pricing.get("model", "sonnet")
@@ -44296,10 +46405,20 @@ def savings_report(days=30, as_json=False):
     total_events = summary.get("total_events", 0)
     total_tokens = summary.get("total_tokens", 0)
     total_cost = summary.get("total_cost_usd", 0.0)
+    # Removed context stays out on every later turn until compaction. Those
+    # avoided re-reads are the "modeled" tier, the same one the dashboard's
+    # Savings tab shows as repeat reads avoided.
+    rr = summary.get("reread_avoided") or {}
+    rr_usd = float(rr.get("reread_usd", 0.0) or 0.0)
     daily_avg = summary.get("daily_avg_usd", 0.0)
     est_monthly = daily_avg * 30
 
     print(f"  {'TOTAL (measured)':<28s} {total_events:>8,} {total_tokens:>14,} {'$' + f'{total_cost:.2f}':>11s}")
+    trip = _headline_tripwire(total_cost + rr_usd, total_events, days)
+    if trip:
+        print()
+        for line in textwrap.wrap("CHECK: " + trip, width=72):
+            print(f"  {line}")
     print()
     print(f"  Daily average: ${daily_avg:.2f} saved (measured)")
     if run_rate:
@@ -44316,12 +46435,19 @@ def savings_report(days=30, as_json=False):
         c_share = routing.get("current_opus_share", 0.0) * 100
         print(f"  + model routing (realized): ~${r_monthly:.2f}{per} "
               f"(Opus {b_share:.0f}% -> {c_share:.0f}% vs baseline) [measured]")
+    all_in = _mo(total_cost + routing_realized)
+    if rr_usd > 0:
+        all_in += _mo(rr_usd)
+        print(f"  + repeat reads avoided: ~${_mo(rr_usd):.2f}{per} "
+              f"({int(rr.get('reread_tokens', 0) or 0):,} tokens of removed context not re-read "
+              f"before the next compaction) [modeled]")
 
     # Estimated tier — uncaptured runtime (sub-agent compression not attributed).
     uncaptured = summary.get("uncaptured_runtime") or {}
     unc_cost = float(uncaptured.get("cost_saved_usd", 0.0) or 0.0)
     if unc_cost > 0:
         unc_monthly = _mo(unc_cost)
+        all_in += unc_monthly
         print(f"  + est. uncaptured runtime: ~${unc_monthly:.2f}{per} "
               f"(sub-agent compression, {uncaptured.get('subagent_dispatches', 0):,} dispatches) [estimated]")
 
@@ -44330,6 +46456,7 @@ def savings_report(days=30, as_json=False):
     beh_cost = float(behavioral.get("cost_saved_usd", 0.0) or 0.0)
     if beh_cost > 0:
         beh_monthly = _mo(beh_cost)
+        all_in += beh_monthly
         print(f"  + est. behavioral (loops prevented): ~${beh_monthly:.2f}{per} "
               f"({behavioral.get('loop_events', 0)} loops caught, repeated ~{behavioral.get('prevented_iterations', 0)}x "
               f"before catch; avoided continuation estimated at one more span) [estimated]")
@@ -44343,6 +46470,7 @@ def savings_report(days=30, as_json=False):
     mce_cost = float(mcp_cap_est.get("cost_saved_usd", 0.0) or 0.0)
     if mce_cost > 0:
         mce_monthly = _mo(mce_cost)
+        all_in += mce_monthly
         print(f"  + est. MCP output cap: ~${mce_monthly:.2f}{per} "
               f"({mcp_cap_est.get('events', 0)} capped MCP results) [estimated]")
 
@@ -44352,6 +46480,7 @@ def savings_report(days=30, as_json=False):
     rle_cost = float(rl_est.get("cost_saved_usd", 0.0) or 0.0)
     if rle_cost > 0:
         rle_monthly = _mo(rle_cost)
+        all_in += rle_monthly
         print(f"  + est. lean resumes: ~${rle_monthly:.2f}{per} "
               f"({rl_est.get('events', 0)} cold-resume reloads avoided) [estimated]")
 
@@ -44359,6 +46488,7 @@ def savings_report(days=30, as_json=False):
     ce = summary.get("contamination_exit") or {}
     if float(ce.get("cost_saved_usd", 0.0) or 0.0) > 0:
         ce_monthly = _mo(ce["cost_saved_usd"])
+        all_in += ce_monthly
         print(f"  + est. avoided rework (heeded nudges): ~${ce_monthly:.2f}{per} "
               f"({ce.get('heeded_sessions', 0)} heeded vs {ce.get('ignored_sessions', 0)} ignored, "
               f"~{ce.get('delta_tokens_per_session', 0):,} tok/session less rework, "
@@ -44368,9 +46498,12 @@ def savings_report(days=30, as_json=False):
     hr = summary.get("handover_rerun") or {}
     if float(hr.get("cost_saved_usd", 0.0) or 0.0) > 0:
         hr_monthly = _mo(hr["cost_saved_usd"])
+        all_in += hr_monthly
         print(f"  + est. avoided rework (continuity handover): ~${hr_monthly:.2f}{per} "
               f"({hr.get('restored_sessions', 0)} restored vs {hr.get('baseline_sessions', 0)} baseline, "
               f"confidence: {hr.get('confidence', '?')}) [estimated]")
+
+    print(f"  = ALL IN: ~${all_in:.2f}{per} (measured + modeled + estimated)")
 
     # Informational (not summed): one-time first-trim + progressive disclosure.
     one_time = summary.get("one_time_setup") or {}
@@ -44506,7 +46639,7 @@ def validate_impact(strategy="auto", days=30, as_json=False):
                 cache_create_1h = parsed.get("total_cache_create_1h", 0) or 0
                 cache_create_5m = parsed.get("total_cache_create_5m", 0) or 0
                 cache_create = cache_create_1h + cache_create_5m
-                cache_read_est = int(total_input * chr_val)
+                cache_read_est = _safe_int(total_input * chr_val)
                 cost = _get_model_cost(
                     dom_model,
                     max(0, total_input - cache_read_est - cache_create),
@@ -45488,8 +47621,8 @@ def run_ensure_health():
     try:
         current_marker = f'TOKEN_OPTIMIZER_DAEMON_VERSION = "{TOKEN_OPTIMIZER_VERSION}"'
         legacy_dir = RUNTIME_DIR / "_backups" / "token-optimizer"
-        candidate_paths = {SNAPSHOT_DIR / "dashboard-server.py",
-                           legacy_dir / "dashboard-server.py"}
+        candidate_paths = set() if _daemon_snapshot_sandboxed() else {
+            SNAPSHOT_DIR / "dashboard-server.py", legacy_dir / "dashboard-server.py"}
         # The auto-update refresh writes dashboard-server.py (not the LaunchAgent
         # plist) and reloads via `launchctl kickstart`, which restarts the process
         # without re-registering the background item -- so it does NOT fire the
@@ -45774,16 +47907,6 @@ def run_ensure_health():
             _write_config_flag("v5_welcome_shown", True)
     except Exception:
         pass
-    # Star-ask: a one-time, value-gated, gh-gated offer to star the repo. The
-    # gate short-circuits on free checks first, so a non-candidate session never
-    # shells out to gh. Prints a Claude-directed instruction the assistant turns
-    # into a warm, easy-to-decline offer; shown at most once per machine.
-    try:
-        _star_msg = _star_session_pitch()
-        if _star_msg:
-            print(_star_msg)
-    except Exception:
-        pass
     # Fix stale versioned plugin cache paths in settings.json.
     # Claude Code only: reads/writes ~/.claude/settings.json.
     if not _is_codex:
@@ -46065,6 +48188,8 @@ def _ensure_health_daemon_revive_first():
     pulse provides a second, session-independent recovery path. Idempotent +
     fail-open: a spawn failure is swallowed, never raised into the hook.
     """
+    if _daemon_snapshot_sandboxed():
+        return "noop-sandbox"
     try:
         _proc = spawn_detached(
             [_detached_python_exe(), str(MEASURE_PY_PATH), "daemon-revive"],
@@ -46237,8 +48362,10 @@ def _calibrate_prior_verbosity_nudges(session_id, filepath):
                 entry = json.loads(line)
             except (json.JSONDecodeError, ValueError):
                 continue
+            if not isinstance(entry, dict):
+                continue
             if entry.get("type") == "assistant" and "message" in entry:
-                out = int(entry["message"].get("usage", {}).get("output_tokens", 0) or 0)
+                out = _safe_int(entry["message"].get("usage", {}).get("output_tokens", 0))
                 if out > 0:
                     outputs.append(out)
 
@@ -46259,6 +48386,19 @@ def _calibrate_prior_verbosity_nudges(session_id, filepath):
         return measured
     except Exception:
         return 0
+
+
+def _canonical_session_id_for_compare(sid: str) -> str:
+    """Canonicalize a session id for the verbosity-steer identity guard.
+
+    Codex cache names retain rollout timestamps while live hook payloads carry
+    the bare UUID, so both sides must be reduced to the same canonical form
+    before the equality check.
+    """
+    if detect_runtime() == 'codex':
+        canonical, _ = _extract_session_uuid(sid)
+        return canonical or sid
+    return sid
 
 
 def run_verbosity_steer(transcript_path=None, quiet=True, session_id=None):
@@ -46332,6 +48472,8 @@ def run_verbosity_steer(transcript_path=None, quiet=True, session_id=None):
                 )
             except (TypeError, ValueError):
                 have_sid = ""
+            have_sid = _canonical_session_id_for_compare(have_sid)
+            want_sid = _canonical_session_id_for_compare(want_sid)
             if not have_sid or have_sid == "unknown" or have_sid != want_sid:
                 # Say so. If this mismatch is structural to the environment
                 # (container path translation, WSL mounts, a runtime emitting a
@@ -46477,10 +48619,12 @@ def run_verbosity_steer(transcript_path=None, quiet=True, session_id=None):
                             _entry = json.loads(_line)
                         except (json.JSONDecodeError, ValueError):
                             continue
+                        if not isinstance(_entry, dict):
+                            continue
                         if _entry.get("type") == "assistant" and "message" in _entry:
                             _msg = _entry["message"]
                             _usage = _msg.get("usage", {})
-                            _out = int(_usage.get("output_tokens", 0) or 0)
+                            _out = _safe_int(_usage.get("output_tokens", 0))
                             if _out > 0:
                                 _turn_outputs.append(_out)
                     if _turn_outputs:
@@ -46812,6 +48956,7 @@ if __name__ == "__main__":
         # Cap at 60s and fail open; a skipped rollup is invisible (the next
         # session re-collects idempotently), a frozen orphan is not.
         quiet = "--quiet" in args or "-q" in args
+        _HERMES_ROLLUP_CONTEXT = _parse_hermes_rollup_context(args[1:])
         _tok_hook_deadline = _install_hook_budget(60)
         try:
             _collect_hermes_sessions(days=90, quiet=quiet)
@@ -47382,6 +49527,8 @@ if __name__ == "__main__":
             print(f"  Startup overhead: {snap['total_overhead']:,} tokens ({snap['overhead_pct']}% of {snap['context_window'] // 1000}K)")
             print(f"  Usable context: ~{snap['usable_tokens']:,} tokens (after overhead + autocompact buffer)")
             print(f"  Skills: {snap['skill_count']} ({snap['skill_tokens']:,} tokens)")
+            if snap.get("skills_basis"):
+                print(f"          ({snap['skills_basis']})")
             print(f"  {instruction_label}: {snap['claude_md_tokens']:,} tokens")
             print(f"  MCP: {snap['mcp_server_count']} servers ({snap['mcp_tokens']:,} tokens)")
             print()
@@ -47400,12 +49547,15 @@ if __name__ == "__main__":
                 sc = data["subagent_costs"]
                 print(f"  Subagent spend: ${sc['total_usd']:.2f} ({sc['pct_of_spend']}% of recent sessions)")
                 for s in sc["top_subagents"][:3]:
-                    print(f"    {s['name']}: ${s['cost_usd']} ({s['tokens']:,} tokens, {s['model']})")
+                    print(f"    {_strip_ansi(str(s['name']))}: ${s['cost_usd']} ({s['tokens']:,} tokens, {_strip_ansi(str(s['model']))})")
                 print()
             if data.get("costly_prompts"):
                 print("  Most expensive prompts (last 7 days):")
                 for i, p in enumerate(data["costly_prompts"][:5], 1):
-                    preview = p["text"][:70].replace("\n", " ")
+                    # Session-log text is attacker-influenceable — strip ANSI
+                    # escapes before printing so a crafted prompt cannot inject
+                    # terminal control sequences, then truncate the clean text.
+                    preview = _strip_ansi(str(p["text"]))[:70].replace("\n", " ")
                     print(f"    {i}. ${p['cost_usd']} ({p['tokens_in']:,} in) \"{preview}...\"")
                 print()
             if data["questions"]:
@@ -47519,28 +49669,6 @@ if __name__ == "__main__":
         state = keepwarm_mark_asked()
         if "--quiet" not in args:
             print(f"[Token Optimizer] keep-warm consent state: {state}")
-    elif args[0] == "star-status":
-        # Machine-readable gate for the first-run star ASK surface. JSON to
-        # stdout only. should_ask is True only when the user has seen value, gh
-        # is available + authed, the repo is not already starred, consent is
-        # unasked, and the kill switch (TOKEN_OPTIMIZER_STAR_ASK=0) is off.
-        print(json.dumps(star_consent_status()))
-    elif args[0] == "star-now":
-        # Run the star (gh api -X PUT /user/starred/<slug>); sets consent to
-        # 'starred' on success. Exits non-zero on failure so the caller knows.
-        ok, msg = star_now()
-        print(f"[Token Optimizer] {msg}")
-        sys.exit(0 if ok else 1)
-    elif args[0] == "star-decline":
-        # Terminal opt-out: consent='declined', never asked again.
-        _, msg = star_decline()
-        print(f"[Token Optimizer] {msg}")
-    elif args[0] == "star-consent-asked":
-        # Idempotent marker: record the pitch was shown (unasked -> asked);
-        # terminal states untouched. Echoes the resulting state for the caller.
-        state = star_mark_asked()
-        if "--quiet" not in args:
-            print(f"[Token Optimizer] star consent state: {state}")
     elif args[0] == "keepwarm-tick":
         # The keep-warm brain+trigger loop. Run by the scheduler every
         # ~5min. Gates via keepwarm_gate() FIRST -- exits 0 silently when not
@@ -47839,7 +49967,7 @@ if __name__ == "__main__":
                 cp = (f"cp {c['checkpoint_age_min'] // 60}h ago"
                       if c["has_checkpoint"] and c["checkpoint_age_min"] is not None
                       else "thin")
-                topic = c["topic"] or "(no topic)"
+                topic = _strip_ansi(c["topic"] or "(no topic)")
                 print(f"  {i:>2}. [{c['date']}] {topic[:60]:<60} "
                       f"({cp}, {c['session_id'][:8]})")
             print("  Reopen:  measure.py resume-lean <#|session_id> --print")
@@ -48707,6 +50835,11 @@ if __name__ == "__main__":
             usage_trends(days=days, as_json=output_json)
         else:
             savings_report(days=days, as_json=output_json)
+    elif args[0] == "pin-baseline":
+        status = "building"
+        while status == "building":
+            status = _pretool_anchor_step(budget_seconds=30.0)
+        print(f"Pre-install baseline: {status}")
     elif args[0] == "skill" and len(args) >= 3:
         action = args[1]  # archive or restore
         name = args[2]

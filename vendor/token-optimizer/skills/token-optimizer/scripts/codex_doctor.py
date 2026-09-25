@@ -74,7 +74,7 @@ def _check(status: str, name: str, detail: str) -> dict[str, str]:
 def _load_json(path: Path) -> tuple[Any | None, str | None]:
     try:
         return json.loads(path.read_text(encoding="utf-8")), None
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         return None, str(exc)
 
 
@@ -227,6 +227,8 @@ def _compact_prompt_check() -> dict[str, str]:
         text = config_path.read_text(encoding="utf-8")
     except OSError:
         return _check("FAIL", "Compact prompt", f"{config_path} not found; run measure.py codex-compact-prompt --install")
+    except UnicodeDecodeError:
+        return _check("FAIL", "Compact prompt", f"{config_path} is not valid UTF-8; run measure.py codex-compact-prompt --install")
     expected = codex_home() / "token-optimizer" / "codex-compact-prompt.md"
     if str(expected) in text and expected.exists():
         return _check("OK", "Compact prompt", str(expected))
@@ -236,7 +238,10 @@ def _compact_prompt_check() -> dict[str, str]:
 
 
 def _status_line_check() -> dict[str, str]:
-    state = codex_statusline.status()
+    try:
+        state = codex_statusline.status()
+    except Exception:
+        return _check("WARN", "Codex CLI status line", "status check failed")
     if state.startswith("configured: Token Optimizer"):
         return _check("OK", "Codex CLI status line", state)
     if state.startswith("configured: custom"):

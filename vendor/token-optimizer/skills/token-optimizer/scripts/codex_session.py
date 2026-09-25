@@ -8,8 +8,10 @@ trends, and dashboard pipeline can stay shared.
 
 from __future__ import annotations
 
+import heapq
 import itertools
 import json
+import sqlite3
 import re
 from collections import deque
 from datetime import datetime, timezone
@@ -20,6 +22,7 @@ from runtime_env import codex_home
 
 CHARS_PER_TOKEN = 4
 MAX_PARSE_FILE_BYTES = 96 * 1024 * 1024
+LARGE_FILE_TAIL_BYTES = 8 * 1024 * 1024
 MAX_JSONL_LINE_CHARS = 8 * 1024 * 1024
 _UNKNOWN_MODEL = "unknown"
 _DEFAULT_MODEL = "codex"
@@ -95,6 +98,11 @@ def _extract_model(payload: dict[str, Any]) -> str | None:
     model = payload.get("model")
     if isinstance(model, str) and model.strip():
         return model.strip()
+    settings = payload.get('thread_settings')
+    if isinstance(settings, dict):
+        model = settings.get('model')
+        if isinstance(model, str) and model.strip():
+            return model.strip()
     collaboration = payload.get("collaboration_mode")
     if isinstance(collaboration, dict):
         settings = collaboration.get("settings")
@@ -126,20 +134,37 @@ def _iter_json_records(filepath: str | Path, *, skip_large_file: bool = True):
     bounded work more than perfect telemetry from those outlier transcripts.
     """
     path = Path(filepath)
-    if skip_large_file:
-        try:
-            if path.stat().st_size > MAX_PARSE_FILE_BYTES:
-                return
-        except OSError:
-            return
     try:
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            for line in handle:
+        with path.open("rb") as handle:
+            size = path.stat().st_size
+            if skip_large_file and size > MAX_PARSE_FILE_BYTES:
+                # Keep identity, but never attribute the omitted interval to
+                # the model from the first turn. Only recent usage is sampled.
+                head = handle.readline(65536)
+                try:
+                    meta = json.loads(head)
+                    if isinstance(meta, dict) and meta.get('type') == 'session_meta':
+                        yield meta
+                except (ValueError, UnicodeError):
+                    pass
+                offset = max(handle.tell(), size - LARGE_FILE_TAIL_BYTES)
+                handle.seek(max(0, offset - 1))
+                if offset and handle.read(1) != b'\n':
+                    while True:
+                        fragment = handle.readline(65536)
+                        if not fragment or fragment.endswith(b'\n'):
+                            break
+            while True:
+                line = handle.readline(MAX_JSONL_LINE_CHARS + 1)
+                if not line:
+                    break
                 if len(line) > MAX_JSONL_LINE_CHARS:
+                    while line and not line.endswith(b'\n'):
+                        line = handle.readline(65536)
                     continue
                 try:
                     record = json.loads(line)
-                except json.JSONDecodeError:
+                except (ValueError, UnicodeError):
                     continue
                 if isinstance(record, dict):
                     yield record
@@ -198,7 +223,27 @@ def _safe_session_id(value: str | None) -> str:
     if not value:
         return ""
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "", value)
+    match = re.fullmatch(r'rollout-.*-([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})', sanitized)
+    if match:
+        return match.group(1)
     return sanitized if len(sanitized) >= 6 else ""
+
+
+def resolve_session(transcript_path=None, session_id=None):
+    """Resolve a known task without ever substituting another active task."""
+    sid = _safe_session_id(session_id)
+    if transcript_path:
+        p = Path(transcript_path)
+        if p.is_file():
+            if not sid or _safe_session_id(p.stem) == sid or _session_meta_id(p) == sid:
+                return p
+            # The transcript exists but names a different session: falling
+            # through to find_session_jsonl_by_id would substitute another
+            # task's log and attribute its costs to this hook. Refuse.
+            return None
+    if sid:
+        return find_session_jsonl_by_id(sid)
+    return None
 
 
 def _looks_like_error_text(text: str) -> bool:
@@ -221,21 +266,22 @@ def is_codex_session_path(path: str | Path) -> bool:
 
 def find_all_jsonl_files(days: int = 30, max_files: int = 500) -> list[tuple[Path, float, str]]:
     cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
-    results: list[tuple[Path, float, str]] = []
+    results: list[tuple[Path, float]] = []
     for root in session_roots():
         if not root.exists():
             continue
-        for jf in itertools.islice(root.rglob("*.jsonl"), max_files):
+        for jf in root.rglob("*.jsonl"):
             try:
                 mtime = jf.stat().st_mtime
             except OSError:
                 continue
             if mtime < cutoff:
                 continue
-            project = _project_name_from_file(jf)
-            results.append((jf, mtime, project))
-    results.sort(key=lambda item: item[1], reverse=True)
-    return results
+            results.append((jf, mtime))
+    # Limit after ordering, not before: rglob often returns old date folders
+    # first. Read metadata only for the selected files.
+    newest = heapq.nlargest(max_files, results, key=lambda item: item[1])
+    return [(jf, mtime, _project_name_from_file(jf)) for jf, mtime in newest]
 
 
 def find_current_session_jsonl() -> Path | None:
@@ -253,7 +299,7 @@ def find_session_jsonl_by_id(session_id: str) -> Path | None:
             continue
         for jf in itertools.islice(root.rglob(f"*{safe_id}*.jsonl"), 50):
             meta_id = _session_meta_id(jf)
-            if jf.stem == safe_id or safe_id in jf.stem or meta_id == safe_id or (meta_id and meta_id.startswith(safe_id)):
+            if _safe_session_id(jf.stem) == safe_id or meta_id == safe_id:
                 exact_matches.append(jf)
     if not exact_matches:
         return None
@@ -262,7 +308,7 @@ def find_session_jsonl_by_id(session_id: str) -> Path | None:
 
 
 def _session_meta_id(path: Path) -> str | None:
-    for record in _iter_json_records(path, skip_large_file=False):
+    for record in _iter_json_records(path, skip_large_file=True):
         if record.get("type") != "session_meta":
             continue
         value = _payload(record).get("id")
@@ -271,7 +317,7 @@ def _session_meta_id(path: Path) -> str | None:
 
 
 def _project_name_from_file(path: Path) -> str:
-    for record in _iter_json_records(path, skip_large_file=False):
+    for record in _iter_json_records(path, skip_large_file=True):
         if record.get("type") != "session_meta":
             continue
         cwd = _payload(record).get("cwd")
@@ -282,6 +328,25 @@ def _project_name_from_file(path: Path) -> str:
 
 
 def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
+    try:
+        large = Path(filepath).stat().st_size > MAX_PARSE_FILE_BYTES
+    except OSError:
+        return None
+    if large:
+        try:
+            import codex_log_index
+            records, info = codex_log_index.records(filepath)
+            result = _parse_session_records(records, incomplete=info['incomplete'])
+            if result:
+                result.update(info)
+            return result
+        except (OSError, ValueError, sqlite3.Error):
+            # Contention must not stall a hook. A tail fallback remains labelled.
+            return _parse_session_records(_iter_json_records(filepath), incomplete=True, sampled=True)
+    return _parse_session_records(_iter_json_records(filepath))
+
+
+def _parse_session_records(records, incomplete=False, sampled=False):
     skills_used: dict[str, int] = {}
     subagents_used: dict[str, int] = {}
     tool_calls: dict[str, int] = {}
@@ -298,6 +363,7 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
     output_text_chars = 0
     tool_output_chars = 0
     last_usage: dict[str, int] | None = None
+    previous_usage: dict[str, int] | None = None
     current_model = _UNKNOWN_MODEL
     per_model_usage: dict[str, dict[str, int]] = {}
     rate_limits_latest: dict[str, Any] | None = None
@@ -306,7 +372,7 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
     task_durations_ms: list[float] = []
     ttft_ms: list[float] = []
 
-    for record in _iter_json_records(filepath):
+    for record in records:
         payload = _payload(record)
         payload_type = payload.get("type")
 
@@ -334,16 +400,53 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
             rl = _extract_rate_limits(payload)
             if rl:
                 rate_limits_latest = rl
+                rate_limits_latest['observed_at'] = record.get('timestamp')
             turn_usage = _token_usage(payload, cumulative=False)
+            # token_count also repeats the previous usage when only rate
+            # limits change. Cumulative deltas count each API response once.
+            info = payload.get('info') or {}
+            if usage and info.get('total_token_usage'):
+                has_last = isinstance(info.get('last_token_usage'), dict)
+                if previous_usage and usage['input_tokens'] < previous_usage['input_tokens']:
+                    # Cumulative decreased (compaction reset, session resume
+                    # boundary, or a Codex quirk). The cumulative total is NOT
+                    # this call's work — it includes tokens from before the
+                    # reset. If last_token_usage is available, use it (per-
+                    # call, correct). If not, skip this record entirely rather
+                    # than attributing the full cumulative to one call (which
+                    # would over-count by the entire pre-reset total).
+                    # Keep previous_usage at the pre-decrease baseline so the
+                    # next delta is computed against the correct reference.
+                    if not has_last:
+                        turn_usage = None
+                    # Do NOT update previous_usage on decrease.
+                else:
+                    if previous_usage and usage['input_tokens'] >= previous_usage['input_tokens']:
+                        turn_usage = {k: max(0, usage[k] - previous_usage[k])
+                                      for k in ('input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens')}
+                    elif not has_last:
+                        # First record seen with no last_token_usage (resumed
+                        # session, or a tail pass that begins mid-stream):
+                        # cumulative totals are not this call's usage, but we
+                        # have no per-request value. Fall back to the full
+                        # cumulative figure as the best available estimate.
+                        turn_usage = usage
+                    previous_usage = usage
             if turn_usage:
                 model_key = current_model if current_model != _UNKNOWN_MODEL else _DEFAULT_MODEL
                 bucket = per_model_usage.setdefault(
                     model_key,
                     {"fresh_input": 0, "cache_read": 0, "cache_create": 0, "output": 0},
                 )
-                bucket["fresh_input"] += turn_usage["input_tokens"]
-                bucket["cache_read"] += turn_usage["cached_input_tokens"]
-                bucket["output"] += turn_usage["output_tokens"] + turn_usage["reasoning_output_tokens"]
+                bucket["fresh_input"] += max(0, turn_usage["input_tokens"] - turn_usage["cached_input_tokens"])
+                bucket["cache_read"] += max(0, turn_usage["cached_input_tokens"])
+                bucket["output"] += max(0, turn_usage["output_tokens"])
+                if turn_usage['input_tokens'] or turn_usage['output_tokens']:
+                    bucket.setdefault('requests', []).append({
+                        'fresh_input': max(0, turn_usage['input_tokens'] - turn_usage['cached_input_tokens']),
+                        'cache_read': max(0, turn_usage['cached_input_tokens']),
+                        'output': max(0, turn_usage['output_tokens']),
+                    })
 
         elif payload_type == "collab_agent_spawn_end":
             # Modern subagent spawn. The legacy spawn_agent function_call path
@@ -359,14 +462,15 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
 
         elif payload_type in {"user_message", "message", "agent_message"}:
             text = _extract_text(payload)
+            text_chars = payload.get('_optimizer_chars', len(text))
             role = payload.get("role")
             if payload_type == "user_message" or role == "user":
                 topic = topic or _extract_topic(text)
-                input_text_chars += len(text)
+                input_text_chars += text_chars
             elif payload_type == "agent_message" or role == "assistant":
-                output_text_chars += len(text)
+                output_text_chars += text_chars
             else:
-                input_text_chars += len(text)
+                input_text_chars += text_chars
             message_count += 1
 
         elif payload_type in {"function_call", "custom_tool_call"}:
@@ -380,25 +484,35 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
                 subagents_used[agent_type] = subagents_used.get(agent_type, 0) + 1
 
         elif payload_type in {"function_call_output", "custom_tool_call_output"}:
-            tool_output_chars += len(str(payload.get("output") or ""))
+            tool_output_chars += payload.get('_optimizer_output_chars', len(str(payload.get("output") or "")))
         elif payload_type in {"exec_command_end", "patch_apply_end"}:
-            tool_output_chars += len(_event_output_text(payload))
+            tool_output_chars += payload.get('_optimizer_output_chars', len(_event_output_text(payload)))
             _append_duration(tool_durations_ms, payload.get("duration"))
         elif payload_type == "mcp_tool_call_end":
             _append_duration(tool_durations_ms, payload.get("duration"))
 
-    if message_count == 0 and api_calls == 0:
+    if message_count == 0 and api_calls == 0 and not last_usage:
         return None
 
-    duration_minutes = 0
+    wall_duration_minutes = 0
     if first_ts and last_ts:
-        duration_minutes = max(0, (last_ts - first_ts).total_seconds() / 60)
+        wall_duration_minutes = max(0, (last_ts - first_ts).total_seconds() / 60)
+    # Resumed tasks can span weeks. Elapsed wall time is not active work.
+    if task_durations_ms:
+        duration_minutes = sum(task_durations_ms) / 60000
+        duration_source = "task_complete"
+    elif wall_duration_minutes:
+        duration_minutes = wall_duration_minutes
+        duration_source = "wall"
+    else:
+        duration_minutes = 0
+        duration_source = "unavailable"
 
     if last_usage:
-        fresh_input = last_usage["input_tokens"]
-        cache_read = last_usage["cached_input_tokens"]
+        fresh_input = sum(p['fresh_input'] for p in per_model_usage.values())
+        cache_read = sum(p['cache_read'] for p in per_model_usage.values())
         estimated_input = fresh_input + cache_read
-        estimated_output = last_usage["output_tokens"] + last_usage["reasoning_output_tokens"]
+        estimated_output = sum(p['output'] for p in per_model_usage.values())
         token_source = "codex_token_count"
     else:
         fresh_input = _estimate_tokens(input_text_chars + tool_output_chars)
@@ -423,10 +537,14 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
         }
 
     return {
+        "incomplete": incomplete,
+        "scan_mode": "recent_tail" if incomplete else "full",
         "version": version,
         "slug": slug,
         "topic": topic,
         "duration_minutes": duration_minutes,
+        "wall_duration_minutes": wall_duration_minutes,
+        "duration_source": duration_source,
         "total_input_tokens": estimated_input,
         "total_output_tokens": estimated_output,
         "total_cache_read": cache_read,
@@ -434,7 +552,7 @@ def parse_session_jsonl(filepath: str | Path) -> dict[str, Any] | None:
         "total_cache_create_1h": 0,
         "total_cache_create_5m": 0,
         "model_context_window": last_usage["model_context_window"] if last_usage else None,
-        "cache_hit_rate": cache_read / estimated_input if estimated_input else 0.0,
+        "cache_hit_rate": max(0.0, min(1.0, cache_read / estimated_input)) if estimated_input else 0.0,
         "avg_call_gap_seconds": None,
         "max_call_gap_seconds": None,
         "p95_call_gap_seconds": None,
@@ -477,8 +595,8 @@ def parse_session_turns(filepath: str | Path) -> list[dict[str, Any]]:
             if usage:
                 if turns:
                     turn = turns[-1]
-                    turn["input_tokens"] = usage["input_tokens"] + usage["cached_input_tokens"]
-                    turn["output_tokens"] = usage["output_tokens"] + usage["reasoning_output_tokens"]
+                    turn["input_tokens"] = usage["input_tokens"]
+                    turn["output_tokens"] = usage["output_tokens"]
                     turn["cache_read"] = usage["cached_input_tokens"]
                     turn["estimated"] = False
                 else:
@@ -502,8 +620,8 @@ def parse_session_turns(filepath: str | Path) -> list[dict[str, Any]]:
                 "estimated": True,
             }
             if pending_usage:
-                turn["input_tokens"] = pending_usage["input_tokens"] + pending_usage["cached_input_tokens"]
-                turn["output_tokens"] = pending_usage["output_tokens"] + pending_usage["reasoning_output_tokens"]
+                turn["input_tokens"] = pending_usage["input_tokens"]
+                turn["output_tokens"] = pending_usage["output_tokens"]
                 turn["cache_read"] = pending_usage["cached_input_tokens"]
                 turn["estimated"] = False
                 pending_usage = None
@@ -584,8 +702,9 @@ def parse_jsonl_for_quality(filepath: str | Path) -> dict[str, Any] | None:
                 last_usage = usage
             turn = _token_usage(payload, cumulative=False)
             if turn:
-                # Context occupancy sent this turn = fresh input + cached input.
-                last_turn_context = turn["input_tokens"] + turn["cached_input_tokens"]
+                # input already includes cached input; cumulative session
+                # usage is not the occupancy of this response's context.
+                last_turn_context = turn["input_tokens"] + turn["output_tokens"]
 
         elif payload_type == "collab_agent_spawn_end":
             prompt = str(payload.get("prompt") or "")
@@ -647,7 +766,7 @@ def parse_jsonl_for_quality(filepath: str | Path) -> dict[str, Any] | None:
         "compaction_ratios": compaction_ratios,
         "total_entries": idx,
         "estimated": True,
-        "context_tokens": last_usage["total_tokens"] if last_usage else None,
+        "context_tokens": last_turn_context or None,
         "model_context_window": last_usage["model_context_window"] if last_usage else None,
         "model": current_model if current_model != _UNKNOWN_MODEL else _DEFAULT_MODEL,
         "topic": topic,

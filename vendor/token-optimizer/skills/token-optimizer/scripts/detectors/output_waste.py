@@ -1,5 +1,7 @@
 """Output token waste detector: flags sessions with excessive output relative to task complexity."""
 
+from runtime_env import detect_runtime
+
 _OUTPUT_RATIO_THRESHOLD = 3.0  # output/input ratio above this on simple turns
 _VERBOSE_RESPONSE_TOKENS = 2000  # assistant message above this after simple ops
 _SIMILARITY_THRESHOLD = 0.6  # Jaccard word overlap for repeated explanations
@@ -41,6 +43,15 @@ def detect_output_waste(session_data):
 
     findings = []
 
+    # Instruction file is runtime-specific; Codex reads AGENTS.md, foreign
+    # runtimes (cursor, antigravity, grok, opencode, copilot, hermes) have no
+    # CLAUDE.md surface at all — name it generically rather than print a
+    # Claude-only filename.
+    _rt = detect_runtime()
+    _instr = ("AGENTS.md" if _rt == "codex"
+              else "CLAUDE.md" if _rt == "claude"
+              else "your agent instructions")
+
     # Signal 1: Session-level output/input ratio on simple turns
     simple_turn_output = 0
     simple_turn_input = 0
@@ -67,7 +78,7 @@ def detect_output_waste(session_data):
                     "suggestion": (
                         f"Output tokens are {ratio:.1f}x higher than input on simple file operations. "
                         f"This session could save ~{excess:,} output tokens by requesting concise responses. "
-                        "Add 'Be concise' or 'No explanations' to CLAUDE.md for routine tasks."
+                        f"Add 'Be concise' or 'No explanations' to {_instr} for routine tasks."
                     ),
                     "occurrence_count": simple_turn_count,
                 })
@@ -124,7 +135,7 @@ def detect_output_waste(session_data):
             "suggestion": (
                 f"The model repeated similar explanations {repeated_pairs} times. "
                 f"~{repeated_waste:,} tokens could be saved. "
-                "Consider adding 'Don't repeat previous explanations' to CLAUDE.md."
+                f"Consider adding 'Don't repeat previous explanations' to {_instr}."
             ),
             "occurrence_count": repeated_pairs,
         })

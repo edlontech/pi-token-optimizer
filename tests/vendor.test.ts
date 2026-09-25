@@ -41,9 +41,9 @@ test("vendor checker validates the pinned tag snapshot and rejects fixture chang
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.deepEqual(manifest.upstream, {
       repository: "https://github.com/alexgreensh/token-optimizer",
-      ref: "v5.13.8",
-      commit: "c5d4796fa750530bb7dc9b91ad09373883b728c1",
-      version: "5.13.8",
+      ref: "v5.13.24",
+      commit: "d73354ed13b033f496fa23279387559732ce8961",
+      version: "5.13.24",
     });
     assert.equal(manifest.patch.path, "patches/pi-runtime.patch");
     assert.match(manifest.patch.sha256, /^[a-f0-9]{64}$/);
@@ -74,7 +74,7 @@ test("vendor checker validates the pinned tag snapshot and rejects fixture chang
 });
 
 test("tag verification is anchored to the tag namespace", () => {
-  assert.equal(tagCommitRef("v5.13.8"), "refs/tags/v5.13.8^{commit}");
+  assert.equal(tagCommitRef("v5.13.24"), "refs/tags/v5.13.24^{commit}");
 });
 
 test("manifest replacement leaves an external hard-link target unchanged", async () => {

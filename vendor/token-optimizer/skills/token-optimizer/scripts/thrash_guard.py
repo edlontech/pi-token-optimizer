@@ -38,7 +38,10 @@ Design (nudge-only):
   Exactly one nudge per output.
 
 The state lives in the per-session SessionStore (command_run_streaks), so
-streaks never leak across sessions.
+streaks never leak across sessions. When the caller passes ``store_id`` (the
+same agent-scoped identity the cross-turn dedup path uses), the streak store is
+keyed on that instead, so streaks never leak across agents within a session
+either -- a subagent never inherits or bumps the main agent's streak.
 """
 
 from __future__ import annotations
@@ -304,6 +307,11 @@ def _workspace_changed_since(store, ts: float) -> bool:
     Reads the session's activity log, which records every tool use with a
     timestamp. If the agent edited files between two runs of the same
     command, byte-identical output is not evidence of a stuck loop.
+
+    ``store`` must be the BARE-SESSION store (``SessionStore(session_id)``),
+    because that is where ``context_intel.py`` writes ``activity_log``. Passing
+    the agent-scoped streak store here would read an empty log for subagents and
+    make edit-detection inert (issue #190 follow-up).
     """
     try:
         row = store._connect().execute(
@@ -372,6 +380,7 @@ def check(
     now: float | None = None,
     stderr: str = "",
     exit_code: int | None = None,
+    store_id: str | None = None,
 ):
     """Record this Bash run and return a nudge line when the streak warrants it.
 
@@ -381,7 +390,11 @@ def check(
     ``stderr`` is the tool response's stderr, used for failure detection when
     no exit code is available. ``exit_code`` is the command's exit status when
     the caller knows it; when present it is the sole failure signal and the
-    output text is never scanned.
+    output text is never scanned. ``store_id`` is the agent-scoped storage
+    identity to key the streak store on (the same one the cross-turn dedup path
+    computes via ``_dedup_store_id``); ``None`` (the default) preserves the
+    historical session-only identity byte-for-byte, so the main/no-agent case is
+    unchanged.
 
     Three signals share one store record:
     1. Identical-output streak (existing): fires when the same command
@@ -399,6 +412,17 @@ def check(
             return None
         session_id = os.environ.get("CLAUDE_SESSION_ID", "")
         if not session_id or not _VALID_SESSION_ID.match(session_id):
+            return None
+        # Agent-scoped streak store: when the caller passes an already-computed
+        # scoped identity (the SAME _dedup_store_id the cross-turn dedup path
+        # uses), key the streak store on it so a subagent's streaks never mix
+        # with the main agent's, and vice versa (issue #189). store_id=None (the
+        # default) preserves the historical session-only identity exactly. A
+        # malformed scoped id is rejected the same way an invalid session id is
+        # (SessionStore would otherwise spawn a fresh fallback store per call and
+        # silently stop accumulating streaks).
+        store_identity = store_id or session_id
+        if not _VALID_SESSION_ID.match(store_identity):
             return None
 
         from session_store import SessionStore
@@ -421,7 +445,22 @@ def check(
         )
         body = _heredoc_body(command)
         has_inline_script = body is not None and len(body) >= INLINE_SCRIPT_MIN_CHARS
-        store = SessionStore(session_id)
+        store = SessionStore(store_identity)
+        # Edit-detection reads activity_log, which context_intel.py writes to the
+        # BARE-session store (SessionStore(session_id)), NOT the agent-scoped
+        # streak store. For a subagent, store_identity != session_id, so the
+        # agent-scoped store's activity_log is empty; reading it there would make
+        # the "workspace changed since last run" suppression inert and produce a
+        # false thrash nudge (issue #190 follow-up). Streak state stays on the
+        # agent-scoped ``store``; only the activity_log lookup uses this one. In
+        # the main/no-agent path store_identity == session_id, so this is the
+        # same store object and behavior is byte-identical.
+        if store_identity == session_id:
+            activity_store = store
+            _own_activity_store = False
+        else:
+            activity_store = SessionStore(session_id)
+            _own_activity_store = True
         try:
             # Acquire a write lock BEFORE the read so the get-compute-upsert
             # sequence is atomic: two concurrent hook processes cannot both
@@ -443,7 +482,9 @@ def check(
             workspace_changed = (
                 bool(prior) and not fresh
                 and prior.get("output_hash") == out_h
-                and _workspace_changed_since(store, float(prior.get("last_ts") or 0))
+                and _workspace_changed_since(
+                    activity_store, float(prior.get("last_ts") or 0)
+                )
             )
 
             # --- Identical-output streak (existing signal) ---
@@ -557,5 +598,7 @@ def check(
             return None
         finally:
             store.close()
+            if _own_activity_store:
+                activity_store.close()
     except Exception:
         return None

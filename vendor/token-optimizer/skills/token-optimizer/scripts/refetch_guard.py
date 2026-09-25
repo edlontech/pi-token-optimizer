@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import deque
 from pathlib import Path
 
@@ -30,7 +31,13 @@ _NEUTRAL = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse"}})
 try:
     from hook_io import read_stdin_hook_input
     from plugin_env import resolve_snapshot_dir
-    from refetch_fingerprint import ARGS_HASH_KEY, expand_command, tool_fingerprint
+    from refetch_fingerprint import (
+        ARGS_HASH_KEY,
+        REFETCH_GUARD_WINDOW_SECONDS,
+        expand_command,
+        is_live_state_tool,
+        tool_fingerprint,
+    )
     from session_store import _sanitize_session_id as sanitize_sid
 except Exception:
     # If our own modules can't load, never block a tool call.
@@ -108,6 +115,28 @@ def _entry_is_renderable(archive_dir: Path, tool_use_id: str) -> bool:
         return False
 
 
+def _within_window(timestamp, now: float) -> bool:
+    """True when an archive entry's ISO timestamp is inside the guard window.
+
+    An unparseable or missing timestamp counts as OUTSIDE the window: the guard
+    only ever denies on proof, so doubt means allow. Never raises.
+    """
+    try:
+        from datetime import datetime
+        ts = datetime.fromisoformat(str(timestamp)).timestamp()
+    except Exception:
+        return False
+    return 0 <= now - ts <= _guard_window_seconds()
+
+
+def _guard_window_seconds() -> int:
+    raw = os.environ.get("TOKEN_OPTIMIZER_REFETCH_GUARD_WINDOW_SECONDS", "").strip()
+    try:
+        return max(0, int(raw)) if raw else REFETCH_GUARD_WINDOW_SECONDS
+    except ValueError:
+        return REFETCH_GUARD_WINDOW_SECONDS
+
+
 def _lookup_archived(session_id: str, tool_name: str, fingerprint: str):
     """Return (tool_use_id, tokens_est) for a prior identical (tool_name, fingerprint),
     else (None, 0).
@@ -128,8 +157,13 @@ def _lookup_archived(session_id: str, tool_name: str, fingerprint: str):
         manifest = archive_dir / "manifest.jsonl"
         if not manifest.is_file() or manifest.is_symlink():
             return None, 0
+        now = time.time()
         for entry in reversed(_read_manifest_tail(manifest)):  # newest first
             if entry.get("tool_name") == tool_name and entry.get(ARGS_HASH_KEY) == fingerprint:
+                # Newest match is too old: every older one is too, and an old
+                # identical call is a deliberate re-check of live data, not a loop.
+                if not _within_window(entry.get("timestamp"), now):
+                    return None, 0
                 tool_use_id = entry.get("tool_use_id")
                 if tool_use_id and _entry_is_renderable(archive_dir, tool_use_id):
                     return tool_use_id, int(entry.get("tokens_est") or 0)
@@ -172,7 +206,10 @@ def refetch_guard() -> None:
 
     tool_name = hook_input.get("tool_name", "") or ""
     # Only MCP tools loop this way; native tools (Read/Bash/…) are out of scope.
-    if "__" not in tool_name:
+    # Live-state tools (browser, screen) return new data for the same arguments,
+    # so a repeat is never a re-fetch. Checked here too, not only at archive
+    # time, so manifests written by older versions cannot block them either.
+    if "__" not in tool_name or is_live_state_tool(tool_name):
         _emit()
         return
 

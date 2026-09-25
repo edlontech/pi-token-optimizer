@@ -13,11 +13,11 @@ const PATCH_PATH = "patches/pi-runtime.patch";
 const PATCH = resolve(ROOT, PATCH_PATH);
 const EXPECTED_UPSTREAM = {
   repository: "https://github.com/alexgreensh/token-optimizer",
-  ref: "v5.13.8",
-  commit: "c5d4796fa750530bb7dc9b91ad09373883b728c1",
-  version: "5.13.8",
+  ref: "v5.13.24",
+  commit: "d73354ed13b033f496fa23279387559732ce8961",
+  version: "5.13.24",
 };
-const EXPECTED_FILE_COUNT = 94;
+const EXPECTED_FILE_COUNT = 98;
 const CHANGED_FILES = [
   "skills/token-optimizer/scripts/archive_result.py",
   "skills/token-optimizer/scripts/bash_hook.py",
@@ -71,6 +71,7 @@ const REQUIRED_SYMBOLS = {
 };
 const REQUIRED_PATHS = [
   "LICENSE",
+  "LICENSE-SMALL-BUSINESS.md",
   "PRIVACY.md",
   "hooks/python-launcher.sh",
   "skills/token-optimizer/assets/dashboard.html",
@@ -146,7 +147,7 @@ function assertManifest(manifest) {
     throw new Error("manifest must contain exactly upstream, patch, protocol, and files");
   }
   if (JSON.stringify(manifest.upstream) !== JSON.stringify(EXPECTED_UPSTREAM)) {
-    throw new Error("manifest upstream pin does not match Token Optimizer v5.13.8");
+    throw new Error("manifest upstream pin does not match Token Optimizer v5.13.24");
   }
   if (!hasExactKeys(manifest.protocol, ["version"]) || manifest.protocol.version !== 1) {
     throw new Error("manifest protocol version must be 1");

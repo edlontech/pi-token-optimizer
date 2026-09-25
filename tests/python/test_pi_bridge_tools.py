@@ -9,6 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -249,6 +250,7 @@ class PiBridgeToolTests(unittest.TestCase):
                     "tool_use_id": "archived-1",
                     "args_hash": fingerprint,
                     "tokens_est": 2000,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
             + "\n",

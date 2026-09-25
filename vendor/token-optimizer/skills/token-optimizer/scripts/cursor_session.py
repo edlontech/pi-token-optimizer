@@ -274,6 +274,7 @@ def normalize_session(raw: dict) -> Optional[dict]:
     session.update(
         {
             "first_ts": _parse_ts(first_ts_raw),
+            "last_ts": _parse_ts(updated_at_raw),
             "duration_minutes": round(duration_minutes, 2),
             "total_input_tokens": total_input,
             "total_output_tokens": total_output,

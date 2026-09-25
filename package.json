@@ -35,6 +35,7 @@
     "patches/*.patch",
     "vendor/manifest.json",
     "vendor/token-optimizer/LICENSE",
+    "vendor/token-optimizer/LICENSE-SMALL-BUSINESS.md",
     "vendor/token-optimizer/PRIVACY.md",
     "vendor/token-optimizer/hooks/python-launcher.sh",
     "vendor/token-optimizer/skills/token-optimizer/assets/dashboard.html",

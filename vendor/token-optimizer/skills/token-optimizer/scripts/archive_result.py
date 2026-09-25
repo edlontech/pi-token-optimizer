@@ -36,14 +36,17 @@ import time
 
 try:
     from credential_patterns import redact_credentials as _redact_creds_shared
+    from credential_patterns import RedactionConfigError, pop_redaction_warning
 except ImportError:
     _redact_creds_shared = None
+    RedactionConfigError = None
+    pop_redaction_warning = None
 from bash_compress import _TOKEN_PATTERNS
 from hook_io import read_stdin_hook_input
 from hook_runtime import LeaseLock
 from plugin_env import resolve_snapshot_dir, snapshot_dir_candidates
-from refetch_fingerprint import ARGS_HASH_KEY, expand_command, tool_fingerprint
-from runtime_env import claude_home, detect_runtime
+from refetch_fingerprint import ARGS_HASH_KEY, expand_command, is_live_state_tool, tool_fingerprint
+from runtime_env import detect_runtime, settings_env_value
 from session_store import SessionStore, _sanitize_session_id as sanitize_sid
 
 # ---------------------------------------------------------------------------
@@ -113,6 +116,7 @@ _SAVINGS_DB_TIMEOUT_SECONDS = 0.05
 _SAVINGS_DB_BUSY_TIMEOUT_MS = 50
 _DEFAULT_SAVINGS_COST_PER_MTOK = 3.0  # Sonnet input rate; safe fallback for hook-only pricing.
 _HOOK_INPUT_COST_PER_MTOK = {
+    "gpt-6-astra": 10.0,
     "gpt-5.6-sol": 5.0,
     "gpt-5.6-terra": 2.0,
     "gpt-5.6-luna": 0.20,
@@ -131,6 +135,36 @@ _HOOK_INPUT_COST_PER_MTOK = {
     "gpt-5.5": 5.0,
     "gpt-4o": 2.5,
 }
+
+# gpt-5.6-sol promotional pricing (date-gated). OpenAI documents the $4/$20 rate
+# as "available at least through November 21, 2026." _HOOK_INPUT_COST_PER_MTOK
+# holds the STANDARD input rate ($5); while the promo window is open we swap the
+# promo rate in so hook savings dollars stay accurate today AND flip back
+# automatically after 2026-11-21. Mirrors measure.py _apply_gpt56_sol_promo_pricing.
+_GPT56_SOL_PROMO_UNTIL = datetime(2026, 11, 21, tzinfo=timezone.utc)
+
+
+def _apply_gpt56_sol_promo_pricing(as_of=None):
+    """Swap the gpt-5.6-sol hook input rate to the promotional rate while active (idempotent)."""
+    override = os.environ.get("TOKEN_OPTIMIZER_PRICING_AS_OF")
+    if as_of is None and override:
+        try:
+            as_of = datetime.strptime(override, "%Y-%m-%d")
+        except ValueError:
+            as_of = None
+    d = as_of or datetime.now(timezone.utc)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    if d < _GPT56_SOL_PROMO_UNTIL:
+        _HOOK_INPUT_COST_PER_MTOK["gpt-5.6-sol"] = 4.0
+        _HOOK_INPUT_COST_PER_MTOK["gpt-5.6"] = 4.0
+        return True
+    _HOOK_INPUT_COST_PER_MTOK["gpt-5.6-sol"] = 5.0
+    _HOOK_INPUT_COST_PER_MTOK["gpt-5.6"] = 5.0
+    return False
+
+
+_apply_gpt56_sol_promo_pricing()
 
 _SAVINGS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS savings_events (
@@ -616,6 +650,7 @@ def _estimate_savings_cost_per_mtok() -> float:
         except ValueError:
             pass
 
+    is_codex = detect_runtime() == 'codex'
     model = (
         os.environ.get("CLAUDE_MODEL")
         or os.environ.get("ANTHROPIC_MODEL")
@@ -624,6 +659,8 @@ def _estimate_savings_cost_per_mtok() -> float:
         or os.environ.get("MODEL")
         or ""
     ).lower()
+    if is_codex:
+        model = (os.environ.get('CODEX_MODEL') or os.environ.get('OPENAI_MODEL') or '').lower()
     model = re.sub(r"[\s_]+", "-", model.rsplit("/", 1)[-1].rsplit(":", 1)[-1])
     if "fable" in model:
         return 10.0
@@ -634,7 +671,7 @@ def _estimate_savings_cost_per_mtok() -> float:
     for alias, rate in _HOOK_INPUT_COST_PER_MTOK.items():
         if model == alias or model.startswith(alias + "-"):
             return rate
-    return _DEFAULT_SAVINGS_COST_PER_MTOK
+    return 0.0 if is_codex else _DEFAULT_SAVINGS_COST_PER_MTOK
 
 
 # ---------------------------------------------------------------------------
@@ -684,18 +721,15 @@ def _resolve_mcp_cap_tokens() -> int | None:
         return None
 
     # 2. settings.json "env" block — for out-of-process callers
-    settings_path = claude_home() / "settings.json"
-    try:
-        with open(settings_path, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-        raw = settings.get("env", {}).get("MAX_MCP_OUTPUT_TOKENS", "")
-        if raw:
-            v = int(str(raw).strip())
+    raw = settings_env_value("MAX_MCP_OUTPUT_TOKENS")
+    if raw:
+        try:
+            v = int(raw)
             if v > 0:
                 _MCP_CAP_TOKENS_CACHE = v
                 return v
-    except Exception:
-        pass
+        except ValueError:
+            pass
 
     _MCP_CAP_TOKENS_CACHE = None
     return None
@@ -750,16 +784,10 @@ def _resolve_exempt_tool_patterns() -> tuple[str, ...]:
     defaults_flag = os.environ.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS", "").strip()
     if detect_runtime() != "pi" and (not raw or not defaults_flag):
         # settings.json "env" block — for out-of-process callers.
-        try:
-            with open(claude_home() / "settings.json", "r", encoding="utf-8") as f:
-                settings = json.load(f)
-            env_block = settings.get("env", {})
-            if not raw:
-                raw = str(env_block.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_TOOLS", "")).strip()
-            if not defaults_flag:
-                defaults_flag = str(env_block.get("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS", "")).strip()
-        except Exception:
-            pass
+        if not raw:
+            raw = settings_env_value("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_TOOLS")
+        if not defaults_flag:
+            defaults_flag = settings_env_value("TOKEN_OPTIMIZER_ARCHIVE_EXEMPT_DEFAULTS")
 
     user_patterns = tuple(p.strip() for p in raw.split(",") if p.strip())
     base = () if defaults_flag.lower() in ("off", "false", "0", "none") else _DEFAULT_EXEMPT_PATTERNS
@@ -805,6 +833,47 @@ def _maybe_log_mcp_cap_savings(tool_name: str, original_char_count: int, session
             f"assumed saved ~{estimated_saved:,} tok [estimated])"
         ),
     )
+
+
+# Content-block types that carry media rather than text. The model needs these
+# verbatim: an archive pointer in place of a screenshot leaves it blind, and
+# counting base64 chars as tokens logs savings that never happened (images are
+# billed by pixel dimensions, not encoded length).
+_MEDIA_BLOCK_TYPES = frozenset({"image", "document", "audio", "video"})
+
+
+def _is_media_block(block) -> bool:
+    if not isinstance(block, dict):
+        return False
+    if block.get("type") in _MEDIA_BLOCK_TYPES:
+        return True
+    # MCP embedded resource carrying binary: {"type": "resource", "resource": {"blob": ...}}
+    res = block.get("resource")
+    return isinstance(res, dict) and isinstance(res.get("blob"), str) and bool(res.get("mimeType"))
+
+
+def _contains_media_block(value) -> bool:
+    """True when a raw tool_response holds an image/document/audio block.
+
+    Only looks where hosts put content blocks: the response itself, a top-level
+    list of blocks, or a "content" list (the MCP result shape). It does not
+    recurse into arbitrary data, so a Notion or Slack payload that merely
+    describes an image node still archives normally. Never raises.
+    """
+    try:
+        candidates = []
+        if isinstance(value, dict):
+            candidates.append(value)
+            if isinstance(value.get("content"), list):
+                candidates.extend(value["content"])
+        elif isinstance(value, list):
+            for item in value:
+                candidates.append(item)
+                if isinstance(item, dict) and isinstance(item.get("content"), list):
+                    candidates.extend(item["content"])
+        return any(_is_media_block(c) for c in candidates)
+    except Exception:
+        return False
 
 
 def _tool_response_to_text(value) -> str:
@@ -918,6 +987,13 @@ def _expand_instruction(key: str, tool_name: str | None = None) -> str:
     re-fetch guard via expand_command, so the two can never diverge) plus an
     explicit anti-re-fetch instruction so the correct path is unambiguous.
     """
+    if tool_name and is_live_state_tool(tool_name):
+        # A browser/screen read is a snapshot; calling again is how you get the
+        # CURRENT state, so don't tell the model not to.
+        return (
+            "This is a snapshot of that moment; call the tool again for current state. "
+            f"To re-read this snapshot, run in Bash:\n    {expand_command(key)}"
+        )
     dont = f"Do NOT call {tool_name} again" if tool_name else "Do NOT re-run the original tool"
     return (
         f"{dont} to get this data — read the saved copy by running this in Bash:\n"
@@ -1249,7 +1325,13 @@ def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict 
     tool_name = hook_input.get("tool_name", "")
     tool_kind = hook_input.get("tool_kind", "")
     tool_use_id = hook_input.get("tool_use_id", "")
-    tool_response = _tool_response_to_text(hook_input.get("tool_response", ""))
+    raw_response = hook_input.get("tool_response", "")
+    # Screenshots and other media pass through untouched: no archive, no
+    # replacement, no fingerprint (so the re-fetch guard can never block a
+    # fresh screenshot either).
+    if _contains_media_block(raw_response):
+        return
+    tool_response = _tool_response_to_text(raw_response)
     session_id = hook_input.get("session_id", "")
 
     if not tool_response:
@@ -1289,10 +1371,9 @@ def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict 
             print(f"[Tool Archive] Unsafe archive directory for {tool_name}; leaving output unchanged.", file=sys.stderr)
         return
 
-    # Fingerprint only calls whose result is eligible for replacement. Exempt
-    # tools serve their full result, so the guard must not block a re-call.
+    # Only fingerprint results eligible for replacement and safe to re-fetch.
     replaceable = "__" in tool_name or (injected and tool_kind == "external")
-    if replaceable and not _is_archive_exempt(tool_name):
+    if replaceable and not _is_archive_exempt(tool_name) and not is_live_state_tool(tool_name):
         args_hash = tool_fingerprint(tool_name, hook_input.get("tool_input", {}))
     else:
         args_hash = None
@@ -1313,7 +1394,23 @@ def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict 
     # Redact credential patterns before writing to disk.
     # Performed on the (possibly truncated) response so no plaintext secrets
     # ever reach the archive file, even transiently.
-    safe_response = _redact_credentials(tool_response)
+    try:
+        safe_response = _redact_credentials(tool_response)
+    except Exception as exc:
+        # A configured-but-broken custom pattern file means redaction cannot
+        # be trusted to cover the user's own secret shapes — fail CLOSED: skip
+        # the archive write entirely and let the output pass through in memory.
+        if RedactionConfigError is None or not isinstance(exc, RedactionConfigError):
+            raise
+        if not quiet:
+            print(f"[Tool Archive] {exc}; result not archived.", file=sys.stderr)
+        if pop_redaction_warning is not None:
+            msg = pop_redaction_warning()
+            if msg:
+                # Sole hook output for this run: a single JSON object is a
+                # valid envelope on every host.
+                print(json.dumps({"systemMessage": msg}))
+        return
 
     session_lock = LeaseLock(
         _session_lock_path(archive_dir.parent, session_id),

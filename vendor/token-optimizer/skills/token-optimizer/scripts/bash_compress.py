@@ -1959,22 +1959,27 @@ def main():
                     # compression_events table. Redact BEFORE truncating so an
                     # inline secret (Bearer token, mysql -pPASSWORD,
                     # PGPASSWORD=... psql) never reaches disk in cleartext.
-                    # Mirrors the fix in bash_compress_hook._log_event.
+                    # Mirrors the fix in bash_compress_hook._log_event. When the
+                    # redactor is unavailable or refuses (a broken custom
+                    # pattern file fails closed), skip the event entirely —
+                    # persisting the raw command would store what the configured
+                    # rules exist to keep off disk.
                     try:
                         from credential_patterns import redact_credentials as _redact
                         _safe_pattern = _redact(command_str)[:100]
-                    except ImportError:
-                        _safe_pattern = command_str[:100]
-                    _log_compression_event(
-                        feature=_feature,
-                        original_text=raw_output,
-                        compressed_text=compressed,
-                        session_id=os.environ.get("CLAUDE_SESSION_ID", ""),
-                        command_pattern=_safe_pattern,
-                        quality_preserved=True,
-                        verified=True,
-                        tier="measured",
-                    )
+                    except Exception:
+                        _safe_pattern = None
+                    if _safe_pattern is not None:
+                        _log_compression_event(
+                            feature=_feature,
+                            original_text=raw_output,
+                            compressed_text=compressed,
+                            session_id=os.environ.get("CLAUDE_SESSION_ID", ""),
+                            command_pattern=_safe_pattern,
+                            quality_preserved=True,
+                            verified=True,
+                            tier="measured",
+                        )
         except Exception:
             pass
 

@@ -1,8 +1,26 @@
 """Overpowered model detector: expensive model used for simple tasks."""
 
+import re
+
+from runtime_env import detect_runtime
 
 _TOP_TIER_MODELS = ("fable", "opus", "claude-opus")
 _SIMPLE_TOOLS = frozenset({"Read", "Glob", "Grep", "Edit", "Write", "Bash"})
+
+# Session-log model strings are attacker-influenceable (a crafted or
+# custom-provider transcript controls the model_usage keys). The dominant
+# model name is interpolated into evidence/suggestion text that the coach
+# prints verbatim, so strip terminal control sequences first.
+_ANSI_ESCAPE_RE = re.compile(
+    r"\x1b\[[0-9;:<=>?]*[ -/]*[@-~]"   # CSI (full ECMA-48 parameter bytes 0x30-0x3f)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC ... BEL or ST
+    r"|\x1b[()][0-2A-Z]"                # charset selection
+    r"|\x1b[@-Z\\-_]"                   # remaining two-byte escapes
+)
+
+
+def _strip_ansi(text):
+    return _ANSI_ESCAPE_RE.sub("", str(text))
 
 # v5.11.1: per-model input token rate ($/Mtok), kept self-contained per this
 # file's hot-path convention (no import of the pricing table). Sonnet's input
@@ -37,6 +55,12 @@ def detect_overpowered(session_data):
     Flags when: short output (<5K tokens per turn avg) + mostly simple tools
     + a top-tier model (Fable/Opus) is dominant.
     """
+    if detect_runtime() not in ("claude", "hermes"):
+        # The ladder and the "Sonnet would save" suggestion are Claude-model
+        # routing advice. Under foreign runtimes a Claude-tier key in
+        # model_usage (custom provider entry, crafted log) must not produce
+        # foreign-runtime guidance. Hermes is a Claude runtime and keeps it.
+        return []
     model_usage = session_data.get("model_usage", {})
     if not model_usage:
         return []
@@ -71,7 +95,7 @@ def detect_overpowered(session_data):
     # (5.0), so dropping to Sonnet (3.0) saves a different fraction depending on
     # which top-tier model was dominant.
     dom_raw, dom_norm = _dominant_top_tier(model_usage)
-    dom_display = dom_raw or dom_norm
+    dom_display = _strip_ansi(dom_raw or dom_norm)
     input_rate = _INPUT_RATE.get(dom_norm, 5.0)
     savings_ratio = 1 - (3.0 / input_rate)
     sonnet_savings = int(top_tier_tokens * savings_ratio)

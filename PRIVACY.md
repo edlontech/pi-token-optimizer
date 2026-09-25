@@ -1,6 +1,6 @@
 # Pi Token Optimizer Privacy Policy
 
-Pi Token Optimizer adapts Token Optimizer 5.13.8 to Pi. This document describes the shipped Pi package, not every capability present in the vendored upstream source.
+Pi Token Optimizer adapts Token Optimizer 5.13.24 to Pi. This document describes the shipped Pi package, not every capability present in the vendored upstream source.
 
 ## Consent
 
@@ -45,7 +45,7 @@ Rolling context compression uses the same tool-archive category and retention co
 
 ## Redaction limits
 
-Read-cache excerpts and tool archives pass through the upstream pattern-based credential redactor before storage. It recognizes 23 categories such as common API keys, tokens, private keys, database credentials, and URL authentication parameters. Redaction is one-way in the stored copy.
+Read-cache excerpts and tool archives pass through the upstream pattern-based credential redactor before storage. It uses 28 built-in patterns for common API keys, tokens, private keys, database credentials, URL authentication parameters, and other credential shapes. Redaction is one-way in the stored copy. Users can optionally configure additional patterns with `TOKEN_OPTIMIZER_REDACT_PATTERNS_FILE` or a file at `<pi-agent-dir>/token-optimizer/redact-patterns.json`. An explicitly configured file may be outside Pi's data root; Pi does not read Claude settings to find one. Invalid custom configuration stops affected archive and cache writes rather than storing unredacted content. Pattern status may be recorded under `<pi-agent-dir>/token-optimizer/`.
 
 Pattern matching cannot guarantee removal of every secret, personal datum, proprietary value, encoded value, or novel credential format. File paths, metrics, checkpoints, diagnostics, dashboard content, and Pi's own session files have different content and are not covered by a blanket redaction guarantee. Successful Bash compression may preserve credential-containing visible lines so the output returned to Pi is not corrupted; that Pi-visible content is governed by Pi session/provider handling. Failed and image-bearing tool results are not replaced by the optimizer.
 

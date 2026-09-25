@@ -7,9 +7,9 @@ Record the release commit, operator, date, operating system, Python version, wor
 ## Source and vendor provenance
 
 - [ ] **SOURCE-01 — The release worktree is clean and points at the intended 0.1.0 commit.** Run `git status --short`, `git rev-parse HEAD`, and confirm `package.json` reports `0.1.0`.
-- [ ] **VENDOR-01 — The upstream tag resolves to the pinned commit.** In a clean checkout of `https://github.com/alexgreensh/token-optimizer`, run `git rev-parse 'refs/tags/v5.13.8^{commit}'` and require exactly `c5d4796fa750530bb7dc9b91ad09373883b728c1`.
+- [ ] **VENDOR-01 — The upstream tag resolves to the pinned commit.** In a clean checkout of `https://github.com/alexgreensh/token-optimizer`, run `git rev-parse 'refs/tags/v5.13.24^{commit}'` and require exactly `d73354ed13b033f496fa23279387559732ce8961`.
 - [ ] **VENDOR-02 — A fresh vendor sync reproduces the committed snapshot.** Run `npm run vendor:sync -- /absolute/path/to/clean/token-optimizer-checkout`, then require `git diff --exit-code -- patches vendor` and run `npm run vendor:check`.
-- [ ] **LEGAL-01 — Package and upstream legal notices are present and reviewed.** Compare `LICENSE`, `NOTICE`, `PRIVACY.md`, `vendor/token-optimizer/LICENSE`, and `vendor/token-optimizer/PRIVACY.md`; verify the root documentation describes the Pi adaptation and preserves upstream attribution.
+- [ ] **LEGAL-01 — Package and upstream legal notices are present and reviewed.** Compare `LICENSE`, `NOTICE`, `PRIVACY.md`, `vendor/token-optimizer/LICENSE`, `vendor/token-optimizer/LICENSE-SMALL-BUSINESS.md`, and `vendor/token-optimizer/PRIVACY.md`; verify the root documentation describes the Pi adaptation and preserves upstream attribution.
 
 ## Supported environments
 
@@ -76,7 +76,7 @@ PI_TOKEN_OPTIMIZER_BENCH_ITERATIONS=2 npm run benchmark
 
 ## Exact package inspection
 
-The allowlist in `tests/vendor.test.ts` is the release manifest: exactly 113 files. It includes package/runtime sources, both documentation files, root and upstream legal/privacy files, the compatibility patch, vendor manifest, static dashboard asset, and the executable launcher. It excludes tests, fixtures, caches, local optimizer data, repository scripts, upstream demos, unrelated skills, and CI files.
+The package dry run reports 117 files, including 98 vendored upstream files. It includes package/runtime sources, both documentation files, root and upstream legal/privacy files (including the small-business permission), the compatibility patch, vendor manifest, static dashboard asset, and the executable launcher. It excludes tests, fixtures, caches, local optimizer data, repository scripts, upstream demos, unrelated skills, and CI files.
 
 ```sh
 npm run package:check
@@ -88,7 +88,7 @@ tarball=$(node -e 'const p=require(process.argv[1])[0]; process.stdout.write(req
 tar -tzf "$tarball" | LC_ALL=C sort
 ```
 
-- [ ] **PACKAGE-01 — Dry-run paths equal the 93-file automated allowlist.** Compare the sorted output line-for-line with `releaseFiles` in `tests/vendor.test.ts`; require no extra or missing path.
+- [ ] **PACKAGE-01 — Dry-run paths match the intended package contents.** Require 117 files total, including 98 under `vendor/token-optimizer/`, with no tests, fixtures, caches, or repository scripts.
 - [ ] **PACKAGE-02 — The real tarball contains only package-prefixed allowlisted paths.** Inspect `tar -tzf`, verify `package/vendor/token-optimizer/hooks/python-launcher.sh` is executable, and record filename, byte size, unpacked size, SHA-512 integrity, and SHA-1 shasum from `pack.json`.
 - [ ] **PACKAGE-03 — The locally packed package passes isolated Pi 0.84.4 RPC smoke.** Run `npx tsx --test --test-name-pattern='Pi 0.84.4 loads the npm-packed extension' tests/integration/extension-rpc.test.ts`; require strict JSONL, status, consent, and doctor responses with no model call.
 

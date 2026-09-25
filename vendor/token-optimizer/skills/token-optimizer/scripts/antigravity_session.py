@@ -56,8 +56,8 @@ _GEMINI_CARD_IDS = (
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
-        return int(value) if value is not None else default
-    except (TypeError, ValueError):
+        return int(float(value)) if value is not None else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -299,6 +299,7 @@ def normalize_session(raw: dict) -> Optional[dict]:
         {
             "topic": raw.get("title") or None,
             "first_ts": _parse_ts(st),
+            "last_ts": _parse_ts(et),
             "duration_minutes": round(duration_minutes, 2),
             "total_input_tokens": total_input,
             "total_output_tokens": total_output,

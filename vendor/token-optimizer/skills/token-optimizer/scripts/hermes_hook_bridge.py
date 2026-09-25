@@ -161,7 +161,10 @@ def _run_measure(args: list[str], *, capture_output: bool = True, timeout: int =
 # Public API (called by hermes/__init__.py hooks and command handlers)
 # ---------------------------------------------------------------------------
 
-def run_rollup(session_id: str = "", platform: str = "hermes", reason: str = "") -> None:
+def run_rollup(
+    session_id: str = "", platform: str = "hermes", reason: str = "",
+    context_tokens: int | None = None,
+) -> None:
     """Write a session rollup to TO's trends.db.
 
     Shells to: python3 measure.py hermes-rollup --session <id> [--reason <r>]
@@ -191,6 +194,8 @@ def run_rollup(session_id: str = "", platform: str = "hermes", reason: str = "")
         cmd += ["--platform", platform]
     if reason:
         cmd += ["--reason", reason]
+    if context_tokens is not None and context_tokens > 0:
+        cmd += ["--context-tokens", str(int(context_tokens))]
     try:
         _proc = spawn_detached(
             cmd,

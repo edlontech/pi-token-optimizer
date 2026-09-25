@@ -29,7 +29,7 @@ These files are read locally and never transmitted.
 
 ## What Token Optimizer Stores
 
-Token Optimizer writes several local data stores. All are stored with restrictive file permissions (`0o700` directories, `0o600` files).
+Token Optimizer writes several local data stores. On macOS and Linux, all are stored with restrictive file permissions (`0o700` directories, `0o600` files). On Windows, Python cannot apply these POSIX modes (`os.chmod` only toggles the read-only flag), so the stores inherit the access rules of your user profile folder, which by default grants access only to your account, Administrators, and SYSTEM.
 
 ### Session Metrics Database (trends.db)
 
@@ -77,7 +77,7 @@ JSON files with per-session quality score snapshots (6-signal metric).
 - **Checkpoint event log:** `~/.claude/token-optimizer/checkpoint-events.jsonl` (rotated at 1000 entries)
 - **Live fill cache:** `~/.claude/token-optimizer/live-fill.json`
 - **Dashboard:** `<plugin-data>/data/dashboard.html` (generated visualization)
-- **Daemon token:** `<plugin-data>/data/daemon-token` (32-byte random secret, 0600 permissions)
+- **Daemon token:** `<plugin-data>/data/daemon-token` (32-byte random secret, 0600 permissions on macOS and Linux)
 - **Daemon logs:** `<plugin-data>/data/logs/` (stdout/stderr from dashboard server)
 
 ### Antigravity adapter data
@@ -97,11 +97,34 @@ and is removed by `antigravity-uninstall`.
 
 ## Credential Handling
 
-Token Optimizer scans for 23 credential patterns (AWS keys, API tokens, GitHub PATs, database URIs, JWTs, PEM keys, URL query/fragment auth params, and more) and replaces them with `[CREDENTIAL REDACTED: <type>]` before writing to the session store and tool archive. This redaction is one-way and permanent in stored content.
+Token Optimizer scans for 28 credential patterns (AWS keys, API tokens, GitHub PATs, database URIs, JWTs, PEM keys, URL query/fragment auth params, and more) and replaces them with `[CREDENTIAL REDACTED: <type>]` before writing to the session store and tool archive. This redaction is one-way and permanent in stored content.
 
 **Known tradeoff:** Credential redaction in the read cache means delta reads against files containing credentials will produce non-empty diffs on every re-read (the stored version has the redacted placeholder, the live file has the actual credential). This is a deliberate security-over-efficiency tradeoff.
 
 Bash compression output preserves credential-containing lines verbatim (not redacted) to ensure compressed output returned to the coding assistant doesn't mangle secrets.
+
+### Custom redaction patterns
+
+You can add your own secret shapes (internal API keys, service tokens, record identifiers) to the built-in list without editing code. Put them in `~/.claude/token-optimizer/redact-patterns.json` (on other platforms, `token-optimizer/redact-patterns.json` under that platform's home, e.g. `~/.codex/`), or set `TOKEN_OPTIMIZER_REDACT_PATTERNS_FILE` to the path of the file, either in your environment or in the `env` block of your global `settings.json` (`~/.claude/settings.json`; hooks do not read project-level settings):
+
+```json
+{
+  "patterns": [
+    "acme_[A-Za-z0-9]{32}",
+    {"label": "Acme service token", "regex": "(?P<keep>ACME_TOKEN=)\\S+", "ignore_case": true}
+  ]
+}
+```
+
+- Each entry is a Python regular expression, either as a plain string or as an object with `regex`, an optional `label` (shown in the placeholder, default `custom pattern`), and an optional `ignore_case`. JSON strings need doubled backslashes (`\\d` for `\d`).
+- Text matched by a named group `keep` stays in place and only the rest of the match is replaced, the same way the built-in `?token=` pattern keeps the parameter name.
+- `TOKEN_OPTIMIZER_REDACT_PATTERNS_FILE` must be an absolute path after `~` and environment-variable expansion (surrounding quotes are stripped first). A relative value would resolve against whatever directory the hook launched in, so it is treated as a configuration error — see fail-closed behavior below.
+- Custom patterns are additive and run BEFORE the built-ins, so an org pattern can claim a composite secret (e.g. `MEDX-123456-<jwt>`) whole instead of leaving a readable prefix beside a built-in placeholder. Neither custom nor built-in patterns touch `[CREDENTIAL REDACTED: ...]` placeholders already in the text, so re-running redaction is idempotent. Custom patterns apply everywhere the built-in redaction applies; when scanning rather than rewriting, they are matched per line. They do not change which lines Bash compression keeps verbatim.
+- The file is read once per process. Invalid entries (bad regex, empty regex, a regex that matches empty text, wrong types, unsafe or over-broad shapes) are skipped with a warning on stderr; the rest still load. A missing file at the default location is ignored. Limits: 200 entries, 1,000 characters per regex, 1 MB per file.
+- **Fail closed:** if the configured file — or a file present at the default location — cannot be trusted (unreadable, invalid JSON, wrong shape, or a relative env path), custom redaction is considered broken rather than absent. Every write that redacts (archives, caches, checkpoints) is then skipped so content your own patterns were meant to cover never reaches disk unredacted, and a one-time warning is shown through the hook's normal output channel. Fix or remove the file to resume writes.
+- Unsafe patterns are rejected before they can run: the loader statically rejects nested unbounded quantifiers and ambiguous repeated alternations (the classic "regex hangs forever" shapes), then runs each remaining pattern once against a battery of adversarial strings in a separate process with a hard time limit — a pattern that cannot finish in time is rejected. Verdicts are cached per file content, so this costs nothing on steady-state hook runs.
+- `measure.py security-report` shows whether custom redaction is active, how many patterns loaded, from which file, and any rejections; the same status is persisted under the runtime's `token-optimizer/` directory.
+- This is pattern-based redaction of known shapes. It is not a general PII or PHI scrubber, and it cannot catch values that have no recognizable shape.
 
 ## Consent
 

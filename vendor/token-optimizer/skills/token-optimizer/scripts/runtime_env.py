@@ -49,10 +49,13 @@ This module keeps runtime integration deliberately simple:
   ladder. So ``detect_runtime()`` still returns ``"claude"`` inside Cowork.
   ``is_cowork()`` is a REFINEMENT signal exposed alongside it (mirroring how the
   runtime lattice layers signals rather than adding runtimes) — true when the
-  Cowork host markers are present: ``CLAUDE_CODE_CONTAINER_ID`` (primary), a
-  synced-plugin ``CLAUDE_PLUGIN_ROOT`` under ``/plugins/synced/``, or ``AI_AGENT``
-  carrying the harness marker. Callers that need Cowork-specific behaviour read
-  ``is_cowork()``; nothing about the existing ``detect_runtime()`` returns changes.
+  Cowork host markers are present: ``CLAUDE_CODE_REMOTE`` (primary, documented),
+  ``CLAUDE_CODE_CONTAINER_ID`` (observed), or a synced-plugin
+  ``CLAUDE_PLUGIN_ROOT`` under ``/plugins/synced/``. ``AI_AGENT`` is deliberately
+  NOT a signal: native Claude Code also sets ``AI_AGENT=claude-code_*_harness``,
+  so the harness marker is ambiguous and would false-positive on the local CLI.
+  Callers that need Cowork-specific behaviour read ``is_cowork()``; nothing about
+  the existing ``detect_runtime()`` returns changes.
 - Callers can keep legacy variable names while resolving to the correct home.
 
 The goal is to let Token Optimizer share one Python core while platform
@@ -100,16 +103,15 @@ _CLAUDE_PLUGIN_ENVS = ("CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_DATA")
 #     (code.claude.com/docs/en/hooks.md: "$CLAUDE_CODE_REMOTE is set to 'true'
 #     in cloud, unset locally"; docs-grounding.md §3). Primary signal.
 #   - CLAUDE_CODE_CONTAINER_ID: set inside every Cowork VM (observed, undocumented).
-#   - AI_AGENT: the Cowork VM sets the "_harness" variant
-#     ("claude-code_2-1-231_harness"); the LOCAL Claude Code CLI sets the
-#     "_agent" variant ("claude-code_2-1-229_agent"). So the distinguishing
-#     token is "harness", NOT the bare "claude-code" prefix (which both share).
 #   - CLAUDE_PLUGIN_ROOT under /plugins/synced/: Cowork plugins arrive via the
 #     org admin console account-sync, landing under a synced-plugin path.
+#   - AI_AGENT is deliberately NOT consulted: native Claude Code (local CLI) also
+#     sets AI_AGENT=claude-code_<version>_harness, so the "_harness" marker is
+#     ambiguous between Cowork and desktop. Treating it as a Cowork signal caused
+#     is_cowork() false-positives on every native hook subprocess (which inherits
+#     AI_AGENT). See test_is_cowork_native_ai_agent_harness_is_not_cowork.
 _COWORK_REMOTE_ENV = "CLAUDE_CODE_REMOTE"
 _COWORK_CONTAINER_ENV = "CLAUDE_CODE_CONTAINER_ID"
-_COWORK_AI_AGENT_ENV = "AI_AGENT"
-_COWORK_AI_AGENT_MARKERS = ("claude-code", "harness")
 _COWORK_SYNCED_PLUGIN_MARKER = "/plugins/synced/"
 # Claude Code's own process-env signals. CLAUDECODE is inherited by every
 # subprocess Claude Code spawns, so a genuine Codex/OpenCode/Copilot launched
@@ -482,6 +484,51 @@ def _warn_mnt_copilot_home(raw: str) -> None:
     )
 
 
+def _non_symlinked_fallback(env_var: str, fallback: Path) -> Path:
+    """Return *fallback* unless it exists as a symlink.
+
+    ``_is_safe_home_dir`` rejects symlinked env-var values, but the no-env-var
+    fallback was returned unchecked: on a mixed host where ``~/.codex`` is a
+    symlink to ``~/.claude`` (shared config, careless admin, or a symlink
+    attack), every downstream read/write lands in a foreign runtime's tree —
+    a cross-runtime data leak with no env var set and no warning. Degrade to
+    a Token-Optimizer-owned dir under home instead of following the link.
+    """
+    try:
+        if fallback.is_symlink():
+            slug = (
+                env_var.lower()
+                .removeprefix("token_optimizer_")
+                .removesuffix("_home").removesuffix("_dir")
+                .replace("_", "-")
+            ) or "runtime-home"
+            alt = _safe_home() / ".token-optimizer" / slug
+            # Resolve outside the f-string so a diagnostic OSError does not
+            # discard `alt` and fall through to returning the symlink itself.
+            try:
+                resolved = fallback.resolve(strict=False)
+            except OSError:
+                resolved = "<unresolvable>"
+            _warn_once(
+                f"[Token Optimizer] Warning: default runtime home {fallback} is a symlink "
+                f"(resolves to {resolved}); refusing to follow it "
+                f"into a foreign tree. Using {alt} instead."
+            )
+            return alt
+    except OSError:
+        # If the symlink check itself raised, we cannot confirm the path is
+        # safe. Fail closed: return the alt dir rather than the unverified
+        # fallback (which may be a symlink we could not inspect).
+        slug = (
+            env_var.lower()
+            .removeprefix("token_optimizer_")
+            .removesuffix("_home").removesuffix("_dir")
+            .replace("_", "-")
+        ) or "runtime-home"
+        return _safe_home() / ".token-optimizer" / slug
+    return fallback
+
+
 def _safe_home_from_env(env_var: str, fallback: Path, *, mnt_root: Path | None = None) -> Path:
     """Resolve a runtime-home env var without letting it escape user home.
 
@@ -502,7 +549,7 @@ def _safe_home_from_env(env_var: str, fallback: Path, *, mnt_root: Path | None =
     """
     raw_val = os.environ.get(env_var, "").strip()
     if not raw_val:
-        return fallback
+        return _non_symlinked_fallback(env_var, fallback)
     candidate = Path(raw_val).expanduser()
     if _is_safe_home_dir(candidate):
         return candidate.resolve(strict=False)
@@ -540,7 +587,7 @@ def _safe_home_from_env(env_var: str, fallback: Path, *, mnt_root: Path | None =
     _warn_once(
         f"[Token Optimizer] Warning: {env_var}={raw_val!r} rejected (not a safe directory). Using default.{hint}"
     )
-    return fallback
+    return _non_symlinked_fallback(env_var, fallback)
 
 
 def _opencode_env_signal() -> bool:
@@ -1167,13 +1214,17 @@ def is_cowork() -> bool:
          (code.claude.com/docs/en/hooks.md; docs-grounding.md §3). Primary.
       2. ``CLAUDE_CODE_CONTAINER_ID`` is set (observed in every Cowork VM;
          undocumented). Belt-and-suspenders fallback.
-      3. ``AI_AGENT`` carries the Claude Code VM harness marker
-         (``claude-code`` + ``harness``, e.g. ``claude-code_2-1-231_harness``);
-         the local CLI's ``..._agent`` value is deliberately NOT a match.
-      4. ``CLAUDE_PLUGIN_ROOT``/``CLAUDE_PLUGIN_DATA`` points under
+      3. ``CLAUDE_PLUGIN_ROOT``/``CLAUDE_PLUGIN_DATA`` points under
          ``/plugins/synced/`` — where org-console account-synced plugins land.
 
-    Doc vs observed: only (1) is in the published docs; (2)-(4) are live-observed
+    ``AI_AGENT`` is intentionally NOT a signal. Native Claude Code (the local
+    CLI) also exports ``AI_AGENT=claude-code_<version>_harness`` into every hook
+    subprocess, so the ``_harness`` marker is ambiguous between Cowork and
+    desktop. Matching on it caused is_cowork() false-positives on every native
+    hook fire (see PR #142's compact-restore workaround, which papered over the
+    symptom; this removes the root cause).
+
+    Doc vs observed: only (1) is in the published docs; (2)-(3) are live-observed
     Cowork markers kept as fallback so detection still holds if a future build
     stops exporting CLAUDE_CODE_REMOTE into the hook env (Claude Code does
     not guarantee env injection). Never raises; a missing/blank env just
@@ -1182,9 +1233,6 @@ def is_cowork() -> bool:
     if _truthy_env(_COWORK_REMOTE_ENV):
         return True
     if os.environ.get(_COWORK_CONTAINER_ENV, "").strip():
-        return True
-    ai_agent = os.environ.get(_COWORK_AI_AGENT_ENV, "").lower()
-    if all(marker in ai_agent for marker in _COWORK_AI_AGENT_MARKERS):
         return True
     for env_var in _CLAUDE_PLUGIN_ENVS:
         val = os.environ.get(env_var, "")
@@ -1206,16 +1254,22 @@ def claude_home() -> Path:
     EXISTING, NON-SYMLINK directory (keeping the symlink + relative-path
     rejection for traversal safety) and only falls back to ~/.claude when the
     override is unset or unusable.
+
+    statusline.js (_claudeHome) and vscode-extension/src/paths.ts
+    (resolveClaudeDir) reimplement these rules; change all three together or
+    the status line and the hooks read different dirs (#198).
     """
     fallback = _safe_home() / ".claude"
     raw = os.environ.get(_CLAUDE_CONFIG_DIR_ENV, "").strip()
     if not raw:
         return fallback
-    candidate = Path(raw).expanduser()
     try:
+        # expanduser() raises RuntimeError for an unknown ~user (a typo, or ~\x
+        # on POSIX). Uncaught, that crashed every hook at import; reject instead.
+        candidate = Path(raw).expanduser()
         if candidate.is_absolute() and candidate.is_dir() and not candidate.is_symlink():
             return candidate.resolve(strict=False)
-    except OSError:
+    except (OSError, RuntimeError):
         pass
     print(
         f"[Token Optimizer] Warning: {_CLAUDE_CONFIG_DIR_ENV}={raw!r} rejected "
@@ -1228,6 +1282,36 @@ def claude_home() -> Path:
 def codex_home() -> Path:
     """Return Codex's home directory, safely honoring CODEX_HOME when valid."""
     return _safe_home_from_env(_CODEX_HOME_ENV, _safe_home() / ".codex")
+
+
+def settings_env_value(name: str) -> str:
+    """Read ``name`` from the ``env`` block of the user's settings.json.
+
+    The single resolver for ``TOKEN_OPTIMIZER_*`` env knobs that out-of-process
+    callers (hooks, tests, the daemon) need even when the host did not inject
+    them. Scope is deliberately narrow: only the GLOBAL settings file
+    (``claude_home() / "settings.json"``) is read — hooks run with the repo as
+    cwd, so consulting project-level settings would let a checked-in
+    ``.claude/settings.json`` silently repoint a security feature's config.
+
+    Pi never reads Claude settings. Only a regular file is read: ``is_file()``
+    is False for a FIFO, socket, directory or broken symlink, so a special file
+    cannot block ``open()`` on a hot hook path. Never raises; returns "" when unset.
+    """
+    if detect_runtime() == _RUNTIME_PI:
+        return ""
+    try:
+        path = claude_home() / "settings.json"
+        if not path.is_file() or path.stat().st_size > 1_048_576:
+            return ""
+        with open(path, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+        env_block = settings.get("env", {}) if isinstance(settings, dict) else {}
+        if not isinstance(env_block, dict):
+            return ""
+        return str(env_block.get(name, "") or "").strip()
+    except Exception:
+        return ""
 
 
 def hermes_home() -> Path:

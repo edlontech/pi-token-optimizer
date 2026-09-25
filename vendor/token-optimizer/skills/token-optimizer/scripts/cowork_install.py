@@ -67,6 +67,7 @@ PAYLOAD_INCLUDE = (
     "skills",
     "commands",
     "LICENSE",
+    "LICENSE-SMALL-BUSINESS.md",
     "PRIVACY.md",
     "README.md",
 )

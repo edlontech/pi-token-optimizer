@@ -42,8 +42,26 @@ except ImportError:
 
 try:
     from credential_patterns import redact_credentials as _redact_creds
+    from credential_patterns import pop_redaction_warning as _pop_redaction_warning
 except ImportError:
     _redact_creds = None
+    _pop_redaction_warning = None
+
+
+def _redact_for_storage(text: str) -> Optional[str]:
+    """Credential-redacted copy of ``text`` for persistence, or None.
+
+    None means "do not persist": the shared redactor is missing, or it refused
+    because a configured custom pattern file failed to load. Writing the raw
+    text in either case would store content the configured redaction rules
+    were meant to cover — the cache simply goes without the content.
+    """
+    if _redact_creds is None:
+        return None
+    try:
+        return _redact_creds(text)
+    except Exception:
+        return None
 
 from structure_map import (
     StructureMapResult,
@@ -555,6 +573,15 @@ def _emit_pretool_response(
         hook_output["permissionDecisionReason"] = reason
     if additional_context:
         hook_output["additionalContext"] = additional_context
+    # A broken custom pattern file keeps redacted writes out of every cache —
+    # surface that once per file hash as a user-visible systemMessage.
+    if _pop_redaction_warning is not None:
+        try:
+            _warn_msg = _pop_redaction_warning()
+        except Exception:
+            _warn_msg = None
+        if _warn_msg:
+            payload["systemMessage"] = _warn_msg
     print(json.dumps(payload))
 
 
@@ -1291,11 +1318,12 @@ def handle_read(hook_input: dict[str, Any], mode: str, quiet: bool) -> None:
                     entry["size_bytes"] = stat.st_size
                     delta_content = fc  # reusable in-process even if too big to persist
                     if len(fc.encode("utf-8", errors="replace")) <= MAX_CONTENT_CACHE_BYTES:
-                        safe_fc = _redact_creds(fc) if _redact_creds else fc
-                        entry["cached_content"] = safe_fc
-                        safe_hash = content_hash(safe_fc)
-                        entry["content_hash"] = safe_hash
-                        store.upsert_cached_content(file_path, safe_fc, safe_hash)
+                        safe_fc = _redact_for_storage(fc)
+                        if safe_fc is not None:
+                            entry["cached_content"] = safe_fc
+                            safe_hash = content_hash(safe_fc)
+                            entry["content_hash"] = safe_hash
+                            store.upsert_cached_content(file_path, safe_fc, safe_hash)
             except Exception:
                 pass
         _reset_replacement_state(entry)
@@ -1439,9 +1467,9 @@ def handle_read(hook_input: dict[str, Any], mode: str, quiet: bool) -> None:
                 from delta_diff import compute_delta, content_hash, is_delta_eligible, MAX_CONTENT_CACHE_BYTES
                 if is_delta_eligible(file_path):
                     new_content, current_stat = _read_text_with_stat(file_path)
-                    safe_new_content = _redact_creds(new_content) if _redact_creds else new_content
-                    new_hash = content_hash(safe_new_content)
-                    if new_hash != old_hash:
+                    safe_new_content = _redact_for_storage(new_content)
+                    new_hash = content_hash(safe_new_content) if safe_new_content is not None else None
+                    if new_hash is not None and new_hash != old_hash:
                         if len(safe_new_content.encode("utf-8", errors="replace")) <= MAX_CONTENT_CACHE_BYTES:
                             cached_content_after_read = safe_new_content
                             cached_hash_after_read = new_hash
@@ -1591,11 +1619,12 @@ def handle_read(hook_input: dict[str, Any], mode: str, quiet: bool) -> None:
                 if is_delta_eligible(file_path):
                     fc, current_stat = _read_text_with_stat(file_path)
                     if len(fc.encode("utf-8", errors="replace")) <= MAX_CONTENT_CACHE_BYTES:
-                        safe_fc = _redact_creds(fc) if _redact_creds else fc
-                        entry["cached_content"] = safe_fc
-                        safe_hash = content_hash(safe_fc)
-                        entry["content_hash"] = safe_hash
-                        store.upsert_cached_content(file_path, safe_fc, safe_hash)
+                        safe_fc = _redact_for_storage(fc)
+                        if safe_fc is not None:
+                            entry["cached_content"] = safe_fc
+                            safe_hash = content_hash(safe_fc)
+                            entry["content_hash"] = safe_hash
+                            store.upsert_cached_content(file_path, safe_fc, safe_hash)
             except Exception:
                 pass
         _reset_replacement_state(entry)
@@ -1999,11 +2028,12 @@ def handle_invalidate(hook_input: dict[str, Any], quiet: bool) -> None:
                     if is_delta_eligible(file_path):
                         fc, stat = _read_text_with_stat(file_path)
                         if len(fc.encode("utf-8", errors="replace")) <= MAX_CONTENT_CACHE_BYTES:
-                            safe_fc = _redact_creds(fc) if _redact_creds else fc
-                            # Hash the SAME bytes that are persisted so a later
-                            # delta diff is consistent (redacted old vs new).
-                            new_hash = content_hash(safe_fc)
-                            new_fc = safe_fc
+                            safe_fc = _redact_for_storage(fc)
+                            if safe_fc is not None:
+                                # Hash the SAME bytes that are persisted so a later
+                                # delta diff is consistent (redacted old vs new).
+                                new_hash = content_hash(safe_fc)
+                                new_fc = safe_fc
                         else:
                             # File grew too large to cache; drop cached content
                             # but keep the metadata entry (mtime/size still

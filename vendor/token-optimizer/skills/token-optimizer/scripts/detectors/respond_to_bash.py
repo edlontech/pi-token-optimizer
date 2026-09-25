@@ -9,6 +9,8 @@ Settings are cached per resolved path so batch runs do not re-read the file per
 session. Credit: detection idea + tests contributed by @danikdanik (PR #74).
 """
 
+from runtime_env import detect_runtime
+
 import functools
 import json
 import sys
@@ -40,6 +42,8 @@ def _load_settings(settings_path):
 
 def detect_respond_to_bash(_session_data):
     """Return a finding if respondToBashCommands is not explicitly false."""
+    if detect_runtime() != "claude":
+        return []
     if _get_claude_home is not None:
         settings_path = _get_claude_home() / "settings.json"
     else:

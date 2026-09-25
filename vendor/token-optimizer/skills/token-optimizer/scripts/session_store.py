@@ -233,6 +233,8 @@ class SessionStore:
         self._ensure_file_reads_columns(conn)
         # Burn nudge: add fail_streak / fail_nudged_streak to command_run_streaks.
         self._ensure_command_streaks_columns(conn)
+        # Double-fire guard for cross-turn dedup: last_tool_use_id on command_outputs.
+        self._ensure_command_outputs_columns(conn)
         # U6/fix-1: probe + setup the external-content FTS5 mirror (LIKE
         # fallback). Backfills legacy rows once, gated on prior_version < 2.
         self._ensure_fts5_index(conn, prior_version)
@@ -294,6 +296,21 @@ class SessionStore:
         if "last_tool_use_id" not in cols:
             try:
                 conn.execute("ALTER TABLE file_reads ADD COLUMN last_tool_use_id TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+
+    def _ensure_command_outputs_columns(self, conn: sqlite3.Connection) -> None:
+        """Add last_tool_use_id to command_outputs if absent, so cross-turn
+        dedup can tell a second hook firing on the same call from a real re-run.
+        Same idempotent PRAGMA + ALTER TABLE pattern as the migrations beside it.
+        """
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(command_outputs)").fetchall()}
+        except sqlite3.DatabaseError:
+            return
+        if "last_tool_use_id" not in cols:
+            try:
+                conn.execute("ALTER TABLE command_outputs ADD COLUMN last_tool_use_id TEXT DEFAULT ''")
             except sqlite3.OperationalError:
                 pass
 
@@ -706,6 +723,7 @@ class SessionStore:
         output_hash: str,
         output_chars: int,
         compressed_output: Optional[str] = None,
+        tool_use_id: str = "",
     ) -> None:
         if self._is_over_size_cap():
             return
@@ -713,12 +731,12 @@ class SessionStore:
         conn.execute(
             """INSERT OR REPLACE INTO command_outputs
                (command_hash, command_text, output_hash, output_chars,
-                compressed_output, timestamp)
-               VALUES (?, ?, ?, ?, ?, ?)
+                compressed_output, timestamp, last_tool_use_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 command_hash, command_text, output_hash, output_chars,
-                compressed_output, time.time(),
+                compressed_output, time.time(), tool_use_id or "",
             ),
         )
         conn.commit()

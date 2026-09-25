@@ -76,6 +76,11 @@ _SESSION_COLUMNS = (
     "cwd",
     "billing_provider",
     "billing_mode",
+    "compression_failure_cooldown_until",
+    "compression_failure_error",
+    "compression_fallback_streak",
+    "compression_ineffective_count",
+    "compression_recovery_deadline",
 )
 
 _SESSION_DEFAULTS: dict[str, Any] = {
@@ -101,6 +106,11 @@ _SESSION_DEFAULTS: dict[str, Any] = {
     "cwd": None,
     "billing_provider": None,
     "billing_mode": None,
+    "compression_failure_cooldown_until": None,
+    "compression_failure_error": None,
+    "compression_fallback_streak": 0,
+    "compression_ineffective_count": 0,
+    "compression_recovery_deadline": None,
 }
 
 # Whitelist of tables this module ever inspects.
@@ -197,12 +207,19 @@ def state_db_path() -> Path:
 # ---------------------------------------------------------------------------
 
 @contextmanager
-def _ro_connect(path: Path) -> Iterator[sqlite3.Connection]:
+def _ro_connect(path: Path, *, immutable: bool = True) -> Iterator[sqlite3.Connection]:
     """Open ``path`` read-only with a short busy-timeout; always close.
 
     Never writes, never checkpoints, never attaches.  Uses PRAGMA query_only
     as defence-in-depth so even future code changes cannot write via this
     connection.
+
+    ``immutable=True`` (the default) reads the checkpointed main file only.
+    Pass ``immutable=False`` for a WAL-visible view: plain ``mode=ro`` reads
+    committed -wal pages, which is what a probe of the *live* session needs —
+    with immutable=1 the read silently misses writes that have not checkpointed
+    yet. The trade-off is that non-immutable opens may consult/create the
+    -shm/-wal side files, so it is opt-in per call site.
     """
     # Q3: immutable=1 prevents SQLite from creating WAL/SHM side-effect files
     # when opening a read-only view of a DB owned by another process (Hermes).
@@ -213,8 +230,9 @@ def _ro_connect(path: Path) -> Iterator[sqlite3.Connection]:
     # N-4 (M-3 parity): resolve() first so a relative path doesn't raise an
     # uncaught ValueError past callers that only catch (sqlite3.Error, OSError).
     db_uri = Path(path).resolve().as_uri()
+    uri = f"{db_uri}?mode=ro" + ("&immutable=1" if immutable else "")
     conn = sqlite3.connect(
-        f"{db_uri}?mode=ro&immutable=1",
+        uri,
         uri=True,
         timeout=_BUSY_TIMEOUT_SECONDS,
     )
@@ -275,11 +293,16 @@ def _row_to_dict(row: sqlite3.Row, available_cols: set[str]) -> dict[str, Any]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def get_session(session_id: str) -> dict[str, Any] | None:
+def get_session(session_id: str, *, live: bool = False) -> dict[str, Any] | None:
     """Return a single session row as a dict, or None when not found.
 
     Absent DB or locked DB returns None gracefully.  Missing columns in the
     sessions table fall back to the corresponding entry in ``_SESSION_DEFAULTS``.
+
+    ``live=True`` opens the DB WAL-visible (plain ``mode=ro``) so a probe
+    running alongside a live Hermes session sees writes that are committed but
+    not yet checkpointed. The default keeps the immutable snapshot view used
+    for collecting already-ended sessions.
     """
     if not session_id:
         return None
@@ -287,7 +310,7 @@ def get_session(session_id: str) -> dict[str, Any] | None:
     if not db.exists():
         return None
     try:
-        with _ro_connect(db) as conn:
+        with _ro_connect(db, immutable=not live) as conn:
             available = _table_columns(conn, "sessions")
             if not available:
                 return None

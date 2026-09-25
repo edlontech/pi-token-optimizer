@@ -17,8 +17,8 @@ MANAGED_BEGIN = "# BEGIN token-optimizer compact prompt"
 MANAGED_END = "# END token-optimizer compact prompt"
 COMPACT_FILE_RE = re.compile(r"(?m)^\s*experimental_compact_prompt_file\s*=")
 INLINE_COMPACT_RE = re.compile(r"(?m)^\s*compact_prompt\s*=")
-COMPACT_FILE_LINE_RE = re.compile(r"(?m)^(\s*)experimental_compact_prompt_file\s*=.*$")
-INLINE_COMPACT_LINE_RE = re.compile(r"(?m)^(\s*)compact_prompt\s*=.*$")
+COMPACT_FILE_LINE_RE = re.compile(r"(?m)^(\s*)(experimental_compact_prompt_file)(\s*=.*)$")
+INLINE_COMPACT_LINE_RE = re.compile(r"(?m)^(\s*)(compact_prompt)(\s*=.*)$")
 # Lines Token Optimizer commented out on install (force path). The install
 # writes ``<indent># replaced by Token Optimizer: <original line>``; uninstall
 # restores the original by stripping that prefix. Scoped to compact-prompt
@@ -85,7 +85,12 @@ def json_string(value: str) -> str:
 
 
 def _comment_out_setting(pattern: re.Pattern[str], text: str) -> str:
-    return pattern.sub(r"\1# replaced by Token Optimizer: \g<0>", text)
+    # Capture name + value separately (group 2/3) so the comment body excludes
+    # the leading whitespace captured by group 1. Using \g<0> (the whole match)
+    # would duplicate the indent on restore, breaking the byte-faithful
+    # round-trip promised in the docstring. Mirrors codex_statusline's
+    # _comment_out_existing_settings.
+    return pattern.sub(r"\1# replaced by Token Optimizer: \2\3", text)
 
 
 def _replace_or_append_config(config_text: str, prompt_path: Path, *, force: bool) -> tuple[str, str]:
@@ -118,7 +123,7 @@ def plan_install(force: bool = False) -> dict[str, str | bool]:
 
     try:
         config_text = config_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         config_text = ""
 
     if INLINE_COMPACT_RE.search(config_text) and not force:
@@ -142,7 +147,7 @@ def install(force: bool = False) -> str:
 
     try:
         config_text, crlf = codex_io.read_config_text(config_path)
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         config_text, crlf = "", False
 
     if INLINE_COMPACT_RE.search(config_text) and not force:
@@ -228,7 +233,10 @@ def status() -> str:
     config_path = _config_path()
     if not config_path.exists():
         return f"not configured: {config_path} not found"
-    text = config_path.read_text(encoding="utf-8")
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return f"not configured: {config_path} unreadable"
     if str(prompt_path) in text and prompt_path.exists():
         return f"configured: {prompt_path}"
     if "compact_prompt" in text or "experimental_compact_prompt_file" in text:

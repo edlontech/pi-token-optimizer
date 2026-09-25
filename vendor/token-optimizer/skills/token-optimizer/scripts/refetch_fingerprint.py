@@ -22,6 +22,40 @@ from pathlib import Path
 ARGS_HASH_KEY = "args_hash"
 
 
+# Tools that OBSERVE live state (a browser page, a screen). Identical arguments
+# do not mean an identical result: a screenshot or page read after a click is
+# new data, so the re-fetch guard must never redirect these to an old archive.
+# Matched with fnmatch against the full tool name; fnmatch is case-sensitive on
+# POSIX, so names are lowercased first.
+# Hosts spell the same server differently (mcp__claude-in-chrome__,
+# mcp__Claude_in_Chrome__, mcp__plugin_claude-in-chrome_claude-in-chrome__), so
+# match on the server word. Over-matching only means the guard never blocks
+# that tool, which is the safe direction.
+LIVE_STATE_TOOL_PATTERNS: tuple[str, ...] = (
+    "mcp__*chrome*__*",
+    "mcp__*playwright*__*",
+    "mcp__*puppeteer*__*",
+    "mcp__*browser*__*",
+    "mcp__*computer?use*__*",
+)
+
+# The guard exists to break an immediate loop (the model re-issuing the call it
+# just got a pointer for). Past this window an identical call is far more likely
+# a deliberate re-check of live data (an inbox, a chat, a calendar), and serving
+# the old archive would hand the model stale data as if it were current.
+REFETCH_GUARD_WINDOW_SECONDS = 300
+
+
+def is_live_state_tool(tool_name: str) -> bool:
+    """True for tools whose result depends on live external state. Never raises."""
+    try:
+        import fnmatch
+        name = (tool_name or "").lower()
+        return any(fnmatch.fnmatch(name, pat) for pat in LIVE_STATE_TOOL_PATTERNS)
+    except Exception:
+        return False
+
+
 def tool_fingerprint(tool_name: str, tool_input) -> str:
     """Stable 16-hex fingerprint of an MCP tool call (name + normalized args).
 

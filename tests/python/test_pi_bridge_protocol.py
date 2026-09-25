@@ -13,7 +13,7 @@ from python import pi_bridge
 
 ROOT = Path(__file__).parents[2]
 BRIDGE = ROOT / "python" / "pi_bridge.py"
-PINNED_COMMIT = "c5d4796fa750530bb7dc9b91ad09373883b728c1"
+PINNED_COMMIT = "d73354ed13b033f496fa23279387559732ce8961"
 ACTIVITY_ACTIONS = (
     "pre_tool",
     "post_tool",
@@ -132,7 +132,7 @@ class PiBridgeProtocolTests(unittest.TestCase):
         self.assertFalse(response["data"]["active"])
         self.assertEqual(response["data"]["runtime"], "pi")
         self.assertEqual(response["data"]["protocolVersion"], 1)
-        self.assertEqual(response["data"]["upstreamVersion"], "5.13.8")
+        self.assertEqual(response["data"]["upstreamVersion"], "5.13.24")
         self.assertEqual(response["data"]["upstreamCommit"], PINNED_COMMIT)
         self.assertRegex(response["data"]["pythonVersion"], r"^\d+\.\d+\.\d+$")
         self.assertEqual(response["data"]["paths"]["piHome"], str(self.pi_home))

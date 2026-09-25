@@ -13,12 +13,13 @@ const PATCH = resolve(ROOT, PATCH_PATH);
 const SNAPSHOT = {
   repository: "https://github.com/alexgreensh/token-optimizer",
   identity: "github.com/alexgreensh/token-optimizer",
-  ref: "v5.13.8",
-  commit: "c5d4796fa750530bb7dc9b91ad09373883b728c1",
-  version: "5.13.8",
+  ref: "v5.13.24",
+  commit: "d73354ed13b033f496fa23279387559732ce8961",
+  version: "5.13.24",
 };
 const FIXED_PATHS = [
   "LICENSE",
+  "LICENSE-SMALL-BUSINESS.md",
   "PRIVACY.md",
   "hooks/python-launcher.sh",
   "skills/token-optimizer/assets/dashboard.html",
