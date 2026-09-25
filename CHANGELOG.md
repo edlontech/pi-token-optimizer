@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/edlontech/pi-token-optimizer/compare/v0.2.0...v0.3.0) (2026-09-25)
+
+
+### Features
+
+* **dashboard:** Adapt vendored dashboard to Pi with real savings, quality, hooks and prompt inventory ([2e7835b](https://github.com/edlontech/pi-token-optimizer/commit/2e7835b135aa3311615aeae4b788f1056813182e))
+* Implement rolling-context compression ([19f6aca](https://github.com/edlontech/pi-token-optimizer/commit/19f6acac13b7f567fdab6dbb556a6d419cb40155))
+
 ## 0.2.0 (2026-09-07)
 
 
