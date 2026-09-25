@@ -7,14 +7,21 @@
   },
   "patch": {
     "path": "patches/pi-runtime.patch",
-    "sha256": "df8028fde521dddce4f97841a077851690a891de35315a3f2880d4e7dca71a5d",
+    "sha256": "f1158606b396d305723c31b56b35ce325f8c75ab1133ea42c629dfb491ca957e",
     "changedFiles": [
+      "skills/token-optimizer/assets/dashboard.html",
       "skills/token-optimizer/scripts/archive_result.py",
       "skills/token-optimizer/scripts/bash_hook.py",
       "skills/token-optimizer/scripts/measure.py",
       "skills/token-optimizer/scripts/runtime_env.py"
     ],
     "requiredSymbols": {
+      "skills/token-optimizer/assets/dashboard.html": [
+        "function getPiComponentDetails(c) {",
+        "if (data.runtime === 'pi') return getPiComponentDetails(c);",
+        "// Pi registers its handlers through the extension; there is nothing to install per hook.",
+        "var v5rec = data.runtime === 'pi' ? null : (data.v5_recommendation || synthesizeV5Recommendation());"
+      ],
       "skills/token-optimizer/scripts/archive_result.py": [
         "def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict | None:",
         "tool_kind = hook_input.get(\"tool_kind\", \"\")",
@@ -48,7 +55,10 @@
         "WHERE session_log.incomplete=1\"\"\"",
         "exact_pi_cost = sr[\"platform\"] == \"pi\" and sr[\"cost_source\"] == \"pi_usage\"",
         "if detect_runtime() == \"pi\":\n            return _query_trends_db(conn, days)",
-        "result = _collect_trends_from_db(days)"
+        "result = _collect_trends_from_db(days)",
+        "def _pi_dashboard_context():",
+        "raw = os.environ.get(\"PI_CONTEXT_WINDOW\", \"\")",
+        "savings_data = _dashboard_savings_data(days=30)"
       ],
       "skills/token-optimizer/scripts/runtime_env.py": [
         "_RUNTIME_PI = \"pi\"",
@@ -86,7 +96,7 @@
     },
     "skills/token-optimizer/assets/dashboard.html": {
       "upstreamSha256": "ef33fdce8cdac7a366648f4e48019327fcd11e505dde10228521b6a4e74ad8e0",
-      "patchedSha256": "ef33fdce8cdac7a366648f4e48019327fcd11e505dde10228521b6a4e74ad8e0",
+      "patchedSha256": "77e1dd2092bf3bf5ecc63e45a6038b8e02592f761bf1f0739bd038b1e790cd96",
       "mode": "100644"
     },
     "skills/token-optimizer/scripts/activity_tracker.py": {
@@ -456,7 +466,7 @@
     },
     "skills/token-optimizer/scripts/measure.py": {
       "upstreamSha256": "801857d3b4d8e9a2ebc89af5e7da01e64ebafa6ed5b8d704e93737e0a0717e27",
-      "patchedSha256": "05351db365aa0b488c8813072c79f4d040e925dda64ed5935fe3ab106d346e73",
+      "patchedSha256": "c492696146daa00258613ffb5f0c32a1d5ab8bdeb8332584a05898024f643b14",
       "mode": "100644"
     },
     "skills/token-optimizer/scripts/outline.py": {

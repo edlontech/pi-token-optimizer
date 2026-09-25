@@ -10,7 +10,7 @@ import type {
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { PiAdapter } from "../src/adapter.ts";
+import { PiAdapter, sessionDescriptor } from "../src/adapter.ts";
 import type { BridgeClient } from "../src/bridge.ts";
 import type { OptimizerConfig } from "../src/config.ts";
 import { isBridgeRequest, type BridgeRequest, type BridgeResponse } from "../src/protocol.ts";
@@ -1173,4 +1173,17 @@ test("post-tool bridge failures and replacements for errors fail open", async ()
     assert.deepEqual(current.content, [{ type: "text", text: "failure output" }]);
     assert.equal(current.isError, true);
   }
+});
+
+test("session descriptor carries the model context window for Pi-aware quality scoring", () => {
+  const descriptor = sessionDescriptor(context({
+    model: { id: "sonnet", provider: "anthropic", contextWindow: 200_000 },
+  } as Partial<ExtensionContext>));
+  assert.equal(descriptor.contextWindow, 200_000);
+  assert.ok(isBridgeRequest({ protocolVersion: 1, action: "status", session: descriptor }));
+
+  const unknown = sessionDescriptor(context({
+    model: { id: "local", provider: "ollama", contextWindow: 0 },
+  } as Partial<ExtensionContext>));
+  assert.equal("contextWindow" in unknown, false);
 });

@@ -76,6 +76,7 @@ function bridgeToolId(id: string): string {
 export function sessionDescriptor(ctx: ExtensionContext): SessionDescriptor {
   const file = ctx.sessionManager.getSessionFile();
   const model = ctx.model;
+  const contextWindow = model?.contextWindow;
   return {
     id: ctx.sessionManager.getSessionId(),
     cwd: ctx.cwd,
@@ -83,6 +84,9 @@ export function sessionDescriptor(ctx: ExtensionContext): SessionDescriptor {
     ...(model === undefined
       ? {}
       : { provider: model.provider, model: model.id }),
+    ...(Number.isSafeInteger(contextWindow) && contextWindow! > 0
+      ? { contextWindow }
+      : {}),
     ...(ctx.thinkingLevel === undefined
       ? {}
       : { reasoningLevel: ctx.thinkingLevel }),

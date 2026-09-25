@@ -2333,10 +2333,39 @@ function extractFindings(auditMd) {
 }
 
 /* ========== COMPONENT DETAILS BUILDER ========== */
+// Pi reports what it loaded into the system prompt: context files, skills, and the rest.
+function getPiComponentDetails(c) {
+  var files = (c.context_files && c.context_files.files) || [];
+  var skills = ((c.skills && c.skills.items) || []).slice().sort(function(a, b) { return b.tokens - a.tokens; });
+  return [
+    {
+      key: 'context_files', name: 'Context files', tokens: c.context_files ? c.context_files.tokens : 0,
+      sub: files.length ? files.length + ' file(s) loaded by Pi' : 'No AGENTS.md or CLAUDE.md loaded',
+      what: 'Pi loads ~/.pi/agent/AGENTS.md plus AGENTS.md or CLAUDE.md from the working directory and its parents into every session.',
+      top: files.map(function(f) { return { name: f.path, note: f.tokens.toLocaleString() + ' tokens' }; }),
+      issues: [], related: []
+    },
+    {
+      key: 'skills', name: 'Skills', tokens: c.skills ? c.skills.tokens : 0,
+      sub: (c.skills ? c.skills.count : 0) + ' skills listed in the prompt',
+      what: 'Pi lists each skill name, description, and location in the system prompt; full instructions load on demand. Shorter descriptions cost less.',
+      top: skills.slice(0, 10).map(function(s) { return { name: s.name, note: s.tokens.toLocaleString() + ' tokens' }; }),
+      issues: [], related: []
+    },
+    {
+      key: 'core_system', name: 'Core System', tokens: c.core_system ? c.core_system.tokens : 0,
+      sub: 'Fixed overhead, not optimizable',
+      what: 'Pi base system prompt, tool snippets, and guidelines. Tool schemas sent to the provider separately are not included.',
+      top: [], issues: [], related: []
+    }
+  ];
+}
+
 function getComponentDetails(data) {
   var c = data.snapshot.components;
   var cd = data.snapshot.component_details || {};
   var isCodex = data.runtime === 'codex';
+  if (data.runtime === 'pi') return getPiComponentDetails(c);
 
   var ct = 0;
   for (var k in c) {
@@ -2625,6 +2654,13 @@ var DB = (function() {
           hasAnyItems = true;
         }
       });
+      // Pi has no coach advice or config manager; hide those tabs.
+      if (d.runtime === 'pi') {
+        ['coach', 'manage'].forEach(function(k) {
+          var navItem = document.querySelector('.nav-item[data-view="' + k + '"]');
+          if (navItem) navItem.style.display = 'none';
+        });
+      }
       // Default to Trends tab (analytics are always relevant for standalone)
       var trendsNav = document.querySelector('.nav-item[data-view="trends"]');
       if (trendsNav) trendsNav.click();
@@ -2832,7 +2868,9 @@ var DB = (function() {
       var ctxSource = data.snapshot.context_source ? ' Context window source: ' + data.snapshot.context_source + '.' : '';
       viewSourceEl.textContent = (isUrl
         ? 'Viewing live dashboard. Updates on every session end.'
-        : 'Viewing a local file. For the bookmarkable URL run: python3 measure.py setup-daemon') + ctxSource;
+        : data.runtime === 'pi'
+          ? 'Viewing a local file. Refresh with /token-optimizer dashboard.'
+          : 'Viewing a local file. For the bookmarkable URL run: python3 measure.py setup-daemon') + ctxSource;
     }
 
     // Hero card
@@ -2846,7 +2884,8 @@ var DB = (function() {
     // client-side synthesis when the dashboard has no real data yet so a
     // fresh install advertises these features before they run their first
     // SessionEnd. The pitch card is pure config, not session metrics.
-    var v5rec = data.v5_recommendation || synthesizeV5Recommendation();
+    // Pi has no v5 feature toggles, so skip the pitch card.
+    var v5rec = data.runtime === 'pi' ? null : (data.v5_recommendation || synthesizeV5Recommendation());
     var v5card = document.getElementById('v5-recommendation-card');
     if (v5card && v5rec) {
       var disabled = v5rec.disabled_features || [];
@@ -2917,7 +2956,7 @@ var DB = (function() {
     var ts = data.generated_at ? new Date(data.generated_at).toLocaleString() : 'unknown';
     var staleMinutes = data.generated_at ? Math.round((Date.now() - new Date(data.generated_at).getTime()) / 60000) : 0;
     var isStale = staleMinutes > 60;
-    var refreshHint = data.runtime === 'codex' ? 'run the Codex dashboard refresh command' : 'run /token-optimizer';
+    var refreshHint = data.runtime === 'codex' ? 'run the Codex dashboard refresh command' : data.runtime === 'pi' ? 'run /token-optimizer dashboard' : 'run /token-optimizer';
     var staleWarning = isStale ? ' <span style="color:var(--c-warning, #ff9f43);font-weight:500;">(data is ' + (staleMinutes > 1440 ? Math.round(staleMinutes / 1440) + 'd' : Math.round(staleMinutes / 60) + 'h') + ' old — ' + refreshHint + ' to refresh)</span>' : '';
     var headerEl = document.querySelector('#view-overview .header');
     if (headerEl) {
@@ -2929,7 +2968,9 @@ var DB = (function() {
           tsDiv.innerHTML = 'Last updated: ' + esc(ts) + staleWarning +
             (data.runtime === 'codex'
               ? ' &middot; Run <span class="update-cmd">TOKEN_OPTIMIZER_RUNTIME=codex python3 measure.py session-end-flush --trigger manual</span> for a fresh Codex audit.'
-              : ' &middot; Run <span class="update-cmd">/token-optimizer</span> for a full audit with recommendations.');
+              : data.runtime === 'pi'
+                ? ' &middot; Run <span class="update-cmd">/token-optimizer dashboard</span> to refresh.'
+                : ' &middot; Run <span class="update-cmd">/token-optimizer</span> for a full audit with recommendations.');
         } else {
           tsDiv.innerHTML = 'Last updated: ' + esc(ts) + staleWarning +
             (data.runtime === 'codex'
@@ -2975,6 +3016,11 @@ var DB = (function() {
     barLabels.push('MCP Tools');
     barLabels.push('Core System');
     var memoryExists = c.memory_md && c.memory_md.exists !== false;
+    if (data.runtime === 'pi') {
+      vals = [c.context_files ? c.context_files.tokens : 0, c.skills ? c.skills.tokens : 0, c.core_system ? c.core_system.tokens : 0];
+      barLabels = ['Context files', 'Skills', 'Core System'];
+      memoryExists = true;
+    }
     var barsHtml = vals.map(function(v, i) {
       var w = logBar(v);
       var fixedClass = i === vals.length - 1 ? ' fixed' : '';
@@ -2988,7 +3034,9 @@ var DB = (function() {
     }).join('');
     document.getElementById('chart-bars').innerHTML = barsHtml;
     document.getElementById('sat-desc').textContent =
-      isCodexOverview
+      data.runtime === 'pi'
+        ? 'Bars show % of the model context window each part of the Pi system prompt uses. Core System (base prompt, tool snippets, guidelines) is fixed by Pi. Context files and skills are yours to trim.'
+        : isCodexOverview
         ? 'Bars show % of the logged Codex context window each component uses. Core System is fixed by Codex. AGENTS.md, memories, skills/plugins, MCP, and hooks are yours to tune.'
         : 'Bars show % of context window each component uses. Core System is fixed by Claude Code. Everything else is yours to trim.';
     var caveatEl = document.getElementById('sat-caveat');
@@ -3003,6 +3051,8 @@ var DB = (function() {
       caveatEl.textContent = 'Note: real session baseline averages ' + fn(cal.avg_real_baseline) +
         ' tokens (' + (cal.gap_pct > 0 ? '+' : '') + cal.gap_pct + '% vs estimate). ' +
         'Gap is from unmeasured system overhead (XML framing, MCP instructions).';
+    } else if (data.runtime === 'pi') {
+      caveatEl.textContent = 'Sizes reported by Pi for the loaded system prompt (~4 characters per token). Tool schemas sent separately to the provider are not included.';
     } else {
       caveatEl.textContent = 'Estimate based on file sizes. Actual overhead includes XML framing and system wrappers not measured here.';
     }
@@ -3019,7 +3069,7 @@ var DB = (function() {
     } else if (data.standalone) {
       document.getElementById('stat-potential').innerHTML = fn(ctrl) + ' <span class="mini-label">controllable tokens</span>';
       document.getElementById('potential-desc').textContent =
-        fn(ctrl) + ' of your ' + fn(total) + ' tokens are things you can change. ' + (isCodexOverview ? 'Use the Codex dashboard refresh command for a full local audit with specific savings estimates.' : 'Run /token-optimizer for a full audit with specific savings estimates.');
+        fn(ctrl) + ' of your ' + fn(total) + ' tokens are things you can change. ' + (data.runtime === 'pi' ? 'Trim context files (AGENTS.md) or remove unused skills to shrink them.' : isCodexOverview ? 'Use the Codex dashboard refresh command for a full local audit with specific savings estimates.' : 'Run /token-optimizer for a full audit with specific savings estimates.');
     } else {
       document.getElementById('stat-potential').innerHTML = fn(ctrl) + ' <span class="mini-label">controllable tokens</span>';
       document.getElementById('potential-desc').textContent =
@@ -3075,7 +3125,7 @@ var DB = (function() {
     // Instruction-file health card
     var cmh = data.claude_md_health;
     if (cmh) {
-      var instructionLabel = isCodexOverview ? 'AGENTS.md Health' : 'CLAUDE.md Health';
+      var instructionLabel = (isCodexOverview || data.runtime === 'pi') ? 'AGENTS.md Health' : 'CLAUDE.md Health';
       var cmColor = cmh.status === 'good' ? 'var(--c-accent-cyan)' : cmh.status === 'warning' ? 'var(--c-warning, #ff9f43)' : 'var(--c-text-dim, #7d8ca3)';
       healthCardsHtml += '<div class="card"><div class="card-header"><span>' + instructionLabel + '</span></div>' +
         '<div style="text-align:center;padding:var(--s-3) 0;">' +
@@ -3129,11 +3179,11 @@ var DB = (function() {
         ctaEl.innerHTML = '<div class="card-header"><span>Auto-Detected Recommendations</span></div>' +
           '<div class="empty-state" style="text-align:left;color:var(--c-text-dim);font-size:14px;">' +
           'These recommendations are auto-generated from your config. Browse them in the tabs on the left.<br>' +
-          (isCodexOverview ? 'For deeper analysis, refresh the Codex dashboard after a few real turns so quality and continuity signals are available.' : 'For deeper analysis (semantic duplication, content quality), run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full LLM-powered audit.') + '</div>';
+          (data.runtime === 'pi' ? 'Recommendations are derived from Pi session data and the loaded system prompt.' : isCodexOverview ? 'For deeper analysis, refresh the Codex dashboard after a few real turns so quality and continuity signals are available.' : 'For deeper analysis (semantic duplication, content quality), run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full LLM-powered audit.') + '</div>';
       } else {
         ctaEl.innerHTML = '<div class="card-header"><span>Optimization Recommendations</span></div>' +
           '<div class="empty-state">No auto-detected issues. Your setup looks clean.<br>' +
-          (isCodexOverview ? 'Refresh the Codex dashboard after live usage for deeper quality analysis.' : 'Run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full audit with deeper analysis.') + '</div>';
+          (data.runtime === 'pi' ? 'Refresh with <code style="color:var(--c-accent-cyan)">/token-optimizer dashboard</code> after more sessions.' : isCodexOverview ? 'Refresh the Codex dashboard after live usage for deeper quality analysis.' : 'Run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full audit with deeper analysis.') + '</div>';
       }
       gridEl.parentNode.insertBefore(ctaEl, gridEl.nextSibling);
     }
@@ -3209,7 +3259,7 @@ var DB = (function() {
 
       if (data.auto_plan) {
         html += '<div class="last-updated">Last updated: ' + esc(ts) +
-          (data.runtime === 'codex' ? ' · Auto-detected from Codex local config and logs.</div>' : ' · Auto-detected. Run <span class="update-cmd">/token-optimizer</span> for deeper LLM-powered analysis.</div>');
+          (data.runtime === 'codex' ? ' · Auto-detected from Codex local config and logs.</div>' : data.runtime === 'pi' ? ' · Auto-detected from Pi session data and the loaded system prompt.</div>' : ' · Auto-detected. Run <span class="update-cmd">/token-optimizer</span> for deeper LLM-powered analysis.</div>');
       } else if (data.standalone) {
         html += '<div class="last-updated">Last updated: ' + esc(ts) +
           (data.runtime === 'codex' ? ' · Optimization data is limited until Codex session logs are collected.</div>' : ' · Optimization data not available in standalone mode. Run <span class="update-cmd">/token-optimizer</span> for a full audit with recommendations.</div>');
@@ -4853,6 +4903,8 @@ var DB = (function() {
         '<p style="font-size:13px;color:var(--c-text-dim);margin-bottom:0;">Codex process version comparison is not exposed reliably in local session data, so version/outdated rows are hidden. This tab focuses on running sessions, hook health, and context quality.</p></div>';
     }
 
+    // Pi exposes no reliable process probe, so running sessions are not listed.
+    if (data.runtime !== 'pi') {
     // Running sessions table
     var sessions = h.running_sessions || [];
     html += '<div class="card wide"><div class="card-header"><span>Running Sessions</span><span class="label">' + sessions.length + ' active</span></div>';
@@ -4911,6 +4963,7 @@ var DB = (function() {
         '</div>';
     }
     html += '</div>';
+    }
 
     // Automated processes
     var automated = h.automated || [];
@@ -5246,12 +5299,27 @@ var DB = (function() {
       '<h1>Hooks</h1>' +
       '<p>' + (isCodex
         ? 'Codex hooks collect real local telemetry. Balanced mode is the default; per-tool hooks are opt-in because Codex Desktop shows hook rows.'
-        : 'Toggle features on and off. Click a toggle to copy the install or uninstall command.') + '</p>' +
+        : data.runtime === 'pi'
+          ? 'Pi extension events handled by this package. Turn them all on or off with /token-optimizer enable or disable.'
+          : 'Toggle features on and off. Click a toggle to copy the install or uninstall command.') + '</p>' +
       '</div>';
 
     if (!h) {
       html += '<div class="empty-state">Hook status not available. Regenerate dashboard: ' + esc(refreshCmd) + '</div>';
       el.innerHTML = html;
+      return;
+    }
+
+    // Pi registers its handlers through the extension; there is nothing to install per hook.
+    if (data.runtime === 'pi') {
+      html += '<div class="card wide"><div class="card-header"><span>Pi Extension Events</span><span class="label">managed by Pi</span></div>';
+      Object.keys(h).forEach(function(key) {
+        var hook = h[key];
+        html += '<div class="hook-row"><div class="hook-info">' +
+          '<div class="hook-label">' + esc(hook.label) + ' <span style="font-size:11px;color:var(--c-accent-cyan);">' + (hook.installed ? 'active' : 'inactive') + '</span></div>' +
+          '<div class="hook-desc">' + esc(hook.description) + '</div></div></div>';
+      });
+      el.innerHTML = html + '</div>';
       return;
     }
 

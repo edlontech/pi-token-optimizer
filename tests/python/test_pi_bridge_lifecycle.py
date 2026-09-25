@@ -994,6 +994,18 @@ class PiBridgeLifecycleTests(unittest.TestCase):
         self.assertLessEqual(len(text.encode("utf-8")), pi_bridge.MAX_CONTEXT_BYTES)
         self.assertEqual(stderr, "")
 
+    def test_model_context_window_runs_real_quality_scoring_on_lifecycle(self):
+        for action, args in (("session_start", {}), ("before_prompt", {"prompt": "go"})):
+            with self.subTest(action=action):
+                request = self.request(action, **args)
+                request["session"]["contextWindow"] = 200_000
+                response, stderr = self.invoke(request)
+                self.assertTrue(response["ok"])
+                self.assertEqual(stderr, "")
+        caches = list((self.pi_home / "token-optimizer").glob("quality-cache-*.json"))
+        self.assertEqual(len(caches), 1)
+        self.assertIn("score", json.loads(caches[0].read_text(encoding="utf-8")))
+
     def test_session_start_sanitizes_and_bounds_recovered_engine_text(self):
         SQLiteSessionStore.database_path = str(self.root / "sanitize-claims.db")
         malicious = (

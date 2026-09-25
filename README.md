@@ -83,7 +83,7 @@ Rolling compression follows the existing enable/disable and consent controls; th
 /token-optimizer purge
 ```
 
-`status` reports local enabled/consent state, Pi compatibility, and bridge health. `doctor` validates Python and the pinned runtime. `dashboard` regenerates `<pi-agent-dir>/token-optimizer/dashboard.html` and opens that static file with `open` on macOS or `xdg-open` on Linux. The package starts no dashboard listener, server, or daemon. `expand` displays one bounded archive page.
+`status` reports local enabled/consent state, Pi compatibility, and bridge health. `doctor` validates Python and the pinned runtime. `dashboard` regenerates `<pi-agent-dir>/token-optimizer/dashboard.html` and opens that static file with `open` on macOS or `xdg-open` on Linux. The package starts no dashboard listener, server, or daemon. The dashboard shows the local savings ledger (dollar figures are estimates at upstream API rates), latest-session context quality, the Pi events this package handles, and the loaded system prompt split into context files, skills, and core; only character counts of the prompt parts are passed to Python, never their content. `expand` displays one bounded archive page.
 
 ### Tool
 

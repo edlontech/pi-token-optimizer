@@ -495,3 +495,20 @@ test("rejects malformed and action-inappropriate responses", () => {
   );
   assert.throws(() => validateBridgeResponse({}, "status"), /bridge response/i);
 });
+
+test("dashboard inventory accepts only bounded character counts", () => {
+  const valid = { systemPromptChars: 1, contextFiles: [], skills: [] };
+  const request = (inventory: unknown) => ({
+    protocolVersion: 1, action: "dashboard", session, args: { inventory },
+  });
+  assert.equal(isBridgeRequest(request(valid)), true);
+  for (const inventory of [
+    {},
+    { ...valid, systemPromptChars: -1 },
+    { ...valid, contextFiles: [{ path: "/a", chars: 1, content: "x" }] },
+    { ...valid, skills: [{ name: "", chars: 1 }] },
+    { ...valid, skills: Array.from({ length: 513 }, () => ({ name: "s", chars: 1 })) },
+  ]) {
+    assert.equal(isBridgeRequest(request(inventory)), false, JSON.stringify(inventory).slice(0, 80));
+  }
+});

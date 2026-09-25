@@ -9,6 +9,7 @@ import test from "node:test";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const changedFiles = [
+  "skills/token-optimizer/assets/dashboard.html",
   "skills/token-optimizer/scripts/archive_result.py",
   "skills/token-optimizer/scripts/bash_hook.py",
   "skills/token-optimizer/scripts/measure.py",

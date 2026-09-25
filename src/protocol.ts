@@ -58,6 +58,7 @@ export interface SessionDescriptor {
   provider?: string;
   model?: string;
   reasoningLevel?: string;
+  contextWindow?: number;
 }
 
 export interface ToolDescriptor {
@@ -102,6 +103,7 @@ const SESSION_KEYS = new Set([
   "provider",
   "model",
   "reasoningLevel",
+  "contextWindow",
 ]);
 const TOOL_KEYS = new Set(["id", "name", "kind", "input"]);
 const RESPONSE_KEYS = new Set([
@@ -213,7 +215,10 @@ function isSessionDescriptor(value: unknown): value is SessionDescriptor {
     (value.provider === undefined || isNonemptyString(value.provider)) &&
     (value.model === undefined || isNonemptyString(value.model)) &&
     (value.reasoningLevel === undefined ||
-      isNonemptyString(value.reasoningLevel))
+      isNonemptyString(value.reasoningLevel)) &&
+    (value.contextWindow === undefined ||
+      (Number.isSafeInteger(value.contextWindow) &&
+        (value.contextWindow as number) > 0))
   );
 }
 
@@ -234,6 +239,37 @@ function hasString(
   key: string,
 ): boolean {
   return args !== undefined && isBoundedString(args[key], MAX_TEXT_BYTES);
+}
+
+export const MAX_INVENTORY_ENTRIES = 512;
+
+function isChars(value: unknown): boolean {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isSizeEntries(value: unknown, key: string): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_INVENTORY_ENTRIES &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        hasOnlyKeys(entry, new Set([key, "chars"])) &&
+        isNonemptyString(entry[key]) &&
+        isChars(entry.chars),
+    )
+  );
+}
+
+/** Accepts only character counts for Pi's system prompt parts, never content. */
+function isInventory(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, new Set(["systemPromptChars", "contextFiles", "skills"])) &&
+    isChars(value.systemPromptChars) &&
+    isSizeEntries(value.contextFiles, "path") &&
+    isSizeEntries(value.skills, "name")
+  );
 }
 
 function hasRequiredRequestFields(request: BridgeRequest): boolean {
@@ -268,6 +304,11 @@ function hasRequiredRequestFields(request: BridgeRequest): boolean {
       if (args.limit !== undefined && !isLimit(args.limit)) return false;
       return true;
     }
+    case "dashboard":
+      return (
+        request.args?.inventory === undefined ||
+        isInventory(request.args.inventory)
+      );
     default:
       return true;
   }

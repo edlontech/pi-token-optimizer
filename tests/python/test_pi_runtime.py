@@ -207,6 +207,7 @@ class PiRuntimeTests(unittest.TestCase):
                 "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(snapshot),
                 "PI_CODING_AGENT_SESSION_DIR": str(root),
                 "PI_SESSION_FILE": str(session),
+                "PI_CONTEXT_WINDOW": "200000",
                 "CLAUDE_CONFIG_DIR": str(root / ".claude"),
                 "CODEX_HOME": str(root / ".codex"),
                 "HERMES_HOME": str(root / ".hermes"),
@@ -236,6 +237,18 @@ class PiRuntimeTests(unittest.TestCase):
                     conn.commit()
                 finally:
                     conn.close()
+                measure._log_savings_event(
+                    "tool_archive", 1_234, session_id="s-1", model="sonnet"
+                )
+                measure._PI_DASHBOARD_CONTEXT = {
+                    "packageVersion": "9.9.9",
+                    "engineVersion": "5.13.24",
+                    "inventory": {
+                        "systemPromptChars": 4_000,
+                        "contextFiles": [{"path": "/p/AGENTS.md", "chars": 800}],
+                        "skills": [],
+                    },
+                }
 
                 blocked = mock.Mock(
                     side_effect=AssertionError("foreign dashboard helper called")
@@ -267,16 +280,12 @@ class PiRuntimeTests(unittest.TestCase):
                     "_cache_ttl_waste_cached",
                     "_collect_git_commits",
                     "_collect_posix_claude_sessions",
-                    "_collect_quality_for_dashboard",
-                    "_dashboard_savings_data",
                     "_get_v5_feature_status",
                     "_get_v5_savings_recommendation",
-                    "_load_pricing_tier",
                     "_read_settings_for_write",
                     "_read_settings_json",
                     "_read_settings_json_checked",
                     "find_projects_dir",
-                    "generate_auto_recommendations",
                     "generate_coach_data",
                     "keepwarm_billing_mode",
                     "keepwarm_cache_health_block",
@@ -313,15 +322,87 @@ class PiRuntimeTests(unittest.TestCase):
             self.assertEqual(payload["pricing_tier"], "pi_usage")
             self.assertEqual(payload["pricing_tier_label"], "Exact Pi usage")
             self.assertEqual(payload["pricing_tiers"], {})
-            self.assertIsNone(payload["plan"])
-            self.assertFalse(payload["auto_plan"])
+            self.assertIn("Behavioral Habits", payload["plan"])
+            self.assertTrue(payload["auto_plan"])
             self.assertIsNone(payload["coach"])
+            self.assertIsNone(payload["v5_recommendation"])
+            self.assertEqual(payload["savings"]["total_tokens"], 1_234)
+            self.assertIn("tool_archive", payload["savings"]["by_category"])
+            self.assertTrue(0 <= payload["quality"]["score"] <= 100)
+            self.assertTrue(payload["hooks"]["tool_result"]["installed"])
+            self.assertEqual(payload["version"], "9.9.9")
+            self.assertEqual(payload["claude_md_health"]["tokens"], 200)
+            self.assertEqual(payload["snapshot"]["context_window"], 200_000)
+            self.assertEqual(
+                payload["health"]["installed_version"], "9.9.9 (engine 5.13.24)"
+            )
             self.assertEqual(payload["manage"]["v5_features"], {})
             self.assertEqual(payload["health"]["recommendations"], [])
             self.assertEqual(payload["trends"]["total_cost_usd"], parsed["cost_usd"])
             details = payload["trends"]["daily"][0]["session_details"]
             self.assertEqual(details[0]["cost_source"], "pi_usage")
             blocked.assert_not_called()
+
+    def test_pi_components_split_the_reported_system_prompt_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pi_home = Path(directory) / "pi"
+            pi_home.mkdir()
+            env = {
+                "HOME": directory,
+                "TOKEN_OPTIMIZER_RUNTIME": "pi",
+                "TOKEN_OPTIMIZER_PI_HOME": str(pi_home),
+                "TOKEN_OPTIMIZER_NO_PROC_SCAN": "1",
+            }
+            with mock.patch.dict(os.environ, env, clear=True):
+                measure = fresh_import("measure")
+                measure._PI_DASHBOARD_CONTEXT = {
+                    "inventory": {
+                        "systemPromptChars": 4_000,
+                        "contextFiles": [{"path": "/p/AGENTS.md", "chars": 800}],
+                        "skills": [{"name": "tdd", "chars": 400}],
+                    }
+                }
+                components = measure.measure_components()
+                totals = measure.calculate_totals(components)
+
+        self.assertEqual(components["context_files"]["tokens"], 200)
+        self.assertEqual(
+            components["context_files"]["files"],
+            [{"path": "/p/AGENTS.md", "tokens": 200}],
+        )
+        self.assertEqual(components["skills"]["tokens"], 100)
+        self.assertEqual(components["skills"]["count"], 1)
+        self.assertEqual(components["core_system"]["tokens"], 700)
+        self.assertEqual(totals["controllable_tokens"], 300)
+        self.assertEqual(totals["estimated_total"], 1_000)
+
+    def test_pi_model_context_window_enables_session_quality_scoring(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pi_home = root / "pi"
+            snapshot = pi_home / "token-optimizer" / "data"
+            snapshot.mkdir(parents=True)
+            session = root / "pi-session.jsonl"
+            shutil.copyfile(FIXTURES / "pi-session-linear.jsonl", session)
+            env = {
+                "HOME": str(root),
+                "TOKEN_OPTIMIZER_RUNTIME": "pi",
+                "TOKEN_OPTIMIZER_PI_HOME": str(pi_home),
+                "TOKEN_OPTIMIZER_SNAPSHOT_DIR": str(snapshot),
+                "PI_CODING_AGENT_SESSION_DIR": str(root),
+                "PI_SESSION_FILE": str(session),
+                "PI_CONTEXT_WINDOW": "200000",
+                "TOKEN_OPTIMIZER_NO_PROC_SCAN": "1",
+            }
+            with mock.patch.dict(os.environ, env, clear=True):
+                measure = fresh_import("measure")
+                self.assertEqual(measure.detect_context_window()[0], 200_000)
+                quality = measure._collect_quality_for_dashboard()
+
+            self.assertIsNotNone(quality)
+            assert quality is not None
+            self.assertTrue(0 <= quality["score"] <= 100)
+            self.assertEqual(quality["runtime"], "pi")
 
     def test_pi_dashboard_collectors_do_not_use_foreign_host_inventory(self):
         with tempfile.TemporaryDirectory() as directory:

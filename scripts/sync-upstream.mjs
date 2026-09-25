@@ -26,12 +26,19 @@ const FIXED_PATHS = [
 ];
 const SCRIPTS_ROOT = "skills/token-optimizer/scripts/";
 const CHANGED_FILES = [
+  "skills/token-optimizer/assets/dashboard.html",
   "skills/token-optimizer/scripts/archive_result.py",
   "skills/token-optimizer/scripts/bash_hook.py",
   "skills/token-optimizer/scripts/measure.py",
   "skills/token-optimizer/scripts/runtime_env.py",
 ];
 const REQUIRED_SYMBOLS = {
+  "skills/token-optimizer/assets/dashboard.html": [
+    "function getPiComponentDetails(c) {",
+    "if (data.runtime === 'pi') return getPiComponentDetails(c);",
+    "// Pi registers its handlers through the extension; there is nothing to install per hook.",
+    "var v5rec = data.runtime === 'pi' ? null : (data.v5_recommendation || synthesizeV5Recommendation());",
+  ],
   "skills/token-optimizer/scripts/archive_result.py": [
     "def archive_result(quiet: bool = False, hook_input: dict | None = None) -> dict | None:",
     "tool_kind = hook_input.get(\"tool_kind\", \"\")",
@@ -66,6 +73,9 @@ const REQUIRED_SYMBOLS = {
     "exact_pi_cost = sr[\"platform\"] == \"pi\" and sr[\"cost_source\"] == \"pi_usage\"",
     "if detect_runtime() == \"pi\":\n            return _query_trends_db(conn, days)",
     "result = _collect_trends_from_db(days)",
+    "def _pi_dashboard_context():",
+    "raw = os.environ.get(\"PI_CONTEXT_WINDOW\", \"\")",
+    "savings_data = _dashboard_savings_data(days=30)",
   ],
   "skills/token-optimizer/scripts/runtime_env.py": [
     "_RUNTIME_PI = \"pi\"",

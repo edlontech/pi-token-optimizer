@@ -20,6 +20,8 @@ Each row names one exact automated test or manual release checklist item. Passin
 | Immediate session gating after local control transitions | Supported | Automated test: `consent and disable transitions save locally and gate activity immediately` |
 | Real static dashboard generation at the Pi-only destination | Supported | Python unittest: `test_real_dashboard_action_writes_only_the_pi_static_destination` |
 | Dashboard opener confinement to the validated static destination | Supported | Automated test: `dashboard validates the static destination and uses only the platform opener` |
+| Dashboard savings ledger, latest-session quality, Pi event list, and Pi-only tabs | Adapted | Python unittest: `test_pi_static_dashboard_is_host_isolated_and_neutral` |
+| Size-only system prompt inventory for the dashboard overview | Supported | Automated test: `dashboard sends a size-only system prompt inventory and never prompt content` |
 | Previewed, confirmed optimizer-data purge that preserves Pi sessions | Supported | Automated test: `purge deletes only the exact optimizer child and leaves Pi sessions untouched` |
 | Automatic lifecycle registration on Pi 0.84.4 and newer | Adapted | Automated test: `version gate registers the full surface once only for Pi 0.84.4 or newer` |
 | Pi v3 active-branch reconstruction | Adapted | Python unittest: `test_reconstructs_last_branch_and_excludes_abandoned_entries` |
@@ -35,6 +37,7 @@ Each row names one exact automated test or manual release checklist item. Passin
 | Pressure-triggered rolling context compression with archive recovery | Supported | Automated test: `rolling context compresses old tool results through the real extension and archives the original` |
 | Stable rolling references below the pressure threshold | Supported | Automated test: `rolling context reuses stable references below the pressure threshold and never overwrites source history` |
 | Local quality nudges | Adapted | Python unittest: `test_before_prompt_combines_only_normalized_safe_function_output` |
+| Quality scoring against the selected model's context window | Adapted | Python unittest: `test_model_context_window_runs_real_quality_scoring_on_lifecycle` |
 | One-time continuity recovery | Adapted | Automated test: `real lifecycle recovers once, returns filterable nudges, and rollup is idempotent` |
 | Normal custom compaction | Adapted | Automated test: `real extension flow retains read state on failed compaction, clears on success, and handles normal and split-turn fake model calls` |
 | Split-turn custom compaction | Adapted | Automated test: `real extension flow retains read state on failed compaction, clears on success, and handles normal and split-turn fake model calls` |

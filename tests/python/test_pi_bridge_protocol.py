@@ -242,6 +242,23 @@ class PiBridgeProtocolTests(unittest.TestCase):
             },
         )
 
+    def test_context_window_is_validated_and_exported_for_the_engine(self):
+        request = self.request("status")
+        request["session"]["contextWindow"] = 200_000
+        with mock.patch.dict(os.environ, self.environment, clear=True):
+            pi_bridge.main(io.StringIO(json.dumps(request)), io.StringIO(), io.StringIO())
+            self.assertEqual(os.environ.get("PI_CONTEXT_WINDOW"), "200000")
+
+            del request["session"]["contextWindow"]
+            pi_bridge.main(io.StringIO(json.dumps(request)), io.StringIO(), io.StringIO())
+            self.assertIsNone(os.environ.get("PI_CONTEXT_WINDOW"))
+
+        for invalid in (0, -1, 1.5, "200000", True):
+            with self.subTest(invalid=invalid):
+                request["session"]["contextWindow"] = invalid
+                response, _stderr = self.invoke(request)
+                self.assertFalse(response["ok"])
+
     def test_safe_integer_json_numbers_match_javascript_semantics(self):
         for protocol_version in ("1.0", "1e0"):
             with self.subTest(protocol_version=protocol_version):

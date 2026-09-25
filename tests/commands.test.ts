@@ -19,7 +19,7 @@ import {
   type PurgePreview,
   type PurgeResult,
 } from "../src/config.ts";
-import type { BridgeAction, BridgeResponse } from "../src/protocol.ts";
+import { isBridgeRequest, type BridgeAction, type BridgeResponse } from "../src/protocol.ts";
 import {
   registerExpandTool,
   registerTokenOptimizerCommand,
@@ -459,6 +459,37 @@ test("dashboard validates the static destination and uses only the platform open
     assert.match(notices.at(-1)?.message ?? "", /Dashboard opened/);
     assert.match(notices.at(-1)?.message ?? "", new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+});
+
+test("dashboard sends a size-only system prompt inventory and never prompt content", async () => {
+  const h = harness();
+  const state = adapter();
+  registerTokenOptimizerCommand(h.pi, state.value, configStore().store);
+  const { ctx } = context();
+  Object.assign(ctx, {
+    getSystemPrompt: () => "x".repeat(4_000),
+    getSystemPromptOptions: () => ({
+      cwd: "/work/project",
+      contextFiles: [{ path: "/work/project/AGENTS.md", content: "secret rules" }],
+      skills: [
+        { name: "tdd", description: "Test first", filePath: "/skills/tdd/SKILL.md" },
+        { name: "hidden", description: "Manual only", filePath: "/h", disableModelInvocation: true },
+      ],
+    }),
+  });
+
+  await h.commands.get("token-optimizer")!.handler("dashboard", ctx);
+
+  const request = { protocolVersion: 1, action: "dashboard", session: { id: "s", cwd: "/" }, args: state.actions[0]?.args };
+  assert.deepEqual(state.actions[0]?.args, {
+    inventory: {
+      systemPromptChars: 4_000,
+      contextFiles: [{ path: "/work/project/AGENTS.md", chars: 12 }],
+      skills: [{ name: "tdd", chars: 33 }],
+    },
+  });
+  assert.ok(isBridgeRequest(request));
+  assert.doesNotMatch(JSON.stringify(state.actions), /secret rules|Test first|hidden/);
 });
 
 test("dashboard reports its path when opener is unavailable and rejects unexpected paths", async (t) => {

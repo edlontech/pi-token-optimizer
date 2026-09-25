@@ -3075,9 +3075,44 @@ def _measure_cursor_components():
     }
 
 
+# Set by the Pi bridge before dashboard generation: packageVersion,
+# engineVersion, and a size-only system prompt inventory.
+_PI_DASHBOARD_CONTEXT = None
+
+_PI_HOOK_EVENTS = (
+    ("session_start", "Consent check, retention cleanup, quality cache, one-time continuity recovery."),
+    ("before_agent_start", "Injects bounded quality, continuity, and verbosity nudges before each prompt."),
+    ("context", "Rolling compression of older large tool results at 60% context usage."),
+    ("tool_call", "Read cache, refetch guard, and Bash command rewriting before tools run."),
+    ("tool_result", "Compresses and archives large text tool results; expand with token_optimizer_expand."),
+    ("session_before_compact", "Guided compaction using a local checkpoint."),
+    ("session_compact", "Clears read-cache state after a successful compaction."),
+    ("session_shutdown", "Records the session rollup and continuity checkpoint."),
+)
+
+
+def _pi_dashboard_context():
+    """Return the bridge-supplied Pi dashboard context, or an empty dict."""
+    return _PI_DASHBOARD_CONTEXT if isinstance(_PI_DASHBOARD_CONTEXT, dict) else {}
+
+
 def _measure_pi_components():
-    """Return Pi-owned dashboard inventory without reading another host."""
+    """Split Pi's reported system prompt sizes into dashboard components.
+
+    The bridge supplies character counts only (never content) from Pi's own
+    loaded context files and skills; everything else in the prompt is core.
+    """
     home = runtime_home()
+    inventory = _pi_dashboard_context().get("inventory") or {}
+
+    def tokens(chars):
+        return round(chars / CHARS_PER_TOKEN)
+
+    files = [{"path": f["path"], "tokens": tokens(f["chars"])} for f in inventory.get("contextFiles", [])]
+    skills = [{"name": s["name"], "tokens": tokens(s["chars"])} for s in inventory.get("skills", [])]
+    context_tokens = sum(f["tokens"] for f in files)
+    skill_tokens = sum(s["tokens"] for s in skills)
+    prompt_tokens = tokens(inventory.get("systemPromptChars", 0))
     return {
         "pi_runtime": {
             "runtime": "pi",
@@ -3085,9 +3120,11 @@ def _measure_pi_components():
             "exists": home.is_dir(),
             "tokens": 0,
         },
+        "context_files": {"tokens": context_tokens, "exists": bool(files), "files": files},
+        "skills": {"tokens": skill_tokens, "count": len(skills), "items": skills},
         "core_system": {
-            "tokens": 0,
-            "note": "Pi base instructions are not exposed for measurement.",
+            "tokens": max(0, prompt_tokens - context_tokens - skill_tokens),
+            "note": "Pi base prompt, tool snippets, and guidelines.",
         },
     }
 
@@ -3381,6 +3418,9 @@ def detect_context_window():
     """
     global _context_window_cache
     if detect_runtime() == "pi":
+        raw = os.environ.get("PI_CONTEXT_WINDOW", "")
+        if raw.isdigit() and int(raw) > 0:
+            return int(raw), "Pi model metadata"
         return None, "Pi context window unavailable"
     # Resolve context flags from process env AND settings.json:
     # a user who set these in settings.json env would otherwise get a mis-detected
@@ -5847,14 +5887,18 @@ def _display_path(absolute_path):
 def _collect_hook_status_for_dashboard():
     """Collect hook installation status for dashboard toggle panel."""
     if detect_runtime() == "pi":
-        return {
+        # The bridge only generates the dashboard while enabled with consent.
+        hooks = {
             "pi_extension": {
                 "installed": True,
                 "managed_by": "pi",
                 "label": "Pi Extension",
-                "description": "Lifecycle hooks are managed by the Pi package.",
+                "description": "Lifecycle hooks are managed by the Pi package. Toggle with /token-optimizer enable|disable.",
             }
         }
+        for event, description in _PI_HOOK_EVENTS:
+            hooks[event] = {"installed": True, "managed_by": "pi", "label": event, "description": description}
+        return hooks
     if detect_runtime() == "codex":
         return _collect_codex_hook_status_for_dashboard()
     if detect_runtime() == "hermes":
@@ -7188,35 +7232,29 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
         health = None
 
     runtime = detect_runtime()
-    if runtime == "pi":
-        auto_plan = None
-        rec_count = 0
+    # Generate auto-recommendations from rules engine
+    if not quiet:
+        print("  Generating auto-recommendations...")
+    auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
+    if not quiet and rec_count > 0:
+        print(f"  Found {rec_count} auto-recommendations")
+
+    # Generate coach data for the Coach tab (reuse already-collected components/trends)
+    if not quiet:
+        print("  Generating coach data...")
+    try:
+        # Coach advice targets Claude/Codex config; the Pi dashboard hides it.
+        coach = None if runtime == "pi" else generate_coach_data(components=components, trends=trends)
+    except Exception:
         coach = None
-        quality = None
-        hook_status = None
-    else:
-        # Generate auto-recommendations from rules engine
-        if not quiet:
-            print("  Generating auto-recommendations...")
-        auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
-        if not quiet and rec_count > 0:
-            print(f"  Found {rec_count} auto-recommendations")
 
-        # Generate coach data for the Coach tab (reuse already-collected components/trends)
-        if not quiet:
-            print("  Generating coach data...")
-        try:
-            coach = generate_coach_data(components=components, trends=trends)
-        except Exception:
-            coach = None
+    # Collect context quality data (v2.0)
+    if not quiet:
+        print("  Analyzing context quality...")
+    quality = _collect_quality_for_dashboard()
 
-        # Collect context quality data (v2.0)
-        if not quiet:
-            print("  Analyzing context quality...")
-        quality = _collect_quality_for_dashboard()
-
-        # Collect hook installation status for dashboard toggles
-        hook_status = _collect_hook_status_for_dashboard()
+    # Collect hook installation status for dashboard toggles
+    hook_status = _collect_hook_status_for_dashboard()
 
     # Collect management data for Manage tab
     if not quiet:
@@ -7335,6 +7373,7 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
         for key in components:
             if (
                 (detect_runtime() == "codex" and key.startswith("agents_md"))
+                or (detect_runtime() == "pi" and key == "context_files")
                 or (detect_runtime() != "codex" and key.startswith("claude_md"))
             ) and components[key].get("exists"):
                 instruction_tokens += components[key].get("tokens", 0)
@@ -7354,13 +7393,8 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
         pass
 
     if runtime == "pi":
-        savings_data = {
-            "total_tokens": 0,
-            "total_cost_usd": 0.0,
-            "by_category": {},
-            "available": False,
-            "note": "Savings estimates are unavailable for Pi.",
-        }
+        # The savings ledger is local; billing mode and keep-warm are Claude-only.
+        savings_data = _dashboard_savings_data(days=30)
         cache_health = {
             "available": False,
             "tier": "unavailable",
@@ -7420,7 +7454,7 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
         "savings": savings_data,
         "cache_health": cache_health,
         "standalone": True,
-        "auto_plan": runtime != "pi",
+        "auto_plan": True,
         "generated_at": datetime.now().isoformat(),
         "pricing_tier": pricing_tier,
         "pricing_tier_label": "Exact Pi usage" if runtime == "pi" else _pricing_tier_label(pricing_tier),
@@ -7430,7 +7464,7 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
         "memory_review": mr_data,
         "claude_md_health": claude_md_health,
         "v5_recommendation": None if runtime == "pi" else _get_v5_savings_recommendation(),
-        "version": TOKEN_OPTIMIZER_VERSION,
+        "version": _pi_dashboard_context().get("packageVersion", TOKEN_OPTIMIZER_VERSION) if runtime == "pi" else TOKEN_OPTIMIZER_VERSION,
         "runtime": runtime,
         "runtime_label": runtime_name_for_humans(),
     }
@@ -23726,8 +23760,12 @@ def _collect_health_data():
     # hermes-mode minimal dict so the dashboard's health row renders
     # without probing the Claude CLI.
     if runtime in {"hermes", "pi"}:
+        pi_context = _pi_dashboard_context() if runtime == "pi" else {}
+        installed = None
+        if pi_context.get("packageVersion"):
+            installed = f"{pi_context['packageVersion']} (engine {pi_context.get('engineVersion', 'unknown')})"
         return {
-            "installed_version": None,
+            "installed_version": installed,
             "running_sessions": [],
             "automated": [],
             "recommendations": [],

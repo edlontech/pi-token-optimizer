@@ -580,6 +580,46 @@ class PiBridgeReportingTests(unittest.TestCase):
         generator.assert_called_once_with(days=30, quiet=True, force=True)
         self.assertEqual(stderr, "")
 
+    def test_dashboard_supplies_package_and_engine_versions_to_the_generator(self):
+        expected = self.pi_home / "token-optimizer" / "dashboard.html"
+        package_version = json.loads(
+            (ROOT / "package.json").read_text(encoding="utf-8")
+        )["version"]
+        seen = []
+
+        def generate(**_kwargs):
+            seen.append(dict(measure._PI_DASHBOARD_CONTEXT))
+            expected.write_text("<html></html>", encoding="utf-8")
+            return str(expected)
+
+        measure = types.SimpleNamespace(generate_standalone_dashboard=generate)
+        self.invoke_direct("dashboard", {"measure": measure})
+        inventory = {
+            "systemPromptChars": 4_000,
+            "contextFiles": [{"path": "/p/AGENTS.md", "chars": 800}],
+            "skills": [{"name": "tdd", "chars": 400}],
+        }
+        self.invoke_direct("dashboard", {"measure": measure}, {"inventory": inventory})
+
+        versions = {"packageVersion": package_version, "engineVersion": "5.13.24"}
+        self.assertEqual(seen, [versions, dict(versions, inventory=inventory)])
+
+    def test_dashboard_rejects_inventory_that_is_not_size_only(self):
+        valid = {"systemPromptChars": 1, "contextFiles": [], "skills": []}
+        invalid = (
+            {},
+            dict(valid, systemPromptChars=-1),
+            dict(valid, contextFiles=[{"path": "/a", "chars": 1, "content": "x"}]),
+            dict(valid, skills=[{"name": "", "chars": 1}]),
+            dict(valid, skills=[{"name": "s", "chars": 1}] * 513),
+        )
+        for inventory in invalid:
+            with self.subTest(inventory=str(inventory)[:80]):
+                response, _stderr = self.invoke("dashboard", {"inventory": inventory})
+                self.assertEqual(response["errorCode"], "invalid_request")
+        response, _stderr = self.invoke("dashboard", {"inventory": valid})
+        self.assertTrue(response["data"]["available"])
+
     def test_dashboard_failure_and_wrong_destination_are_unavailable(self):
         outside = self.root / "outside.html"
         outside.write_text("foreign", encoding="utf-8")

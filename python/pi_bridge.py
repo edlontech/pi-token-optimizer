@@ -35,6 +35,7 @@ MAX_ROLLING_RESULTS = 32
 MAX_ROLLING_TEXT_BYTES = 2 * 1024 * 1024
 MIN_ROLLING_TEXT_BYTES = 8 * 1024
 MAX_CONFIG_BYTES = 64 * 1024
+MAX_INVENTORY_ENTRIES = 512
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_JSON_NUMBER_LENGTH = 128
 UPSTREAM_VERSION = "5.13.24"
@@ -58,7 +59,9 @@ ACTIONS = frozenset(
     }
 )
 REQUEST_KEYS = frozenset({"protocolVersion", "action", "session", "tool", "args"})
-SESSION_KEYS = frozenset({"id", "cwd", "file", "provider", "model", "reasoningLevel"})
+SESSION_KEYS = frozenset(
+    {"id", "cwd", "file", "provider", "model", "reasoningLevel", "contextWindow"}
+)
 TOOL_KEYS = frozenset({"id", "name", "kind", "input"})
 ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 ROLLING_ID_RE = re.compile(r"rolling_[a-f0-9]{64}")
@@ -239,6 +242,10 @@ def _is_session(value: object) -> bool:
         return False
     if not _is_id(value.get("id")) or not _is_nonempty_string(value.get("cwd")):
         return False
+    if "contextWindow" in value and not (
+        _is_safe_integer(value["contextWindow"]) and value["contextWindow"] > 0
+    ):
+        return False
     return all(
         key not in value or _is_nonempty_string(value[key])
         for key in ("file", "provider", "model", "reasoningLevel")
@@ -282,6 +289,33 @@ def _is_rolling_results(value: object) -> bool:
     return True
 
 
+def _is_size_entries(value: object, key: str) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) <= MAX_INVENTORY_ENTRIES
+        and all(
+            isinstance(entry, dict)
+            and set(entry) == {key, "chars"}
+            and _is_nonempty_string(entry[key])
+            and _is_safe_integer(entry["chars"])
+            and entry["chars"] >= 0
+            for entry in value
+        )
+    )
+
+
+def _is_inventory(value: object) -> bool:
+    """Accept only character counts for Pi's system prompt parts, never content."""
+    return (
+        isinstance(value, dict)
+        and set(value) == {"systemPromptChars", "contextFiles", "skills"}
+        and _is_safe_integer(value["systemPromptChars"])
+        and value["systemPromptChars"] >= 0
+        and _is_size_entries(value["contextFiles"], "path")
+        and _is_size_entries(value["skills"], "name")
+    )
+
+
 def _has_required_fields(request: Request) -> bool:
     action = request.action
     args = request.args
@@ -320,6 +354,8 @@ def _has_required_fields(request: Request) -> bool:
             and 1 <= args["limit"] <= MAX_EXPANSION_LINES
         )
         return offset_valid and limit_valid
+    if action == "dashboard":
+        return "inventory" not in args or _is_inventory(args["inventory"])
     return True
 
 
@@ -458,6 +494,11 @@ def _configure_environment(request: Request) -> tuple[Path, Path]:
                 os.environ[environment_key] = normalized
                 continue
         os.environ.pop(environment_key, None)
+    context_window = request.session.get("contextWindow")
+    if context_window is None:
+        os.environ.pop("PI_CONTEXT_WINDOW", None)
+    else:
+        os.environ["PI_CONTEXT_WINDOW"] = str(int(context_window))
     return pi_home, data_root
 
 
@@ -1685,7 +1726,27 @@ def _expand(request: Request, data_root: Path) -> dict[str, Any]:
     return _ok(data)
 
 
-def _dashboard(pi_home: Path) -> dict[str, Any]:
+def _package_version() -> str | None:
+    try:
+        version = _loads((PACKAGE_ROOT / "package.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return version if _is_bounded_string(version, 64) else None
+
+
+def _dashboard_context(request: Request) -> dict[str, Any]:
+    context: dict[str, Any] = {"engineVersion": UPSTREAM_VERSION}
+    if "inventory" in request.args:
+        context["inventory"] = request.args["inventory"]
+    version = _package_version()
+    if version is not None:
+        context["packageVersion"] = version
+    return context
+
+
+def _dashboard(request: Request, pi_home: Path) -> dict[str, Any]:
     expected = pi_home / "token-optimizer" / "dashboard.html"
     try:
         for target in (expected, expected.with_suffix(".meta.json")):
@@ -1700,6 +1761,7 @@ def _dashboard(pi_home: Path) -> dict[str, Any]:
             ):
                 raise ValueError("unsafe dashboard output")
         measure = _load_engine("measure")
+        measure._PI_DASHBOARD_CONTEXT = _dashboard_context(request)
         result, output = _capture_call(
             measure.generate_standalone_dashboard,
             days=30,
@@ -2361,7 +2423,7 @@ def dispatch(request: Request) -> dict[str, Any]:
         "post_compact": lambda: _post_compact(request),
         "rollup": lambda: _report_session(request, incomplete=True),
         "finalize": lambda: _report_session(request, incomplete=False),
-        "dashboard": lambda: _dashboard(pi_home),
+        "dashboard": lambda: _dashboard(request, pi_home),
         "expand": lambda: _expand(request, data_root),
     }
     return handlers[request.action]()

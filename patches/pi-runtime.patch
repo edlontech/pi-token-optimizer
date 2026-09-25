@@ -1,3 +1,223 @@
+diff --git a/skills/token-optimizer/assets/dashboard.html b/skills/token-optimizer/assets/dashboard.html
+index f33ef58..48eb310 100644
+--- a/skills/token-optimizer/assets/dashboard.html
++++ b/skills/token-optimizer/assets/dashboard.html
+@@ -2333,10 +2333,39 @@ function extractFindings(auditMd) {
+ }
+ 
+ /* ========== COMPONENT DETAILS BUILDER ========== */
++// Pi reports what it loaded into the system prompt: context files, skills, and the rest.
++function getPiComponentDetails(c) {
++  var files = (c.context_files && c.context_files.files) || [];
++  var skills = ((c.skills && c.skills.items) || []).slice().sort(function(a, b) { return b.tokens - a.tokens; });
++  return [
++    {
++      key: 'context_files', name: 'Context files', tokens: c.context_files ? c.context_files.tokens : 0,
++      sub: files.length ? files.length + ' file(s) loaded by Pi' : 'No AGENTS.md or CLAUDE.md loaded',
++      what: 'Pi loads ~/.pi/agent/AGENTS.md plus AGENTS.md or CLAUDE.md from the working directory and its parents into every session.',
++      top: files.map(function(f) { return { name: f.path, note: f.tokens.toLocaleString() + ' tokens' }; }),
++      issues: [], related: []
++    },
++    {
++      key: 'skills', name: 'Skills', tokens: c.skills ? c.skills.tokens : 0,
++      sub: (c.skills ? c.skills.count : 0) + ' skills listed in the prompt',
++      what: 'Pi lists each skill name, description, and location in the system prompt; full instructions load on demand. Shorter descriptions cost less.',
++      top: skills.slice(0, 10).map(function(s) { return { name: s.name, note: s.tokens.toLocaleString() + ' tokens' }; }),
++      issues: [], related: []
++    },
++    {
++      key: 'core_system', name: 'Core System', tokens: c.core_system ? c.core_system.tokens : 0,
++      sub: 'Fixed overhead, not optimizable',
++      what: 'Pi base system prompt, tool snippets, and guidelines. Tool schemas sent to the provider separately are not included.',
++      top: [], issues: [], related: []
++    }
++  ];
++}
++
+ function getComponentDetails(data) {
+   var c = data.snapshot.components;
+   var cd = data.snapshot.component_details || {};
+   var isCodex = data.runtime === 'codex';
++  if (data.runtime === 'pi') return getPiComponentDetails(c);
+ 
+   var ct = 0;
+   for (var k in c) {
+@@ -2625,6 +2654,13 @@ var DB = (function() {
+           hasAnyItems = true;
+         }
+       });
++      // Pi has no coach advice or config manager; hide those tabs.
++      if (d.runtime === 'pi') {
++        ['coach', 'manage'].forEach(function(k) {
++          var navItem = document.querySelector('.nav-item[data-view="' + k + '"]');
++          if (navItem) navItem.style.display = 'none';
++        });
++      }
+       // Default to Trends tab (analytics are always relevant for standalone)
+       var trendsNav = document.querySelector('.nav-item[data-view="trends"]');
+       if (trendsNav) trendsNav.click();
+@@ -2832,7 +2868,9 @@ var DB = (function() {
+       var ctxSource = data.snapshot.context_source ? ' Context window source: ' + data.snapshot.context_source + '.' : '';
+       viewSourceEl.textContent = (isUrl
+         ? 'Viewing live dashboard. Updates on every session end.'
+-        : 'Viewing a local file. For the bookmarkable URL run: python3 measure.py setup-daemon') + ctxSource;
++        : data.runtime === 'pi'
++          ? 'Viewing a local file. Refresh with /token-optimizer dashboard.'
++          : 'Viewing a local file. For the bookmarkable URL run: python3 measure.py setup-daemon') + ctxSource;
+     }
+ 
+     // Hero card
+@@ -2846,7 +2884,8 @@ var DB = (function() {
+     // client-side synthesis when the dashboard has no real data yet so a
+     // fresh install advertises these features before they run their first
+     // SessionEnd. The pitch card is pure config, not session metrics.
+-    var v5rec = data.v5_recommendation || synthesizeV5Recommendation();
++    // Pi has no v5 feature toggles, so skip the pitch card.
++    var v5rec = data.runtime === 'pi' ? null : (data.v5_recommendation || synthesizeV5Recommendation());
+     var v5card = document.getElementById('v5-recommendation-card');
+     if (v5card && v5rec) {
+       var disabled = v5rec.disabled_features || [];
+@@ -2917,7 +2956,7 @@ var DB = (function() {
+     var ts = data.generated_at ? new Date(data.generated_at).toLocaleString() : 'unknown';
+     var staleMinutes = data.generated_at ? Math.round((Date.now() - new Date(data.generated_at).getTime()) / 60000) : 0;
+     var isStale = staleMinutes > 60;
+-    var refreshHint = data.runtime === 'codex' ? 'run the Codex dashboard refresh command' : 'run /token-optimizer';
++    var refreshHint = data.runtime === 'codex' ? 'run the Codex dashboard refresh command' : data.runtime === 'pi' ? 'run /token-optimizer dashboard' : 'run /token-optimizer';
+     var staleWarning = isStale ? ' <span style="color:var(--c-warning, #ff9f43);font-weight:500;">(data is ' + (staleMinutes > 1440 ? Math.round(staleMinutes / 1440) + 'd' : Math.round(staleMinutes / 60) + 'h') + ' old — ' + refreshHint + ' to refresh)</span>' : '';
+     var headerEl = document.querySelector('#view-overview .header');
+     if (headerEl) {
+@@ -2929,7 +2968,9 @@ var DB = (function() {
+           tsDiv.innerHTML = 'Last updated: ' + esc(ts) + staleWarning +
+             (data.runtime === 'codex'
+               ? ' &middot; Run <span class="update-cmd">TOKEN_OPTIMIZER_RUNTIME=codex python3 measure.py session-end-flush --trigger manual</span> for a fresh Codex audit.'
+-              : ' &middot; Run <span class="update-cmd">/token-optimizer</span> for a full audit with recommendations.');
++              : data.runtime === 'pi'
++                ? ' &middot; Run <span class="update-cmd">/token-optimizer dashboard</span> to refresh.'
++                : ' &middot; Run <span class="update-cmd">/token-optimizer</span> for a full audit with recommendations.');
+         } else {
+           tsDiv.innerHTML = 'Last updated: ' + esc(ts) + staleWarning +
+             (data.runtime === 'codex'
+@@ -2975,6 +3016,11 @@ var DB = (function() {
+     barLabels.push('MCP Tools');
+     barLabels.push('Core System');
+     var memoryExists = c.memory_md && c.memory_md.exists !== false;
++    if (data.runtime === 'pi') {
++      vals = [c.context_files ? c.context_files.tokens : 0, c.skills ? c.skills.tokens : 0, c.core_system ? c.core_system.tokens : 0];
++      barLabels = ['Context files', 'Skills', 'Core System'];
++      memoryExists = true;
++    }
+     var barsHtml = vals.map(function(v, i) {
+       var w = logBar(v);
+       var fixedClass = i === vals.length - 1 ? ' fixed' : '';
+@@ -2988,7 +3034,9 @@ var DB = (function() {
+     }).join('');
+     document.getElementById('chart-bars').innerHTML = barsHtml;
+     document.getElementById('sat-desc').textContent =
+-      isCodexOverview
++      data.runtime === 'pi'
++        ? 'Bars show % of the model context window each part of the Pi system prompt uses. Core System (base prompt, tool snippets, guidelines) is fixed by Pi. Context files and skills are yours to trim.'
++        : isCodexOverview
+         ? 'Bars show % of the logged Codex context window each component uses. Core System is fixed by Codex. AGENTS.md, memories, skills/plugins, MCP, and hooks are yours to tune.'
+         : 'Bars show % of context window each component uses. Core System is fixed by Claude Code. Everything else is yours to trim.';
+     var caveatEl = document.getElementById('sat-caveat');
+@@ -3003,6 +3051,8 @@ var DB = (function() {
+       caveatEl.textContent = 'Note: real session baseline averages ' + fn(cal.avg_real_baseline) +
+         ' tokens (' + (cal.gap_pct > 0 ? '+' : '') + cal.gap_pct + '% vs estimate). ' +
+         'Gap is from unmeasured system overhead (XML framing, MCP instructions).';
++    } else if (data.runtime === 'pi') {
++      caveatEl.textContent = 'Sizes reported by Pi for the loaded system prompt (~4 characters per token). Tool schemas sent separately to the provider are not included.';
+     } else {
+       caveatEl.textContent = 'Estimate based on file sizes. Actual overhead includes XML framing and system wrappers not measured here.';
+     }
+@@ -3019,7 +3069,7 @@ var DB = (function() {
+     } else if (data.standalone) {
+       document.getElementById('stat-potential').innerHTML = fn(ctrl) + ' <span class="mini-label">controllable tokens</span>';
+       document.getElementById('potential-desc').textContent =
+-        fn(ctrl) + ' of your ' + fn(total) + ' tokens are things you can change. ' + (isCodexOverview ? 'Use the Codex dashboard refresh command for a full local audit with specific savings estimates.' : 'Run /token-optimizer for a full audit with specific savings estimates.');
++        fn(ctrl) + ' of your ' + fn(total) + ' tokens are things you can change. ' + (data.runtime === 'pi' ? 'Trim context files (AGENTS.md) or remove unused skills to shrink them.' : isCodexOverview ? 'Use the Codex dashboard refresh command for a full local audit with specific savings estimates.' : 'Run /token-optimizer for a full audit with specific savings estimates.');
+     } else {
+       document.getElementById('stat-potential').innerHTML = fn(ctrl) + ' <span class="mini-label">controllable tokens</span>';
+       document.getElementById('potential-desc').textContent =
+@@ -3075,7 +3125,7 @@ var DB = (function() {
+     // Instruction-file health card
+     var cmh = data.claude_md_health;
+     if (cmh) {
+-      var instructionLabel = isCodexOverview ? 'AGENTS.md Health' : 'CLAUDE.md Health';
++      var instructionLabel = (isCodexOverview || data.runtime === 'pi') ? 'AGENTS.md Health' : 'CLAUDE.md Health';
+       var cmColor = cmh.status === 'good' ? 'var(--c-accent-cyan)' : cmh.status === 'warning' ? 'var(--c-warning, #ff9f43)' : 'var(--c-text-dim, #7d8ca3)';
+       healthCardsHtml += '<div class="card"><div class="card-header"><span>' + instructionLabel + '</span></div>' +
+         '<div style="text-align:center;padding:var(--s-3) 0;">' +
+@@ -3129,11 +3179,11 @@ var DB = (function() {
+         ctaEl.innerHTML = '<div class="card-header"><span>Auto-Detected Recommendations</span></div>' +
+           '<div class="empty-state" style="text-align:left;color:var(--c-text-dim);font-size:14px;">' +
+           'These recommendations are auto-generated from your config. Browse them in the tabs on the left.<br>' +
+-          (isCodexOverview ? 'For deeper analysis, refresh the Codex dashboard after a few real turns so quality and continuity signals are available.' : 'For deeper analysis (semantic duplication, content quality), run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full LLM-powered audit.') + '</div>';
++          (data.runtime === 'pi' ? 'Recommendations are derived from Pi session data and the loaded system prompt.' : isCodexOverview ? 'For deeper analysis, refresh the Codex dashboard after a few real turns so quality and continuity signals are available.' : 'For deeper analysis (semantic duplication, content quality), run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full LLM-powered audit.') + '</div>';
+       } else {
+         ctaEl.innerHTML = '<div class="card-header"><span>Optimization Recommendations</span></div>' +
+           '<div class="empty-state">No auto-detected issues. Your setup looks clean.<br>' +
+-          (isCodexOverview ? 'Refresh the Codex dashboard after live usage for deeper quality analysis.' : 'Run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full audit with deeper analysis.') + '</div>';
++          (data.runtime === 'pi' ? 'Refresh with <code style="color:var(--c-accent-cyan)">/token-optimizer dashboard</code> after more sessions.' : isCodexOverview ? 'Refresh the Codex dashboard after live usage for deeper quality analysis.' : 'Run <code style="color:var(--c-accent-cyan)">/token-optimizer</code> for a full audit with deeper analysis.') + '</div>';
+       }
+       gridEl.parentNode.insertBefore(ctaEl, gridEl.nextSibling);
+     }
+@@ -3209,7 +3259,7 @@ var DB = (function() {
+ 
+       if (data.auto_plan) {
+         html += '<div class="last-updated">Last updated: ' + esc(ts) +
+-          (data.runtime === 'codex' ? ' · Auto-detected from Codex local config and logs.</div>' : ' · Auto-detected. Run <span class="update-cmd">/token-optimizer</span> for deeper LLM-powered analysis.</div>');
++          (data.runtime === 'codex' ? ' · Auto-detected from Codex local config and logs.</div>' : data.runtime === 'pi' ? ' · Auto-detected from Pi session data and the loaded system prompt.</div>' : ' · Auto-detected. Run <span class="update-cmd">/token-optimizer</span> for deeper LLM-powered analysis.</div>');
+       } else if (data.standalone) {
+         html += '<div class="last-updated">Last updated: ' + esc(ts) +
+           (data.runtime === 'codex' ? ' · Optimization data is limited until Codex session logs are collected.</div>' : ' · Optimization data not available in standalone mode. Run <span class="update-cmd">/token-optimizer</span> for a full audit with recommendations.</div>');
+@@ -4853,6 +4903,8 @@ var DB = (function() {
+         '<p style="font-size:13px;color:var(--c-text-dim);margin-bottom:0;">Codex process version comparison is not exposed reliably in local session data, so version/outdated rows are hidden. This tab focuses on running sessions, hook health, and context quality.</p></div>';
+     }
+ 
++    // Pi exposes no reliable process probe, so running sessions are not listed.
++    if (data.runtime !== 'pi') {
+     // Running sessions table
+     var sessions = h.running_sessions || [];
+     html += '<div class="card wide"><div class="card-header"><span>Running Sessions</span><span class="label">' + sessions.length + ' active</span></div>';
+@@ -4911,6 +4963,7 @@ var DB = (function() {
+         '</div>';
+     }
+     html += '</div>';
++    }
+ 
+     // Automated processes
+     var automated = h.automated || [];
+@@ -5246,7 +5299,9 @@ var DB = (function() {
+       '<h1>Hooks</h1>' +
+       '<p>' + (isCodex
+         ? 'Codex hooks collect real local telemetry. Balanced mode is the default; per-tool hooks are opt-in because Codex Desktop shows hook rows.'
+-        : 'Toggle features on and off. Click a toggle to copy the install or uninstall command.') + '</p>' +
++        : data.runtime === 'pi'
++          ? 'Pi extension events handled by this package. Turn them all on or off with /token-optimizer enable or disable.'
++          : 'Toggle features on and off. Click a toggle to copy the install or uninstall command.') + '</p>' +
+       '</div>';
+ 
+     if (!h) {
+@@ -5255,6 +5310,19 @@ var DB = (function() {
+       return;
+     }
+ 
++    // Pi registers its handlers through the extension; there is nothing to install per hook.
++    if (data.runtime === 'pi') {
++      html += '<div class="card wide"><div class="card-header"><span>Pi Extension Events</span><span class="label">managed by Pi</span></div>';
++      Object.keys(h).forEach(function(key) {
++        var hook = h[key];
++        html += '<div class="hook-row"><div class="hook-info">' +
++          '<div class="hook-label">' + esc(hook.label) + ' <span style="font-size:11px;color:var(--c-accent-cyan);">' + (hook.installed ? 'active' : 'inactive') + '</span></div>' +
++          '<div class="hook-desc">' + esc(hook.description) + '</div></div></div>';
++      });
++      el.innerHTML = html + '</div>';
++      return;
++    }
++
+     if (isCodex) {
+       var balancedCmd = codexSetup.install_balanced_profile_cmd || (h.codex_balanced_profile && h.codex_balanced_profile.install_cmd) || '';
+       var quietCmd = codexSetup.install_quiet_profile_cmd || (h.codex_stop_refresh && h.codex_stop_refresh.install_cmd) || '';
 diff --git a/skills/token-optimizer/scripts/archive_result.py b/skills/token-optimizer/scripts/archive_result.py
 index 4b7cd62..a3932e9 100644
 --- a/skills/token-optimizer/scripts/archive_result.py
@@ -221,7 +441,7 @@ index 209b123..a04ccb9 100644
      rewritten = (
          'for b in bash /bin/bash /usr/bin/bash /usr/local/bin/bash /opt/homebrew/bin/bash; '
 diff --git a/skills/token-optimizer/scripts/measure.py b/skills/token-optimizer/scripts/measure.py
-index fc5236e..67cca0c 100644
+index fc5236e..27bd87e 100644
 --- a/skills/token-optimizer/scripts/measure.py
 +++ b/skills/token-optimizer/scripts/measure.py
 @@ -152,6 +152,7 @@ import codex_state
@@ -285,13 +505,48 @@ index fc5236e..67cca0c 100644
  
      components = {}
      seen_real_paths = set()
-@@ -3060,6 +3075,23 @@ def _measure_cursor_components():
+@@ -3060,6 +3075,60 @@ def _measure_cursor_components():
      }
  
  
++# Set by the Pi bridge before dashboard generation: packageVersion,
++# engineVersion, and a size-only system prompt inventory.
++_PI_DASHBOARD_CONTEXT = None
++
++_PI_HOOK_EVENTS = (
++    ("session_start", "Consent check, retention cleanup, quality cache, one-time continuity recovery."),
++    ("before_agent_start", "Injects bounded quality, continuity, and verbosity nudges before each prompt."),
++    ("context", "Rolling compression of older large tool results at 60% context usage."),
++    ("tool_call", "Read cache, refetch guard, and Bash command rewriting before tools run."),
++    ("tool_result", "Compresses and archives large text tool results; expand with token_optimizer_expand."),
++    ("session_before_compact", "Guided compaction using a local checkpoint."),
++    ("session_compact", "Clears read-cache state after a successful compaction."),
++    ("session_shutdown", "Records the session rollup and continuity checkpoint."),
++)
++
++
++def _pi_dashboard_context():
++    """Return the bridge-supplied Pi dashboard context, or an empty dict."""
++    return _PI_DASHBOARD_CONTEXT if isinstance(_PI_DASHBOARD_CONTEXT, dict) else {}
++
++
 +def _measure_pi_components():
-+    """Return Pi-owned dashboard inventory without reading another host."""
++    """Split Pi's reported system prompt sizes into dashboard components.
++
++    The bridge supplies character counts only (never content) from Pi's own
++    loaded context files and skills; everything else in the prompt is core.
++    """
 +    home = runtime_home()
++    inventory = _pi_dashboard_context().get("inventory") or {}
++
++    def tokens(chars):
++        return round(chars / CHARS_PER_TOKEN)
++
++    files = [{"path": f["path"], "tokens": tokens(f["chars"])} for f in inventory.get("contextFiles", [])]
++    skills = [{"name": s["name"], "tokens": tokens(s["chars"])} for s in inventory.get("skills", [])]
++    context_tokens = sum(f["tokens"] for f in files)
++    skill_tokens = sum(s["tokens"] for s in skills)
++    prompt_tokens = tokens(inventory.get("systemPromptChars", 0))
 +    return {
 +        "pi_runtime": {
 +            "runtime": "pi",
@@ -299,9 +554,11 @@ index fc5236e..67cca0c 100644
 +            "exists": home.is_dir(),
 +            "tokens": 0,
 +        },
++        "context_files": {"tokens": context_tokens, "exists": bool(files), "files": files},
++        "skills": {"tokens": skill_tokens, "count": len(skills), "items": skills},
 +        "core_system": {
-+            "tokens": 0,
-+            "note": "Pi base instructions are not exposed for measurement.",
++            "tokens": max(0, prompt_tokens - context_tokens - skill_tokens),
++            "note": "Pi base prompt, tool snippets, and guidelines.",
 +        },
 +    }
 +
@@ -309,16 +566,19 @@ index fc5236e..67cca0c 100644
  def _measure_hermes_components():
      """Measure Hermes-relevant startup/config components without reading Claude config.
  
-@@ -3348,6 +3380,8 @@ def detect_context_window():
+@@ -3348,6 +3417,11 @@ def detect_context_window():
        7. Claude fallback: 1M (Opus 4.6+/4.7 and Sonnet 4.6 are 1M GA since March 2026)
      """
      global _context_window_cache
 +    if detect_runtime() == "pi":
++        raw = os.environ.get("PI_CONTEXT_WINDOW", "")
++        if raw.isdigit() and int(raw) > 0:
++            return int(raw), "Pi model metadata"
 +        return None, "Pi context window unavailable"
      # Resolve context flags from process env AND settings.json:
      # a user who set these in settings.json env would otherwise get a mis-detected
      # window, corrupting fill-% and every downstream recommendation.
-@@ -5759,10 +5793,12 @@ def generate_dashboard(coord_path):
+@@ -5759,10 +5833,12 @@ def generate_dashboard(coord_path):
      # v5.3.6 / v5.4.10: mirror the same HTML to BOTH dashboard paths so
      # the daemon serves fresh audit content regardless of which path it
      # was configured to use. Same dual-path pattern as v5.4.7 daemon script.
@@ -333,23 +593,27 @@ index fc5236e..67cca0c 100644
          # Version-downgrade guard: an older build's audit must not clobber a
          # shared dashboard a newer build already wrote. The per-run audit artifact
          # (out_path) is still written above; only the SHARED served copies are
-@@ -5810,6 +5846,15 @@ def _display_path(absolute_path):
+@@ -5810,6 +5886,19 @@ def _display_path(absolute_path):
  
  def _collect_hook_status_for_dashboard():
      """Collect hook installation status for dashboard toggle panel."""
 +    if detect_runtime() == "pi":
-+        return {
++        # The bridge only generates the dashboard while enabled with consent.
++        hooks = {
 +            "pi_extension": {
 +                "installed": True,
 +                "managed_by": "pi",
 +                "label": "Pi Extension",
-+                "description": "Lifecycle hooks are managed by the Pi package.",
++                "description": "Lifecycle hooks are managed by the Pi package. Toggle with /token-optimizer enable|disable.",
 +            }
 +        }
++        for event, description in _PI_HOOK_EVENTS:
++            hooks[event] = {"installed": True, "managed_by": "pi", "label": event, "description": description}
++        return hooks
      if detect_runtime() == "codex":
          return _collect_codex_hook_status_for_dashboard()
      if detect_runtime() == "hermes":
-@@ -6528,6 +6573,15 @@ def _manage_codex_mcp(action: str, name: str) -> bool:
+@@ -6528,6 +6617,15 @@ def _manage_codex_mcp(action: str, name: str) -> bool:
  
  def _collect_management_data(components=None, trends=None):
      """Collect data for the Manage tab: active/archived skills, MCP servers."""
@@ -365,63 +629,25 @@ index fc5236e..67cca0c 100644
      if components is None:
          components = measure_components()
  
-@@ -7133,28 +7187,36 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -7133,6 +7231,7 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      except Exception:
          health = None
  
--    # Generate auto-recommendations from rules engine
--    if not quiet:
--        print("  Generating auto-recommendations...")
--    auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
--    if not quiet and rec_count > 0:
--        print(f"  Found {rec_count} auto-recommendations")
--
--    # Generate coach data for the Coach tab (reuse already-collected components/trends)
--    if not quiet:
--        print("  Generating coach data...")
--    try:
--        coach = generate_coach_data(components=components, trends=trends)
--    except Exception:
 +    runtime = detect_runtime()
-+    if runtime == "pi":
-+        auto_plan = None
-+        rec_count = 0
-         coach = None
-+        quality = None
-+        hook_status = None
-+    else:
-+        # Generate auto-recommendations from rules engine
-+        if not quiet:
-+            print("  Generating auto-recommendations...")
-+        auto_plan, rec_count = generate_auto_recommendations(components, trends=trends, days=days)
-+        if not quiet and rec_count > 0:
-+            print(f"  Found {rec_count} auto-recommendations")
- 
--    # Collect context quality data (v2.0)
--    if not quiet:
--        print("  Analyzing context quality...")
--    quality = _collect_quality_for_dashboard()
-+        # Generate coach data for the Coach tab (reuse already-collected components/trends)
-+        if not quiet:
-+            print("  Generating coach data...")
-+        try:
-+            coach = generate_coach_data(components=components, trends=trends)
-+        except Exception:
-+            coach = None
- 
--    # Collect hook installation status for dashboard toggles
--    hook_status = _collect_hook_status_for_dashboard()
-+        # Collect context quality data (v2.0)
-+        if not quiet:
-+            print("  Analyzing context quality...")
-+        quality = _collect_quality_for_dashboard()
-+
-+        # Collect hook installation status for dashboard toggles
-+        hook_status = _collect_hook_status_for_dashboard()
- 
-     # Collect management data for Manage tab
+     # Generate auto-recommendations from rules engine
      if not quiet:
-@@ -7204,19 +7266,23 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+         print("  Generating auto-recommendations...")
+@@ -7144,7 +7243,8 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+     if not quiet:
+         print("  Generating coach data...")
+     try:
+-        coach = generate_coach_data(components=components, trends=trends)
++        # Coach advice targets Claude/Codex config; the Pi dashboard hides it.
++        coach = None if runtime == "pi" else generate_coach_data(components=components, trends=trends)
+     except Exception:
+         coach = None
+ 
+@@ -7204,19 +7304,23 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      except Exception:
          pass
  
@@ -458,7 +684,15 @@ index fc5236e..67cca0c 100644
      # Lightweight memory health for dashboard cards (reuses already-computed components,
      # no second measure_components() call, no full detector suite)
      mr_data = None
-@@ -7287,43 +7353,58 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -7269,6 +7373,7 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+         for key in components:
+             if (
+                 (detect_runtime() == "codex" and key.startswith("agents_md"))
++                or (detect_runtime() == "pi" and key == "context_files")
+                 or (detect_runtime() != "codex" and key.startswith("claude_md"))
+             ) and components[key].get("exists"):
+                 instruction_tokens += components[key].get("tokens", 0)
+@@ -7287,43 +7392,53 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      except Exception:
          pass
  
@@ -467,13 +701,8 @@ index fc5236e..67cca0c 100644
 -    savings_data = _dashboard_savings_data(days=30, include_billing_mode=True)
 -    if savings_data != {"total_tokens": 0, "total_cost_usd": 0.0, "by_category": {}}:
 +    if runtime == "pi":
-+        savings_data = {
-+            "total_tokens": 0,
-+            "total_cost_usd": 0.0,
-+            "by_category": {},
-+            "available": False,
-+            "note": "Savings estimates are unavailable for Pi.",
-+        }
++        # The savings ledger is local; billing mode and keep-warm are Claude-only.
++        savings_data = _dashboard_savings_data(days=30)
 +        cache_health = {
 +            "available": False,
 +            "tier": "unavailable",
@@ -550,12 +779,8 @@ index fc5236e..67cca0c 100644
  
      data = {
          "runway": runway,
-@@ -7339,18 +7420,18 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
-         "savings": savings_data,
-         "cache_health": cache_health,
-         "standalone": True,
--        "auto_plan": True,
-+        "auto_plan": runtime != "pi",
+@@ -7342,15 +7457,15 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+         "auto_plan": True,
          "generated_at": datetime.now().isoformat(),
          "pricing_tier": pricing_tier,
 -        "pricing_tier_label": _pricing_tier_label(pricing_tier),
@@ -567,14 +792,15 @@ index fc5236e..67cca0c 100644
          "memory_review": mr_data,
          "claude_md_health": claude_md_health,
 -        "v5_recommendation": _get_v5_savings_recommendation(),
-+        "v5_recommendation": None if runtime == "pi" else _get_v5_savings_recommendation(),
-         "version": TOKEN_OPTIMIZER_VERSION,
+-        "version": TOKEN_OPTIMIZER_VERSION,
 -        "runtime": detect_runtime(),
++        "v5_recommendation": None if runtime == "pi" else _get_v5_savings_recommendation(),
++        "version": _pi_dashboard_context().get("packageVersion", TOKEN_OPTIMIZER_VERSION) if runtime == "pi" else TOKEN_OPTIMIZER_VERSION,
 +        "runtime": runtime,
          "runtime_label": runtime_name_for_humans(),
      }
      data = _sanitize_dashboard_paths(data)
-@@ -7371,8 +7452,9 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
+@@ -7371,8 +7486,9 @@ def generate_standalone_dashboard(days=30, quiet=False, force=False):
      # The daemon script's DASHBOARD constant points to whichever path was
      # active when setup-daemon ran. Write to BOTH so the daemon always
      # serves current content regardless of which path it expects.
@@ -586,7 +812,7 @@ index fc5236e..67cca0c 100644
      wrote_any = False
      for wp in write_paths:
          try:
-@@ -9976,6 +10058,8 @@ def generate_coach_block(components=None, trends=None):
+@@ -9976,6 +10092,8 @@ def generate_coach_block(components=None, trends=None):
  
  def _find_all_jsonl_files(days=30):
      """Find all JSONL session files across all projects within the given day window."""
@@ -595,7 +821,7 @@ index fc5236e..67cca0c 100644
      if _use_codex_session_adapter():
          return codex_session.find_all_jsonl_files(days)
  
-@@ -10438,6 +10522,14 @@ def _parse_session_jsonl(filepath, window_start=None, window_end=None):
+@@ -10438,6 +10556,14 @@ def _parse_session_jsonl(filepath, window_start=None, window_end=None):
      except OSError:
          cache_key = None  # stat failed — parse without caching
  
@@ -610,7 +836,7 @@ index fc5236e..67cca0c 100644
      if _use_codex_session_adapter(filepath):
          if window_start is not None or window_end is not None:
              return None  # This adapter does not yet support activity slicing.
-@@ -10887,6 +10979,9 @@ def parse_session_turns(filepath):
+@@ -10887,6 +11013,9 @@ def parse_session_turns(filepath):
  
      Returns empty list if file is empty/unparseable.
      """
@@ -620,7 +846,7 @@ index fc5236e..67cca0c 100644
      if _use_codex_session_adapter(filepath):
          turns = codex_session.parse_session_turns(filepath)
          for turn in turns:
-@@ -11024,7 +11119,7 @@ def score_session_quality(session_data):
+@@ -11024,7 +11153,7 @@ def score_session_quality(session_data):
      # Lower fill = better (more room for work)
      context_window = detect_context_window()[0]
      total_input = session_data.get("total_input_tokens", 0)
@@ -629,7 +855,7 @@ index fc5236e..67cca0c 100644
      if fill_ratio < 0.3:
          fill_score = 100
      elif fill_ratio < 0.5:
-@@ -12205,6 +12300,7 @@ def _backfill_session_metrics(conn, days=30, limit=50):
+@@ -12205,6 +12334,7 @@ def _backfill_session_metrics(conn, days=30, limit=50):
              """SELECT jsonl_path
                 FROM session_log
                 WHERE date >= ?
@@ -637,7 +863,7 @@ index fc5236e..67cca0c 100644
                   AND (
                         IFNULL(cache_ttl_scanned, 0) = 0
                      OR avg_call_gap_seconds IS NULL
-@@ -19671,7 +19767,7 @@ def _adapter_activity_ts(parsed):
+@@ -19671,7 +19801,7 @@ def _adapter_activity_ts(parsed):
      return best
  
  
@@ -646,7 +872,7 @@ index fc5236e..67cca0c 100644
      """Insert or upgrade one normalized session row; returns 1 on new/upgraded.
  
      Owns the 33-column session_log INSERT and the in-place upgrade. An existing
-@@ -20869,7 +20965,7 @@ def _collect_cursor_sessions(days=90, quiet=False, rebuild=False):
+@@ -20869,7 +20999,7 @@ def _collect_cursor_sessions(days=90, quiet=False, rebuild=False):
                  continue
  
              dedup_key = f"cursor:{cid}"
@@ -655,7 +881,7 @@ index fc5236e..67cca0c 100644
                  new_count += 1
  
          if new_count > 0:
-@@ -21204,6 +21300,127 @@ def _collect_antigravity_sessions(days=90, quiet=False, rebuild=False):
+@@ -21204,6 +21334,127 @@ def _collect_antigravity_sessions(days=90, quiet=False, rebuild=False):
      return new_count
  
  
@@ -783,7 +1009,7 @@ index fc5236e..67cca0c 100644
  UNDATED_USAGE_KEY = "undated"
  
  
-@@ -21879,6 +22096,8 @@ def _collect_trends_from_db(days=30):
+@@ -21879,6 +22130,8 @@ def _collect_trends_from_db(days=30):
          return None
  
      try:
@@ -792,7 +1018,7 @@ index fc5236e..67cca0c 100644
          _read_path_upkeep(conn, days)
          return _query_trends_db(conn, days)
      except (sqlite3.Error, sqlite3.DatabaseError):
-@@ -22036,7 +22255,8 @@ def _query_trends_db(conn, days):
+@@ -22036,7 +22289,8 @@ def _query_trends_db(conn, days):
      current_total = calculate_totals(components).get("estimated_total", 0)
  
      # Daily breakdown from session_log
@@ -802,7 +1028,7 @@ index fc5236e..67cca0c 100644
      daily = {}
      total_cost_usd = 0.0
      total_cost_priced_tokens = 0
-@@ -22049,7 +22269,7 @@ def _query_trends_db(conn, days):
+@@ -22049,7 +22303,7 @@ def _query_trends_db(conn, days):
                    avg_call_gap_seconds, max_call_gap_seconds, p95_call_gap_seconds, skills_json,
                    subagents_json, model_usage_json, slug, topic, project,
                    model_usage_breakdown_json, daily_usage_json,
@@ -811,7 +1037,7 @@ index fc5236e..67cca0c 100644
             FROM session_log WHERE date >= ? ORDER BY date DESC""",
          (cutoff,),
      ).fetchall()
-@@ -22124,28 +22344,35 @@ def _query_trends_db(conn, days):
+@@ -22124,28 +22378,35 @@ def _query_trends_db(conn, days):
          if not isinstance(du, dict):
              du = {}
  
@@ -867,7 +1093,7 @@ index fc5236e..67cca0c 100644
  
          # Per-day slices (#200). With per-day data, each calendar day is billed for
          # the requests that ran on it, subagents included; a day before the window
-@@ -22215,6 +22442,7 @@ def _query_trends_db(conn, days):
+@@ -22215,6 +22476,7 @@ def _query_trends_db(conn, days):
                  # cost_usd is THIS day's share; session_cost_usd is the whole session.
                  "cost_usd": round(day_cost, 4),
                  "session_cost_usd": round(session_total_cost, 4),
@@ -875,7 +1101,7 @@ index fc5236e..67cca0c 100644
                  # input/output_tokens above are whole-session totals (the row
                  # describes the session); these are this day's share, the same
                  # numbers the day's total_input/total_output add up.
-@@ -22281,9 +22509,9 @@ def _query_trends_db(conn, days):
+@@ -22281,9 +22543,9 @@ def _query_trends_db(conn, days):
      # conn.close() removed — caller (_collect_trends_from_db) owns the connection
      # and closes it in its finally block (double-close fix).
  
@@ -888,7 +1114,7 @@ index fc5236e..67cca0c 100644
  
      return {
          "period_days": days,
-@@ -22791,6 +23019,14 @@ def _collect_trends_data(days=30):
+@@ -22791,6 +23053,14 @@ def _collect_trends_data(days=30):
  
      Falls back to live JSONL parsing if DB doesn't exist or is empty.
      """
@@ -903,14 +1129,19 @@ index fc5236e..67cca0c 100644
      # Try SQLite first (faster, accumulated data)
      result = _collect_trends_from_db(days)
      if result is not None:
-@@ -23489,12 +23725,13 @@ def _collect_health_data():
+@@ -23489,12 +23759,17 @@ def _collect_health_data():
      # semantically wrong and would report stale/empty data. Return a
      # hermes-mode minimal dict so the dashboard's health row renders
      # without probing the Claude CLI.
 -    if runtime == "hermes":
 +    if runtime in {"hermes", "pi"}:
++        pi_context = _pi_dashboard_context() if runtime == "pi" else {}
++        installed = None
++        if pi_context.get("packageVersion"):
++            installed = f"{pi_context['packageVersion']} (engine {pi_context.get('engineVersion', 'unknown')})"
          return {
-             "installed_version": None,
+-            "installed_version": None,
++            "installed_version": installed,
              "running_sessions": [],
              "automated": [],
 -            "runtime": "hermes",
@@ -919,7 +1150,7 @@ index fc5236e..67cca0c 100644
          }
      # Cursor: sessions are not `claude` processes either; probing the Claude
      # CLI and `ps | grep claude` under a Cursor pin reports wrong data.
-@@ -30238,6 +30475,8 @@ def _scaled_tool_call_thresholds():
+@@ -30238,6 +30513,8 @@ def _scaled_tool_call_thresholds():
          ctx_size, _ = detect_context_window()
      except Exception:
          ctx_size = 200_000
@@ -928,7 +1159,7 @@ index fc5236e..67cca0c 100644
      scale = max(1.0, (ctx_size / 200_000) ** 1.3)
      base_warn = 25
      base_crit = 40
-@@ -30450,6 +30689,8 @@ def _parse_jsonl_for_quality(filepath):
+@@ -30450,6 +30727,8 @@ def _parse_jsonl_for_quality(filepath):
      system reminders, messages, and compaction markers. Returns None if
      the file is empty or unparseable.
      """
@@ -937,7 +1168,7 @@ index fc5236e..67cca0c 100644
      if _use_codex_session_adapter(filepath):
          return codex_session.parse_jsonl_for_quality(filepath)
  
-@@ -31231,6 +31472,9 @@ def _find_current_session_jsonl():
+@@ -31231,6 +31510,9 @@ def _find_current_session_jsonl():
      For non-hook contexts (manual CLI), results are the same since the most
      recently modified JSONL is almost always the currently active session.
      """
@@ -947,7 +1178,7 @@ index fc5236e..67cca0c 100644
      if _use_codex_session_adapter():
          # Deterministic resolution: prefer the state-DB-resolved
          # active thread id over the mtime guess. `find_current_session_jsonl`
-@@ -31268,6 +31512,9 @@ def _find_current_session_jsonl():
+@@ -31268,6 +31550,9 @@ def _find_current_session_jsonl():
  
  def _find_session_jsonl_by_id(session_id):
      """Find a JSONL file by session ID (UUID filename)."""
@@ -957,7 +1188,7 @@ index fc5236e..67cca0c 100644
      # Sanitize to prevent path traversal
      safe_id = sanitize_session_id(session_id)
      if safe_id == "unknown":
-@@ -33104,6 +33351,23 @@ def _summarize_tool_output_for_recovery(text):
+@@ -33104,6 +33389,23 @@ def _summarize_tool_output_for_recovery(text):
      return "Large tool output archived."
  
  
@@ -981,7 +1212,7 @@ index fc5236e..67cca0c 100644
  def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20):
      """Backfill durable tool-output pointers from Codex JSONL.
  
-@@ -33126,7 +33390,7 @@ def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20)
+@@ -33126,7 +33428,7 @@ def _codex_backfill_tool_archive(filepath=None, session_id=None, max_outputs=20)
          return 0
      archived = 0
      try:
@@ -990,7 +1221,7 @@ index fc5236e..67cca0c 100644
              path,
              min_chars=_ARCHIVE_THRESHOLD,
              max_outputs=max_outputs,
-@@ -33939,6 +34203,12 @@ def _extract_session_state(filepath, tail_lines=500):
+@@ -33939,6 +34241,12 @@ def _extract_session_state(filepath, tail_lines=500):
  
      Returns a dict, or None if file is empty/unreadable.
      """
@@ -1003,7 +1234,7 @@ index fc5236e..67cca0c 100644
      if _use_codex_session_adapter(filepath):
          return codex_session.extract_session_state(filepath, tail_lines=tail_lines, max_files=_CHECKPOINT_MAX_FILES)
  
-@@ -34163,6 +34433,8 @@ def _confine_transcript_path(transcript_path):
+@@ -34163,6 +34471,8 @@ def _confine_transcript_path(transcript_path):
          resolved = raw.resolve()
      except OSError:
          return None

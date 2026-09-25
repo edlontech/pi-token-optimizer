@@ -19,6 +19,7 @@ import {
 import {
   MAX_EXPANSION_LINES,
   MAX_ID_LENGTH,
+  MAX_INVENTORY_ENTRIES,
   isBridgeResponse,
   isHealthyStatus,
   isLimit,
@@ -235,8 +236,38 @@ async function purge(
   );
 }
 
+/**
+ * Sizes of the system prompt parts Pi reports as loaded, for the dashboard
+ * overview. Only character counts leave the extension, never content.
+ * Skills count as name + description + location, matching Pi's prompt listing.
+ */
+function promptInventory(
+  ctx: ExtensionCommandContext,
+): Record<string, unknown> | undefined {
+  try {
+    const options = ctx.getSystemPromptOptions();
+    return {
+      inventory: {
+        systemPromptChars: ctx.getSystemPrompt().length,
+        contextFiles: (options.contextFiles ?? [])
+          .slice(0, MAX_INVENTORY_ENTRIES)
+          .map(({ path, content }) => ({ path, chars: content.length })),
+        skills: (options.skills ?? [])
+          .filter((skill) => !skill.disableModelInvocation)
+          .slice(0, MAX_INVENTORY_ENTRIES)
+          .map(({ name, description, filePath }) => ({
+            name,
+            chars: name.length + description.length + filePath.length,
+          })),
+      },
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function dashboardPath(
-  ctx: ExtensionContext,
+  ctx: ExtensionCommandContext,
   adapter: CommandAdapter,
   config: ConfigStore,
 ): Promise<string | undefined> {
@@ -245,7 +276,7 @@ async function dashboardPath(
   const response = await adapter.runControl(
     "dashboard",
     ctx,
-    undefined,
+    promptInventory(ctx),
     ctx.signal,
   );
   const path = response?.data?.path;
@@ -286,7 +317,7 @@ async function dashboardPath(
 
 async function dashboard(
   pi: Pick<ExtensionAPI, "exec">,
-  ctx: ExtensionContext,
+  ctx: ExtensionCommandContext,
   adapter: CommandAdapter,
   config: ConfigStore,
   platform: NodeJS.Platform,
